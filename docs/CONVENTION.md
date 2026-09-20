@@ -12,7 +12,8 @@ likelion.yacha_backend
 │   ├── security/
 │   │   ├── jwt/                   # JWT 인증
 │   │   └── session/               # 세션(쿠키) 인증
-│   ├── response/                  # 응답 래퍼 { success, data, error }
+│   ├── response/                  # 응답 래퍼 { success, data, error, traceId }
+│   ├── filter/                    # 요청 추적(TraceId) 등 서블릿 필터
 │   ├── exception/                 # 에러 코드 enum, 전역 예외 핸들러
 │   └── entity/                    # BaseEntity (created_at, updated_at 등)
 ├── domain/
@@ -63,3 +64,46 @@ domain/{도메인}/
 
 git 은 빈 폴더를 추적하지 않아서, 구조를 공유하려고 빈 폴더에 `.gitkeep` 을 넣어 두었다.
 **폴더에 실제 파일을 추가할 때 해당 `.gitkeep` 은 삭제한다.**
+
+---
+
+## 개발 환경
+
+### Java 17
+
+이 프로젝트는 **Java 17** 기준이다. (`build.gradle` 의 toolchain, CI 모두 17)
+
+**터미널에서 `./gradlew` 나 앱을 실행하기 전에, 그 터미널에서 아래 명령을 먼저 실행한다.**
+
+```bash
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+```
+
+- macOS 기준이다. 터미널 창(탭)을 새로 열 때마다 다시 실행해야 한다.
+- 실행 확인: `java -version` 에 `17.x` 가 나오면 된다.
+- JDK 17 이 없으면 먼저 설치한다: `brew install --cask temurin@17`
+- **왜 하는가:** Gradle 이 컴파일에 쓰는 Java 는 toolchain 이 17 로 찾아주지만, Gradle **자체가 도는 Java** 는 터미널 기본값을 따른다. CI 는 둘 다 17 이므로 로컬도 맞춰야 "로컬에서는 됐는데 CI 에서 깨지는" 일을 막을 수 있다. (Java 17 에 없는 API 를 써도 기본 Java 가 더 높으면 로컬에서는 컴파일이 통과할 수 있다.)
+- JDK 17 이 아예 설치돼 있지 않으면 `Cannot find a Java installation ... languageVersion=17` 오류가 난다.
+
+**IntelliJ**
+
+- `File → Project Structure → Project SDK` 를 17 로 지정한다.
+- `Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JVM` 도 17 로 지정한다.
+
+**`./gradlew` 가 `permission denied` 일 때**
+
+저장소의 `gradlew` 에 실행 권한이 없다. (CI 는 `chmod +x` 후 실행한다.) 이렇게 실행한다.
+
+```bash
+sh ./gradlew clean build
+```
+
+### 빌드 · 테스트
+
+```bash
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+sh ./gradlew clean build     # CI 와 같은 명령
+```
+
+- 기본 프로필은 `local` 이다. 배포(dev/prod)에서는 `SPRING_PROFILES_ACTIVE` 와 `JWT_SECRET` 환경변수를 반드시 지정한다.
+- `local` 프로필의 JWT 키는 **앱을 시작할 때마다 랜덤으로 만든다.** 저장소에 고정 키가 없으므로, 로컬에서 앱을 재시작하면 기존 토큰이 무효가 된다. (다시 로그인 · 게스트 발급)
