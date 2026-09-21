@@ -73,18 +73,6 @@ git 은 빈 폴더를 추적하지 않아서, 구조를 공유하려고 빈 폴�
 
 이 프로젝트는 **Java 17** 기준이다. (`build.gradle` 의 toolchain, CI 모두 17)
 
-**터미널에서 `./gradlew` 나 앱을 실행하기 전에, 그 터미널에서 아래 명령을 먼저 실행한다.**
-
-```bash
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)
-```
-
-- macOS 기준이다. 터미널 창(탭)을 새로 열 때마다 다시 실행해야 한다.
-- 실행 확인: `java -version` 에 `17.x` 가 나오면 된다.
-- JDK 17 이 없으면 먼저 설치한다: `brew install --cask temurin@17`
-- **왜 하는가:** Gradle 이 컴파일에 쓰는 Java 는 toolchain 이 17 로 찾아주지만, Gradle **자체가 도는 Java** 는 터미널 기본값을 따른다. CI 는 둘 다 17 이므로 로컬도 맞춰야 "로컬에서는 됐는데 CI 에서 깨지는" 일을 막을 수 있다. (Java 17 에 없는 API 를 써도 기본 Java 가 더 높으면 로컬에서는 컴파일이 통과할 수 있다.)
-- JDK 17 이 아예 설치돼 있지 않으면 `Cannot find a Java installation ... languageVersion=17` 오류가 난다.
-
 **IntelliJ**
 
 - `File → Project Structure → Project SDK` 를 17 로 지정한다.
@@ -101,7 +89,6 @@ sh ./gradlew clean build
 ### 빌드 · 테스트
 
 ```bash
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 sh ./gradlew clean build     # CI 와 같은 명령
 ```
 
