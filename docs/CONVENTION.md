@@ -12,7 +12,8 @@ likelion.yacha_backend
 │   ├── security/
 │   │   ├── jwt/                   # JWT 인증
 │   │   └── session/               # 세션(쿠키) 인증
-│   ├── response/                  # 응답 래퍼 { success, data, error }
+│   ├── response/                  # 응답 래퍼 { success, data, error, traceId }
+│   ├── filter/                    # 요청 추적(TraceId) 등 서블릿 필터
 │   ├── exception/                 # 에러 코드 enum, 전역 예외 핸들러
 │   └── entity/                    # BaseEntity (created_at, updated_at 등)
 ├── domain/
@@ -63,3 +64,28 @@ domain/{도메인}/
 
 git 은 빈 폴더를 추적하지 않아서, 구조를 공유하려고 빈 폴더에 `.gitkeep` 을 넣어 두었다.
 **폴더에 실제 파일을 추가할 때 해당 `.gitkeep` 은 삭제한다.**
+
+---
+
+## 개발 환경
+
+### Java 17
+
+이 프로젝트는 **Java 17** 기준이다. (`build.gradle` 의 toolchain, CI 모두 17)
+
+**IntelliJ**
+
+- `File → Project Structure → Project SDK` 를 17 로 지정한다.
+- `Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JVM` 도 17 로 지정한다.
+
+### 빌드 · 테스트
+
+```bash
+./gradlew clean build     # CI 와 같은 명령
+```
+
+`gradlew` 는 저장소에 실행 권한(`100755`)으로 들어 있어 그대로 실행한다.
+
+- 기본 프로필은 `local` 이다. 배포(dev/prod)에서는 `SPRING_PROFILES_ACTIVE` 와 `JWT_SECRET` 환경변수를 반드시 지정한다.
+- `local` 프로필의 JWT 키는 **앱을 시작할 때마다 랜덤으로 만든다.** 저장소에 고정 키가 없으므로, 로컬에서 앱을 재시작하면 기존 토큰이 무효가 된다. (다시 로그인 · 게스트 발급)
+- Swagger UI(`/swagger-ui.html`)는 **기본이 꺼져 있고 `local` 프로필에서만 켠다.** 운영(prod)에서는 끈다.
