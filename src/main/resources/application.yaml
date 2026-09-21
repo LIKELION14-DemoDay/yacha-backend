@@ -15,6 +15,13 @@ jwt:
   access-token-validity: 1800000      # 30분 (ms)
   refresh-token-validity: 1209600000  # 14일 (ms)
 
+springdoc:
+  # API 문서는 기본이 꺼짐입니다. 운영에 API 목록이 공개되지 않도록 켜는 환경(local)에서만 true 로 덮어씁니다.
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 cors:
   # 배포 시 CORS_ALLOWED_ORIGINS로 덮어쓰세요. 와일드카드(*) 사용 가능.
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}

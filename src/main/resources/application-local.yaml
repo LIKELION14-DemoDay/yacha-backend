@@ -1,3 +1,10 @@
+springdoc:
+  # 로컬에서만 Swagger UI(/swagger-ui.html)를 켭니다. 기본값은 application.yaml 에서 꺼짐입니다.
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
 jwt:
   # 로컬 전용. 앱을 시작할 때마다 새로 만드는 랜덤 키입니다.
   #
