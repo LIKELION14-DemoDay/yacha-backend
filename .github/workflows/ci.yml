@@ -1,4 +1,4 @@
-name: Backend CI
+name: Backend CI/CD
 
 on:
   pull_request:
@@ -34,3 +34,80 @@ jobs:
 
       - name: Build and test
         run: ./gradlew clean build
+
+  deploy:
+    needs: build
+
+    # PR에서는 배포하지 않고,
+    # main 브랜치에 실제로 merge/push 되었을 때만 배포
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to EC2 with SSM
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ vars.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy yacha-backend from GitHub Actions" \
+            --parameters '{"commands":[
+              "set -e",
+              "sudo -u ec2-user git -C /home/ec2-user/yacha-backend fetch origin main",
+              "sudo -u ec2-user git -C /home/ec2-user/yacha-backend reset --hard origin/main",
+              "cd /home/ec2-user/yacha-backend",
+              "docker build -t yacha-backend .",
+              "docker rm -f yacha-backend || true",
+              "docker run -d --name yacha-backend -p 8080:8080 --restart unless-stopped yacha-backend"
+            ]}' \
+            --query 'Command.CommandId' \
+            --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          for i in {1..60}; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ vars.EC2_INSTANCE_ID }}" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "Pending")
+
+            echo "Deployment status: $STATUS"
+
+            case "$STATUS" in
+              Success)
+                echo "Deployment succeeded."
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "${{ vars.EC2_INSTANCE_ID }}" \
+                  --query 'StandardOutputContent' \
+                  --output text
+                exit 0
+                ;;
+
+              Failed|Cancelled|TimedOut|Cancelling)
+                echo "Deployment failed."
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "${{ vars.EC2_INSTANCE_ID }}" \
+                  --query '[StandardOutputContent,StandardErrorContent]' \
+                  --output text
+                exit 1
+                ;;
+            esac
+
+            sleep 5
+          done
+
+          echo "Deployment timed out."
+          exit 1
