@@ -32,9 +32,16 @@ public class CorsConfig {
         // TraceIdFilter 가 실어 보내는 X-Trace-Id 를 프론트가 읽을 수 있어야 합니다 — CORS 는
         // 노출 목록에 없는 헤더를 크로스 오리진 JS 에서 못 읽게 막습니다.
         configuration.setExposedHeaders(List.of("X-Trace-Id"));
-        // JWT(Authorization 헤더)만 쓰는 지금은 false 입니다.
-        // 웹 클라이언트에 세션 쿠키 인증을 붙이게 되면 true 로 바꿔야 합니다. (명세 2-1 결정 필요)
-        configuration.setAllowCredentials(false);
+        // 리프레시 토큰을 HttpOnly 쿠키로 주고받기 때문에 true 여야 합니다.
+        // false 면 브라우저가 쿠키를 아예 보내지도, 저장하지도 않습니다. (에러도 조용히 납니다)
+        //
+        // 프론트도 fetch(url, { credentials: 'include' }) 를 써야 합니다. 한쪽만 설정하면 동작하지 않습니다.
+        //
+        // credentials 를 허용하면 Access-Control-Allow-Origin 에 * 를 쓸 수 없습니다.
+        // 위에서 setAllowedOrigins 대신 setAllowedOriginPatterns 를 쓰고 있어 괜찮습니다 —
+        // 패턴에 맞는 출처를 찾아 그 출처를 그대로 응답에 적어주는 방식이라 * 가 나가지 않습니다.
+        // 다만 배포의 CORS_ALLOWED_ORIGINS 에 * 를 넣으면 아무 사이트나 쿠키를 실어 호출할 수 있습니다.
+        configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

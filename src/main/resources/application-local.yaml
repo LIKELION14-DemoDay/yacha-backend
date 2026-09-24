@@ -35,6 +35,11 @@ springdoc:
   swagger-ui:
     enabled: true
 
+auth:
+  cookie:
+    # 로컬은 http 라서 Secure 쿠키를 브라우저가 저장하지 않습니다. 여기서만 끕니다.
+    secure: false
+
 jwt:
   # 로컬 전용, 앱을 시작할 때마다 새로 만드는 랜덤 키
   #
