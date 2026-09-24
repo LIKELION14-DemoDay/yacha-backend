@@ -12,7 +12,10 @@ jwt:
   # 기본값을 두지 않습니다. dev/prod에서 JWT_SECRET 을 빠뜨리면
   # 조용히 공개된 값으로 동작하는 대신 부팅이 실패하도록 합니다. (local 값은 application-local.yaml)
   secret: ${JWT_SECRET}
-  access-token-validity: 1800000      # 30분 (ms)
+  # 액세스 토큰은 서버가 저장하지 않아서 발급 후에는 취소할 수 없습니다. 로그아웃·강제 차단이
+  # 실제로 적용되기까지 걸리는 시간이 곧 이 값이라, 세션 대신 JWT 만 쓰기로 하면서 10분으로 줄였습니다.
+  # 대신 재발급 호출이 잦아지므로 프론트는 401 재발급 요청을 하나로 묶어야 합니다.
+  access-token-validity: 600000       # 10분 (ms)
   refresh-token-validity: 1209600000  # 14일 (ms)
 
 springdoc:
