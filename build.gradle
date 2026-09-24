@@ -20,6 +20,9 @@ repositories {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-h2console'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	// 리프레시 토큰 저장소. 연결은 처음 사용할 때 맺어지므로, Redis 가 떠 있지 않아도
+	// 앱은 뜹니다. (테스트는 인메모리 구현체를 쓰므로 Redis 없이 돕니다)
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'

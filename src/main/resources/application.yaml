@@ -8,6 +8,15 @@ spring:
     # 켜두면 요청 내내 DB 커넥션을 붙잡고 있어 커넥션 풀이 금방 마릅니다.
     open-in-view: false
 
+  data:
+    redis:
+      # 리프레시 토큰 저장소입니다. 배포에서는 REDIS_HOST 로 컨테이너 이름을 넘깁니다.
+      # 로컬 기본값(localhost:6379)은 docker run -d -p 6379:6379 redis:7-alpine 기준입니다.
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # 비밀번호를 걸지 않은 Redis 면 비워 둡니다.
+      password: ${REDIS_PASSWORD:}
+
 jwt:
   # 기본값을 두지 않습니다. dev/prod에서 JWT_SECRET 을 빠뜨리면
   # 조용히 공개된 값으로 동작하는 대신 부팅이 실패하도록 합니다. (local 값은 application-local.yaml)
