@@ -13,6 +13,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Optional;
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -49,6 +50,13 @@ public class JwtTokenProvider {
         Date expiry = new Date(now.getTime() + validityMillis);
 
         JwtBuilder builder = Jwts.builder()
+                // 토큰마다 다른 고유값(jti, RFC 7519 의 등록 claim)입니다.
+                //
+                // 없으면 같은 사용자에게 같은 초에 발급한 토큰이 claim 이 전부 같아서
+                // 문자열까지 완전히 동일해집니다(iat · exp 는 초 단위). 그러면 리프레시 토큰
+                // 교체(rotation) 가 "교체되지 않은" 것과 구분되지 않아, 이미 사용한 토큰을
+                // 다시 써도 저장된 값과 같아 재사용 탐지를 통과합니다.
+                .id(UUID.randomUUID().toString())
                 .subject(String.valueOf(userId))
                 .claim(TOKEN_TYPE_CLAIM, tokenType)
                 .issuedAt(now)
