@@ -43,7 +43,6 @@ public class User extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private Role role;
 
-    /** 게스트 생성. email · password 는 NULL 로 둠. */
     public static User createGuest(String nickname) {
         User user = new User();
         user.nickname = nickname;
@@ -52,7 +51,6 @@ public class User extends BaseTimeEntity {
         return user;
     }
 
-    /** 회원 생성 */
     public static User createMember(String email, String encodedPassword, String nickname) {
         User user = new User();
         user.email = email;
@@ -63,8 +61,10 @@ public class User extends BaseTimeEntity {
         return user;
     }
 
-    /** 게스트를 회원으로 승격. 같은 행을 수정하므로 토론 기록이 그대로 유지. */
     public void upgradeToMember(String email, String encodedPassword, String nickname) {
+        if (!isGuest) {
+            throw new IllegalStateException("이미 회원인 사용자는 승격할 수 없습니다. userId=" + id);
+        }
         this.email = email;
         this.password = encodedPassword;
         this.nickname = nickname;

@@ -9,6 +9,7 @@ import likelion.yacha_backend.domain.auth.dto.AuthResponse;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
+import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.service.AuthService;
 import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.cookie.CookieProvider;
@@ -137,6 +138,28 @@ public class AuthController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookieProvider.deleteRefreshCookie().toString())
                 .body(ApiResponse.noContent());
+    }
+
+    @Operation(
+            summary = "게스트 → 회원 승격",
+            description = """
+                    게스트 계정에 이메일·비밀번호를 붙여 회원으로 만듦
+
+                    같은 계정을 그대로 씀
+                    게스트로 한 토론 기록이 그대로 이어짐
+                    승격 대상은 요청 body가 아닌 토큰의 사용자
+
+                    승격 후 토큰이 새로 발급되므로, 프론트는 응답의 새 `accessToken`으로 교체
+
+                    에러
+                    - `ALREADY_MEMBER` (409): 이미 회원인 계정
+                    - `EMAIL_ALREADY_EXISTS` (409): 다른 사람이 쓰고 있는 이메일
+                    """)
+    @PostMapping("/upgrade")
+    public ResponseEntity<ApiResponse<AuthResponse>> upgrade(
+            @AuthenticationPrincipal AuthUser authUser,
+            @Valid @RequestBody UpgradeRequest request) {
+        return withRefreshCookie(authService.upgrade(authUser.getUserId(), request));
     }
 
     /** 토큰 두 개를 HTTP 응답으로 포장 */

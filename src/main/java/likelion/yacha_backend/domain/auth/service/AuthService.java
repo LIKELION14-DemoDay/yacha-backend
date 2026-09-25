@@ -5,6 +5,7 @@ import java.util.Locale;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
+import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
@@ -151,6 +152,36 @@ public class AuthService {
         log.info("로그아웃: userId={}", userId);
     }
 
+    /**
+     * 게스트를 회원으로 승격
+     * 새 행을 만들면 기록을 옮기는 작업이 필요
+     */
+    @Transactional
+    public IssuedTokens upgrade(Long userId, UpgradeRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.USER_NOT_FOUND));
+
+        if (!user.isGuest()) {
+            throw new BusinessException(AuthErrorCode.ALREADY_MEMBER);
+        }
+
+        String email = normalizeEmail(request.email());
+        if (userRepository.existsByEmail(email)) {
+            throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_EXISTS);
+        }
+
+        user.upgradeToMember(email, passwordEncoder.encode(request.password()), request.nickname());
+
+        // 변경 감지로 UPDATE 되지만, UNIQUE 위반은 flush 시점에 드러남
+        // 지금 내보내지 않으면 커밋 시점에 터져 500이 됨
+        flushOrThrowDuplicateEmail();
+
+        // 게스트 → 회원으로 상태가 바뀌었으니 토큰을 새로 발급, 이전 리프레시 토큰은 무효
+        IssuedTokens tokens = tokenIssuer.issue(user);
+        log.info("회원 승격: userId={}", userId);
+        return tokens;
+    }
+
     /** 토큰의 subject 를 userId 로 바꿈 */
     private Long parseUserId(String refreshToken) {
         try {
@@ -172,6 +203,15 @@ public class AuthService {
                     email,
                     passwordEncoder.encode(request.password()),
                     request.nickname()));
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_EXISTS, e);
+        }
+    }
+
+    /** 승격에서 쓰는 2차 방어 */
+    private void flushOrThrowDuplicateEmail() {
+        try {
+            userRepository.flush();
         } catch (DataIntegrityViolationException e) {
             throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_EXISTS, e);
         }
