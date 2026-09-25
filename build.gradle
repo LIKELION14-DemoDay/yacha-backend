@@ -20,8 +20,6 @@ repositories {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-h2console'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	// 리프레시 토큰 저장소. 연결은 처음 사용할 때 맺어지므로, Redis 가 떠 있지 않아도
-	// 앱은 뜹니다. (테스트는 인메모리 구현체를 쓰므로 Redis 없이 돕니다)
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
@@ -45,8 +43,6 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 
-	// 모든 테스트를 test 프로필로 실행합니다. (설정: src/test/resources/application-test.yaml)
-	// 테스트마다 @ActiveProfiles("test") 를 붙이지 않아도 되고, 빠뜨려서 개발용 DB 파일에
-	// 쓰게 되는 실수도 막습니다.
+	// 모든 테스트를 test 프로필로 실행 (설정: src/test/resources/application-test.yaml)
 	systemProperty 'spring.profiles.active', 'test'
 }

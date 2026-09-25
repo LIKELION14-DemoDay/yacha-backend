@@ -31,12 +31,7 @@ public class SecurityConfig {
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
     private final CorsConfigurationSource corsConfigurationSource;
 
-    /**
-     * 인증 없이 접근할 수 있는 경로. API 명세의 인증 "—" 항목입니다.
-     *
-     * <p>{@code /auth/**} 로 통째로 열지 않는 이유는 {@code /auth/logout}, {@code /auth/upgrade} 는
-     * 인증이 필요하기 때문입니다.
-     */
+    /** 인증 없이 접근할 수 있는 경로 */
     private static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/signup",
             "/api/v1/auth/login",
@@ -48,13 +43,7 @@ public class SecurityConfig {
             "/v3/api-docs/**",
     };
 
-    /**
-     * 인증 없이 <b>GET 만</b> 허용할 경로. 주제 · 카테고리와 공개 페이지입니다.
-     *
-     * <p>id 를 숫자로 제한한 것도 의도입니다. {@code /topics/*} 로 두면 나중에
-     * 누군가 {@code /topics/mine} 같은 걸 추가했을 때 조용히 공개됩니다.
-     * {@code /sessions/me} 와 {@code /sessions/{id}} 가 겹치는 문제도 같은 방식으로 막을 수 있습니다.
-     */
+    /** 인증 없이 GET만 허용할 경로. 주제 · 카테고리와 공개 페이지 */
     private static final String[] PUBLIC_GET_ENDPOINTS = {
             "/api/v1/topics/today",
             "/api/v1/topics",
@@ -64,16 +53,7 @@ public class SecurityConfig {
             "/api/v1/public/sessions/{sessionId:[0-9]+}",
     };
 
-    /**
-     * 서블릿 컨테이너 자동 등록을 끕니다.
-     *
-     * <p>Boot 는 {@code Filter} 빈을 보면 서블릿 필터로 자동 등록하는데, 아래
-     * {@code addFilterBefore} 가 같은 인스턴스를 시큐리티 체인에도 넣습니다.
-     * {@code OncePerRequestFilter} 의 중복 실행 방지 덕에 지금은 두 번 돌지 않지만,
-     * <b>사본이 시큐리티 체인 바깥에 존재하는 상태</b>라 누군가
-     * {@code securityMatcher} 나 두 번째 {@code SecurityFilterChain} 을 추가하면
-     * 그 경로에서는 보호가 사라집니다. 등록 위치를 시큐리티 체인 하나로 못박습니다.
-     */
+    /** 서블릿 컨테이너 자동 등록을 끔 */
     @Bean
     public FilterRegistrationBean<JwtAuthenticationFilter> jwtAuthenticationFilterRegistration() {
         FilterRegistrationBean<JwtAuthenticationFilter> registration =
@@ -85,8 +65,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                // JWT를 쓰므로 세션을 만들지 않습니다. 따라서 CSRF 토큰도 필요 없습니다.
-                // 웹 클라이언트에 세션(쿠키) 인증을 붙이게 되면 이 두 설정을 다시 봐야 합니다. (명세 2-1 결정 필요)
+                // JWT를 쓰므로 세션을 만들지 않음. 따라서 CSRF 토큰도 필요 없음.
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -95,11 +74,10 @@ public class SecurityConfig {
                 .httpBasic(basic -> basic.disable())
 
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()   // CORS preflight
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_GET_ENDPOINTS).permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                        // 명세에서 인증 "선택" 인 API(/sessions 등)도 게스트 JWT 가 필요하므로 여기서 걸립니다.
                         .anyRequest().authenticated()
                 )
 
@@ -113,7 +91,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** 이메일/비밀번호 회원가입·로그인에서 비밀번호를 암호화/검증하는 데 사용합니다. */
+    /** 이메일/비밀번호 회원가입·로그인에서 비밀번호를 암호화/검증하는 데 사용 */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
