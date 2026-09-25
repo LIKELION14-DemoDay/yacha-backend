@@ -9,6 +9,7 @@ import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.exception.BusinessException;
+import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -30,6 +31,7 @@ public class AuthService {
     private final TokenIssuer tokenIssuer;
     private final GuestNicknameGenerator nicknameGenerator;
     private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider jwtTokenProvider;
 
     /** 존재하지 않는 이메일로 로그인을 시도했을 때 대조할 가짜 해시 */
     private String dummyPasswordHash;
@@ -91,6 +93,71 @@ public class AuthService {
         }
 
         return tokenIssuer.issue(user);
+    }
+
+    /**
+     * 액세스 토큰 재발급
+     *
+     * <p>쿠키로 온 리프레시 토큰을 <b>세 단계</b>로 검사
+     * <ol>
+     *   <li>서명·만료 — 토큰 자체가 우리 서버가 발급한 것이고 아직 살아 있는가</li>
+     *   <li>종류 — 리프레시 토큰인가 (액세스 토큰으로 재발급받지 못하게)</li>
+     *   <li>저장소 — 지금 유효한 토큰인가</li>
+     * </ol>
+     */
+    public IssuedTokens reissue(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        }
+        if (!jwtTokenProvider.validate(refreshToken) || !jwtTokenProvider.isRefreshToken(refreshToken)) {
+            throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        }
+
+        Long userId = parseUserId(refreshToken);
+
+        String saved = tokenIssuer.findStoredRefreshToken(userId)
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN));
+
+        if (!saved.equals(refreshToken)) {
+            // 서명은 유효한데 저장된 값과 다름 = 이미 교체된(한번 쓴) 토큰
+            //
+            // 프론트가 재발급 요청을 동시에 여러 번 보내면 여기에 걸려 로그아웃됨
+            // 재발급은 하나로 묶어서 보내야 함
+            log.warn("이미 사용된 리프레시 토큰입니다. 저장된 토큰을 폐기합니다. userId={}", userId);
+            tokenIssuer.revoke(userId);
+            throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> {
+                    // 토큰은 멀쩡한데 사용자가 없어서 남은 토큰 정리
+                    tokenIssuer.revoke(userId);
+                    return new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+                });
+
+        // 액세스 토큰만이 아니라 리프레시 토큰도 새로 발급해 저장소 값을 바꿈
+        // role을 여기서 DB로부터 다시 읽으므로, 권한 변경도 이 시점에 반영
+        return tokenIssuer.issue(user);
+    }
+
+    /**
+     * 로그아웃
+     * 저장된 리프레시 토큰을 지웁니다
+     * 최대 10분 뒤 만료되면서 차단되고, 그전에 재발급을 시도하면 저장소가 비어 있어 실패
+     * 프론트도 로그아웃할 때 메모리의 액세스 토큰을 버려야 함
+     */
+    public void logout(Long userId) {
+        tokenIssuer.revoke(userId);
+        log.info("로그아웃: userId={}", userId);
+    }
+
+    /** 토큰의 subject 를 userId 로 바꿈 */
+    private Long parseUserId(String refreshToken) {
+        try {
+            return jwtTokenProvider.getUserId(refreshToken);
+        } catch (RuntimeException e) {
+            throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        }
     }
 
     /** 이메일을 소문자로 */

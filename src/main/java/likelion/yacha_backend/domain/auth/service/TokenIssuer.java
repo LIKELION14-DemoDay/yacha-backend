@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.auth.service;
 
+import java.util.Optional;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.repository.RefreshTokenStore;
 import likelion.yacha_backend.domain.user.entity.User;
@@ -36,5 +37,13 @@ public class TokenIssuer {
     /** 저장된 리프레시 토큰을 지움. 로그아웃·재사용 탐지에서 사용 */
     public void revoke(Long userId) {
         refreshTokenStore.delete(userId);
+    }
+
+    /**
+     * 지금 유효한 리프레시 토큰
+     * 재발급에서 쿠키로 온 값이 저장된 값과 같은지 확인할 때 사용
+     */
+    public Optional<String> findStoredRefreshToken(Long userId) {
+        return refreshTokenStore.find(userId);
     }
 }

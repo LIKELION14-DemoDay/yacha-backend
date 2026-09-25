@@ -3,6 +3,7 @@ package likelion.yacha_backend.domain.auth.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import likelion.yacha_backend.domain.auth.dto.AuthResponse;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
@@ -11,9 +12,11 @@ import likelion.yacha_backend.domain.auth.dto.SignupRequest;
 import likelion.yacha_backend.domain.auth.service.AuthService;
 import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.cookie.CookieProvider;
+import likelion.yacha_backend.global.security.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -93,6 +96,47 @@ public class AuthController {
     @PostMapping("/token")
     public ResponseEntity<ApiResponse<AuthResponse>> token(@Valid @RequestBody LoginRequest request) {
         return withRefreshCookie(authService.login(request));
+    }
+
+    @Operation(
+            summary = "토큰 재발급",
+            description = """
+                    액세스 토큰이 만료됐을 때(401) 호출
+                    쿠키의 리프레시 토큰으로 인증하므로 `Authorization` 헤더는 필요 없음
+
+                    새 액세스 토큰과 새 리프레시 토큰 쿠키가 함께 내려감
+                    이전 리프레시 토큰은 그 즉시 무효
+
+                    프론트는 재발급 요청을 하나로 묶어서 보내야 함
+                    401 을 받은 요청마다 따로 호출하면, 먼저 성공한 요청이 토큰을 바꾼 뒤라 
+                    나머지가 이미 사용된 토큰 으로 판정되어 로그아웃됨
+
+                    에러
+                    - `INVALID_REFRESH_TOKEN` (401): 쿠키 없음 · 만료 · 이미 사용됨 (원인 구분 없음)
+                    """)
+    @SecurityRequirements
+    @PostMapping("/token/refresh")
+    public ResponseEntity<ApiResponse<AuthResponse>> reissue(HttpServletRequest request) {
+        String refreshToken = cookieProvider.resolveRefreshToken(request).orElse(null);
+        return withRefreshCookie(authService.reissue(refreshToken));
+    }
+
+    @Operation(
+            summary = "로그아웃",
+            description = """
+                    서버에 저장된 리프레시 토큰을 지우고 쿠키를 만료
+
+                    이미 발급된 액세스 토큰은 서버가 막을 수 없음
+                    최대 10분 뒤 만료되며, 프론트도 메모리의 액세스 토큰을 버려야 함
+                    """)
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(@AuthenticationPrincipal AuthUser authUser) {
+        authService.logout(authUser.getUserId());
+
+        // 서버 쪽(저장소)과 클라이언트 쪽(쿠키)을 모두 지워야 로그아웃이 끝납니다.
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, cookieProvider.deleteRefreshCookie().toString())
+                .body(ApiResponse.noContent());
     }
 
     /** 토큰 두 개를 HTTP 응답으로 포장 */
