@@ -61,7 +61,7 @@ class UpgradeApiTest {
                 // 새 계정이 아니라 같은 행이어야 합니다. id 가 바뀌면 토론 기록이 끊깁니다.
                 .andExpect(jsonPath("$.data.userId").value(guestUserId))
                 .andExpect(jsonPath("$.data.isGuest").value(false))
-                .andExpect(jsonPath("$.data.nickname").value("수민"));
+                .andExpect(jsonPath("$.data.nickname").value("멋사"));
     }
 
     @Test
