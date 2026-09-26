@@ -7,7 +7,7 @@
 > 🔶 **범위 변경 (PVP 우선)**
 > - **사람 대 사람(HUMAN) 토론을 먼저 구현**한다.
 > - 토론은 시간표(2-11)대로 진행되고, 채팅 구간은 **WebSocket(STOMP)** 으로 전송한다.
-> - 실시간 관전 · 투표는 **범위에서 제외**한다.
+> - 실시간 투표는 **범위에서 제외**한다. (🟣 관전은 포함으로 바뀌었다)
 > - 바뀐 부분은 🔶 로 표시했다. 팀 합의가 필요한 것은 **PART 5. 결정 필요**에 모았다.
 >
 > 🔷 **매칭 플로우 개정 (9/27)**
@@ -16,6 +16,13 @@
 > - 주제는 카테고리 **8개**의 주제 풀에서 뽑고, 입장은 **동의 / 비동의**로 나눈다.
 > - 인증은 **JWT 로 통일**됐다 (PR #15). 세션 관련 내용을 정리했다 (2-1).
 > - 이번에 바뀐 부분은 🔷 로 표시했다.
+>
+> 🟣 **관전 · 채팅 비저장 개정 (9/27)**
+> - **관전(보기만)을 포함**한다. 구독은 참가자와 관전자, 전송은 참가자만 (2-4).
+> - **채팅 내용은 DB · Redis 어디에도 저장하지 않는다.** 게임 동안 **서버 메모리**에만 두고, 판정이 끝나면 버린다 (1-5).
+> - DB 에 남는 게임 기록은 **참가자별 승패(WIN / LOSE / DRAW)뿐**이다. 점수 · 철학자 판독은 결과 화면에만 보여준다 (2-6).
+> - **공개 페이지는 폐지**한다 (2-7).
+> - 이번에 바뀐 부분은 🟣 로 표시했다.
 
 ---
 
@@ -30,22 +37,13 @@ erDiagram
     TOPIC ||--o{ DEBATE_SESSION : "주제"
 
     DEBATE_SESSION ||--o{ DEBATE_PARTICIPANT : "참가자"
-    DEBATE_SESSION ||--o{ ARGUMENT : "주장"
-    DEBATE_SESSION ||--o{ EVIDENCE : "근거"
-    DEBATE_SESSION ||--o{ DEBATE_RESULT : "판정"
-    DEBATE_SESSION ||--o{ DEBATE_SUMMARY : "상대 요약"
-
-    DEBATE_PARTICIPANT ||--o{ ARGUMENT : "작성"
-    DEBATE_PARTICIPANT ||--o{ EVIDENCE : "제공받음"
-    DEBATE_PARTICIPANT ||--|| DEBATE_RESULT : "채점"
-    DEBATE_PARTICIPANT ||--o| DEBATE_SUMMARY : "요약 대상"
-
-    ARGUMENT ||--o{ EVIDENCE : "인용"
 ```
+
+> 🟣 `argument` · `evidence` · `debate_summary` · `debate_result` 테이블은 **제거**했다. 채팅 · 근거 · 요약 · 판정 상세는 게임 동안 서버 메모리에만 있다 (1-5).
 
 ---
 
-## 1-2. MVP 테이블 (8개)
+## 1-2. MVP 테이블 (🟣 4개)
 
 ### users — 사용자
 
@@ -88,8 +86,7 @@ erDiagram
 | evidence_mode | VARCHAR(20) | NN | `NONE`(키배 ONLY) / `ENABLED`(근거 무기) — 🔶 **유지 여부 결정 필요** (PART 5) |
 | status | VARCHAR(20) | NN | `WAITING`(대기) / `IN_PROGRESS` / `FINISHED` / 🔷 `CANCELLED`(대기 취소 · 5분 상한 · 초대 만료) |
 | started_at | DATETIME | NULL | 🔶 **매칭 성사 시각.** 현재 구간은 `now - started_at` 으로 계산 |
-| finish_reason | VARCHAR(20) | NULL | 🔶 `COMPLETED`(정상 종료) / `FORFEIT`(이탈 몰수패) |
-| is_public | BOOLEAN | NN | 공개 페이지 노출 여부 |
+| finish_reason | VARCHAR(20) | NULL | 🔶 `COMPLETED`(정상 종료) / `FORFEIT`(이탈 몰수패) / 🟣 `ABORTED`(서버 재시작 등으로 게임 무효) |
 | origin_session_id | BIGINT | FK, NULL | 도전장용 — 컬럼만 확보 |
 | created_at | DATETIME | NN | 🔷 **대기 타이머의 기준.** 30초 팝업 · 5분 상한 · 초대 10분 만료를 모두 여기서 계산 |
 | ended_at | DATETIME | NULL |  |
@@ -106,6 +103,7 @@ erDiagram
 | stance | VARCHAR(10) | NULL | 🔷 `AGREE` / `DISAGREE` (구 `selected_option`). 배정 규칙은 아래 |
 | joined_at | DATETIME | NN |  |
 | disconnected_at | DATETIME | NULL | 🔶 연결이 끊긴 시각. 재접속하면 NULL 로 되돌린다 (이탈 유예 판단용) |
+| result | VARCHAR(10) | NULL | 🟣 `WIN` / `LOSE` / `DRAW`. 판정 전 · `ABORTED` 면 NULL. **DB 에 남는 게임 결과는 이것뿐**이다 |
 
 > 🔷 **`stance` 배정 규칙**
 >
@@ -118,75 +116,6 @@ erDiagram
 >
 > 친구 방은 친구가 들어올 때까지 방장의 `stance` 가 NULL 이다.
 
-### argument — 주장 (🔶 실시간 채팅 메시지)
-
-| 컬럼 | 타입 | 제약 | 비고 |
-| --- | --- | --- | --- |
-| id | BIGINT | PK |  |
-| session_id | BIGINT | FK, NN |  |
-| participant_id | BIGINT | FK, NN |  |
-| argument_type | VARCHAR(20) | NN | 🔶 **구간 태그**: `ARGUMENT`(CHAT_1) / `REBUTTAL`(CHAT_2) / `FINAL`(최종변론) |
-| seq_no | INT | NN | 🔶 (구 `turn_no`) 세션 내 순번, **서버 채번** |
-| content | TEXT | NN | 🔶 `FINAL` 은 **100자 이내** |
-| created_at | DATETIME | NN |  |
-
-> 🔶 진행 순서는 시간표(2-11)가 정한다. 기존 3턴(ARGUMENT → REBUTTAL → FINAL)은 **시간 구간**으로 바뀌었다.
-> 🔶 `FINAL` 은 참가자당 **1건만** 허용한다. 같은 `argument_type` 의 채팅 행이 여러 개라서 단순 UNIQUE 로는 막을 수 없으므로, 서비스에서 존재 여부를 검사하고 참가자 행을 잠가 직렬화한다.
-
-### evidence — 근거 (🔶 AI 제공)
-
-| 컬럼 | 타입 | 제약 | 비고 |
-| --- | --- | --- | --- |
-| id | BIGINT | PK |  |
-| session_id | BIGINT | FK, NN |  |
-| participant_id | BIGINT | FK, NN | 🔶 **참가자별로 다른 근거** (자기 입장에 맞는 3건) |
-| used_argument_id | BIGINT | FK, NULL | 실제로 인용한 주장 |
-| query_text | VARCHAR(500) | NN |  |
-| title | VARCHAR(500) | NN |  |
-| url | VARCHAR(1000) | NN |  |
-| snippet | TEXT |  |  |
-| source_type | VARCHAR(30) | NN | `WEB` / `SCHOLAR` |
-| created_at | DATETIME | NN |  |
-
-> 🔶 사용자가 검색하지 않는다. **매칭이 성사되면 서버가 양쪽에 각 3건(총 6행)을 생성**한다.
-> 채팅에서 근거를 인용하는 방식(`used_argument_id` 를 언제 채울지)은 프론트와 결정 필요.
-
-### debate_summary — 🔶 상대 발언 요약 (신규)
-
-| 컬럼 | 타입 | 제약 | 비고 |
-| --- | --- | --- | --- |
-| id | BIGINT | PK |  |
-| session_id | BIGINT | FK, NN |  |
-| participant_id | BIGINT | FK, NN | **요약의 대상이 된 참가자** (이 참가자의 CHAT_1 발언을 요약해 상대에게 보여준다) |
-| content | TEXT | NULL | 생성 전 · 실패 시 NULL |
-| status | VARCHAR(20) | NN | `PENDING` / `READY` / `FAILED` |
-| created_at | DATETIME | NN |  |
-
-> 반박 질문은 **서버에 저장하지 않는다.** 사용자가 CHAT_2 동안 참고하는 프론트 메모다.
-
-### debate_result — 판정 + 철학자 판독
-
-| 컬럼 | 타입 | 제약 | 비고 |
-| --- | --- | --- | --- |
-| id | BIGINT | PK |  |
-| session_id | BIGINT | FK, NN |  |
-| participant_id | BIGINT | FK, NN |  |
-| clarity_score | INT | NN | 0~20 |
-| logic_score | INT | NN | 0~20 |
-| evidence_score | INT | NN | 0~20 |
-| rebuttal_score | INT | NN | 0~20 |
-| consistency_score | INT | NN | 0~20 |
-| total_score | INT | NN | 0~100 |
-| result | VARCHAR(10) | NN | `WIN` / `LOSE` / `DRAW` |
-| philosopher_name | VARCHAR(100) | NN |  |
-| philosopher_percentage | INT | NN |  |
-| philosopher_reason | TEXT |  |  |
-| matched_sentence | TEXT |  | **사용자가 실제로 쓴 문장** |
-| created_at | DATETIME | NN |  |
-
-> 🔴 `UNIQUE(session_id, participant_id)` — PVP 에서는 양쪽을 채점하므로 세션당 2행이 된다.
-> 🔶 판정 기준은 **5항목(명료 · 논리 · 근거 · 반박 · 일관성)을 유지**한다. `FORFEIT` 시 점수 컬럼의 NULL 허용 여부는 **결정 필요** (PART 5).
-
 ---
 
 ## 1-3. 주요 인덱스
@@ -194,11 +123,8 @@ erDiagram
 | 테이블 | 인덱스 |
 | --- | --- |
 | topic | 🔷 `(category, is_active)` — 카테고리 안 랜덤 추첨 |
-| debate_session | `(topic_id, created_at)`, `(is_public, status, ended_at)`, 🔷 `(room_type, status, category, created_at)` — 대기열 조회 (자동 제안 · 방 찾기가 오래된 순서로 읽는다), 🔷 `UNIQUE(invite_code)` |
-| debate_participant | `(user_id)`, `(session_id)` |
-| argument | 🔶 `UNIQUE(session_id, seq_no)` |
-| evidence | `(session_id, participant_id)`, `(used_argument_id)` |
-| debate_summary | 🔶 `UNIQUE(session_id, participant_id)` |
+| debate_session | `(topic_id, created_at)`, 🔷 `(room_type, status, category, created_at)` — 대기열 조회 (자동 제안 · 방 찾기가 오래된 순서로 읽는다), 🟣 같은 인덱스로 관전 목록(`IN_PROGRESS`)도 조회, 🔷 `UNIQUE(invite_code)` |
+| debate_participant | `(user_id)` — 전투 기록, `(session_id)` |
 
 ---
 
@@ -219,6 +145,31 @@ erDiagram
 | 🔷 `daily_topic` → `topic` | 하루 한 주제 → 카테고리별 주제 풀. `question` + `option_a/b` → `statement`, `is_active` 추가 |
 | 🔷 `debate_session` | `category`, `room_type`, `invite_code` 추가, `status` 에 `CANCELLED` 추가 |
 | 🔷 `debate_participant` | `selected_option`(A/B) → `stance`(AGREE/DISAGREE) |
+| 🟣 `argument` · `evidence` · `debate_summary` · `debate_result` | **테이블 제거** — 게임 중 서버 메모리로 대체 (1-5). 위 표의 해당 행은 무효 |
+| 🟣 `debate_session` | `is_public` 제거 (공개 페이지 폐지), `finish_reason` 에 `ABORTED` 추가 |
+| 🟣 `debate_participant` | `result`(WIN/LOSE/DRAW) 추가 |
+
+---
+
+## 1-5. 🟣 게임 중 데이터 — 서버 메모리
+
+채팅 내용은 **DB · Redis · 로그 어디에도 남기지 않는다.** 게임 하나마다 서버 메모리에 게임 상태 객체를 두고, 끝나면 버린다.
+
+| 데이터 | 내용 | 생기는 시점 | 버리는 시점 |
+| --- | --- | --- | --- |
+| 채팅 메시지 | `seqNo`, 보낸 참가자, 구간, 내용, 수신 시각 | 채팅 · 최종변론 수신 | 판정 완료 (`FORFEIT` · `ABORTED` 는 종료 즉시) |
+| 근거 | 참가자별 3건 (`title`, `url`, `snippet`, `sourceType`) | 매칭 성사 직후 | 게임 종료 |
+| 상대 요약 | 참가자별 `PENDING` / `READY` / `FAILED` + 내용 | `CHAT_1` 종료 | 게임 종료 |
+| 판정 상세 | 5항목 점수 · 총점 · 철학자 판독 · `matched_sentence` | 판정 완료 | **결과 화면 보관 시간** 경과 (제안 10분, 결정 필요) |
+
+**규칙**
+
+- 세션 id → 게임 상태 객체의 맵으로 관리한다. 같은 게임의 요청은 **게임 객체 단위로 잠가** 직렬화한다 (`seqNo` 채번, 최종변론 1건 제한).
+- `seqNo` 는 게임 객체 안의 카운터로 **서버가 채번**한다.
+- **채팅 내용을 로그에 찍지 않는다.** 예외 로그에도 메시지 본문을 넣지 않는다.
+- 판정 · 요약 · 봇전을 위해 대화는 **외부 LLM API 로는 전송된다.** 저장하지 않는다는 것은 우리 서버 기준이다.
+- **서버가 재시작되면 메모리가 사라진다.** 기동 시 `IN_PROGRESS` 세션을 모두 `FINISHED` + `finish_reason = ABORTED` 로 정리하고 `result` 는 NULL 로 둔다 (게임 무효).
+- **서버 1대 전제**다 (simple broker 와 같은 전제). 여러 대로 늘리면 게임을 한 서버에 고정하거나 공유 저장소가 필요하므로 그때 다시 정한다.
 
 ---
 
@@ -303,7 +254,8 @@ erDiagram
 | DELETE | `/sessions/{id}` | 대기 취소 — 방장만, `WAITING` 일 때만 | ✅ |
 | GET | `/sessions/{id}` | 세션 상세 | ✅ |
 | GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용) | ✅ |
-| GET | `/sessions/me` | 전투 기록 | ✅ (회원) |
+| GET | `/sessions/live?category=&page=` | 🟣 **관전 목록** — 진행 중(`IN_PROGRESS`)인 랜덤 방 (최근 시작 순) | ✅ |
+| GET | `/sessions/me` | 전투 기록 — 🟣 주제 · 상대 · 날짜 · **승패**만 (대화 내용 없음) | ✅ (회원) |
 
 > 🔷 모든 세션 API 는 토큰이 필요하다. 비회원은 **`/auth/guest` 로 토큰을 받은 뒤** 호출한다.
 > 🔷 봇전도 HUMAN 과 같은 시간표(2-11)로 진행하는 것을 전제로 했다. 기존 봇전 전용 `POST /sessions/{id}/finish` 는 제거한다. AI 가 채팅 구간에서 어떻게 발언하는지는 결정 필요 (PART 5).
@@ -385,7 +337,7 @@ flowchart TD
 **방 찾기**
 
 - `GET /sessions/waiting` 은 자동 제안과 **같은 대기열**을 목록으로 보여준다. 입장은 `POST /sessions/{id}/join` 으로 같다.
-- 관전은 제외한다.
+- 🟣 관전은 **보기만** 가능하다. 관전 목록은 `GET /sessions/live` 이고, 들어가는 방법은 `/topic/sessions/{id}` 구독이다 (2-4).
 
 ### 2-3-3. 친구와 야차 흐름
 
@@ -403,36 +355,46 @@ flowchart TD
 - 자기 방에는 입장할 수 없다 (`CANNOT_JOIN_OWN_ROOM`).
 - 이미 대기 중이거나 진행 중인 세션이 있는 사용자는 방을 만들거나 입장할 수 없다 (`ALREADY_IN_SESSION`).
 - 봇전은 사용자 참가자와 AI 참가자를 **한 트랜잭션에서 함께 만든다**. AI 의 `stance` 는 사용자의 반대다.
+- 🟣 매칭이 성사되면 DB 상태 변경과 함께 **메모리에 게임 상태 객체**를 만든다 (1-5).
 
 ---
 
-## 2-4. 실시간 채팅 · 최종변론 (🔶 WebSocket)
+## 2-4. 실시간 채팅 · 최종변론 · 관전 (🔶 WebSocket)
 
 **REST**
 
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
-| GET | `/sessions/{id}/messages?afterSeq=N` | 메시지 조회 — 재접속 · 누락 보충 (`seq_no > N`, 오름차순) | ✅ |
+| GET | `/sessions/{id}/messages?afterSeq=N` | 메시지 조회 — 재접속 · 누락 보충 · 🟣 늦게 들어온 관전자 (`seqNo > N`, 오름차순). 🟣 **게임 중에만** 조회된다 (메모리) | ✅ |
 
 **WebSocket (STOMP)**
 
-| 방향 | 목적지 | 설명 |
-| --- | --- | --- |
-| SEND | `/app/sessions/{id}/chat` | 채팅 전송 — `CHAT_1`, `CHAT_2` 구간에서만 |
-| SEND | `/app/sessions/{id}/final` | 최종변론 제출 — `FINAL` 구간, **1인 1회, 100자 이내** |
-| SUBSCRIBE | `/topic/sessions/{id}` | 채팅 · 구간 · 종료 이벤트 |
-| SUBSCRIBE | `/user/queue/match` | 🔷 방장 알림 — 매칭 성사 · 30초 팝업 · 5분 상한 · 초대 만료 |
+| 방향 | 목적지 | 누가 | 설명 |
+| --- | --- | --- | --- |
+| SEND | `/app/sessions/{id}/chat` | 참가자 | 채팅 전송 — `CHAT_1`, `CHAT_2` 구간에서만 |
+| SEND | `/app/sessions/{id}/final` | 참가자 | 최종변론 제출 — `FINAL` 구간, **1인 1회, 100자 이내** |
+| SUBSCRIBE | `/topic/sessions/{id}` | 참가자 · 🟣 관전자 | 채팅 · 구간 · 종료 이벤트 |
+| SUBSCRIBE | `/user/queue/match` | 본인 | 🔷 방장 알림 — 매칭 성사 · 30초 팝업 · 5분 상한 · 초대 만료 |
+| SUBSCRIBE | `/user/queue/errors` | 본인 | 🟣 SEND 처리 중 난 에러 (아래 형식) |
+
+**구독 권한 (SUBSCRIBE 시 검사)**
+
+| 목적지 | 허용 |
+| --- | --- |
+| `/topic/sessions/{id}` | 🟣 그 세션의 **참가자**, 또는 세션이 `IN_PROGRESS` 인 **랜덤 방**이면 누구나(관전). 친구 방 · 봇전 관전 허용은 결정 필요 (PART 5) |
+| `/user/queue/**` | 본인 |
+| 그 외 | 거부 |
 
 **서버 검증**
 
-- 요청자가 이 세션의 참가자인가 — **SUBSCRIBE 때도 검사한다** (안 하면 남의 토론을 엿볼 수 있다)
+- SEND 는 **참가자만** 할 수 있다 (`NOT_PARTICIPANT`). 관전자는 구독만 한다
 - 현재 구간이 허용하는 동작인가 (`INVALID_PHASE`) — 구간 판단은 **서버 수신 시각** 기준
-- `seq_no` 는 **서버가 채번** (클라이언트 값 신뢰 금지)
+- `seqNo` 는 **서버가 채번** (클라이언트 값 신뢰 금지)
 - `FINAL` 은 100자 이내, 참가자당 1건
-- **저장 → 커밋 → 브로드캐스트** 순서. 브로드캐스트한 메시지는 반드시 DB 에 있다
+- 🟣 **메모리 기록 → 브로드캐스트** 순서. 브로드캐스트한 메시지는 반드시 게임 객체에 있다 (재접속 보충이 빠지지 않도록)
 - 채팅 1건의 글자 수 상한과 도배 제한은 결정 필요 (PART 5)
 
-**이벤트 형식**
+**이벤트 형식 (`/topic/sessions/{id}`)**
 
 ```json
 { "type": "CHAT", "seqNo": 12, "senderId": 7, "phase": "CHAT_1", "content": "..." }
@@ -440,6 +402,18 @@ flowchart TD
 { "type": "OPPONENT_DISCONNECTED", "graceEndsAt": "2026-10-31T12:05:00Z" }
 { "type": "SESSION_FINISHED", "reason": "COMPLETED" }
 ```
+
+> 🟣 `senderId` 는 **참가자 id** 다 (사용자 id 가 아님). 관전자에게 사용자 id 를 노출하지 않는다.
+
+🟣 **에러 (`/user/queue/errors`, STOMP ERROR 프레임)**
+
+SEND 처리 중 에러는 `/user/queue/errors` 로 REST 와 같은 형식을 보낸다. 연결은 유지된다.
+
+```json
+{ "success": false, "data": null, "error": { "code": "INVALID_PHASE", "message": "지금은 채팅할 수 없는 구간입니다" }, "traceId": null }
+```
+
+CONNECT · SUBSCRIBE 가 거부되면 STOMP **ERROR 프레임**이 오고 연결이 끊긴다. `message` 헤더에 에러 코드(`UNAUTHORIZED` · `FORBIDDEN` 등)를 담는다.
 
 🔷 **방장 알림 (`/user/queue/match`)**
 
@@ -454,7 +428,7 @@ flowchart TD
 - `WAIT_EXPIRED` — 랜덤 방 5분 상한 도달
 - `INVITE_EXPIRED` — 친구 방 10분 만료
 
-> 재접속하면 `GET /sessions/{id}/state` 로 구간을 맞추고 `GET /sessions/{id}/messages?afterSeq=` 로 놓친 메시지를 채운다.
+> 재접속하면 `GET /sessions/{id}/state` 로 구간을 맞추고 `GET /sessions/{id}/messages?afterSeq=` 로 놓친 메시지를 채운다. 🟣 관전자도 같은 방법으로 앞부분 대화를 받는다.
 
 ---
 
@@ -470,6 +444,7 @@ flowchart TD
 - 근거 검색(`POST /evidence`)과 문장 자동 작성(`compose`)은 **HUMAN 시간표에서 제거**했다. 봇전에서 필요한지는 그때 결정한다.
 - **API 키는 서버에서만 사용. 프론트 노출 금지**
 - 실패 정책은 2-9 의 LLM 재시도 정책을 따른다.
+- 🟣 근거는 **게임 객체(메모리)** 에 두고 게임이 끝나면 버린다. **참가자 본인만** 조회한다.
 
 ### 2-5-1. 상대 요약 (🔶 신규)
 
@@ -479,6 +454,7 @@ flowchart TD
 
 - `CHAT_1` 이 끝나는 시점에 서버가 각 참가자의 발언을 요약해 **상대에게** 보여준다.
 - `REBUTTAL` 30초 안에 나와야 한다. 실패하면 `FAILED` 로 두고, 프론트는 `/messages` 로 상대의 마지막 발언 몇 건을 원문 그대로 보여준다.
+- 🟣 요약도 **메모리에만** 두고 게임이 끝나면 버린다. **참가자만** 조회한다.
 
 ---
 
@@ -486,37 +462,41 @@ flowchart TD
 
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
-| GET | `/sessions/{id}/result` | AI 판정 점수 + 철학자 판독 | ✅ |
+| GET | `/sessions/{id}/result` | 🟣 결과 화면 — 보관 시간 안에는 점수 · 철학자 판독까지, 지나면 **승패만** | ✅ |
 
 **생성 규칙**
 
-- 각 항목 20점 만점, `total_score` = 5개 합 (0~100) — 🔶 5항목 기준 유지로 확정
-- `result` 는 총점 구간으로 판정 (제안: 80↑ WIN / 60~79 DRAW / 60↓ LOSE) — **구간 합의 필요**. 경계값 60 이 DRAW 인지 LOSE 인지도 정할 것
-- `matched_sentence` 는 **사용자가 실제로 쓴 문장**을 그대로 넣는다. LLM이 지어내지 않도록 프롬프트에서 원문 문장만 고르도록 제약할 것
+- 각 항목 20점 만점, 총점 = 5개 합 (0~100) — 🔶 5항목 기준 유지로 확정
+- 승패는 총점 구간으로 판정 (제안: 80↑ WIN / 60~79 DRAW / 60↓ LOSE) — **구간 합의 필요**. 경계값 60 이 DRAW 인지 LOSE 인지도 정할 것
+- `matchedSentence` 는 **사용자가 실제로 쓴 문장**을 그대로 넣는다. LLM이 지어내지 않도록 프롬프트에서 원문 문장만 고르도록 제약할 것
 - 생성 중이면 `{ "status": "PENDING" }` 반환
 - 🔶 `FINAL` 구간이 끝나면 서버가 판정을 시작한다. **`FORFEIT` 는 LLM 판정을 생략**하고 남은 쪽을 `WIN`, 이탈자를 `LOSE` 로 한다.
 
+🟣 **무엇이 남는가**
+
+| 항목 | 결과 화면 | DB |
+| --- | --- | --- |
+| 승패 | ○ | ○ `debate_participant.result` |
+| 5항목 점수 · 총점 | ○ (보관 시간 안) | ✕ |
+| 철학자 판독 · `matchedSentence` | ○ (보관 시간 안) | ✕ |
+
+- 판정이 끝나면 승패를 DB 에 쓰고, 상세는 메모리에 **결과 화면 보관 시간**(제안 10분) 동안만 둔다.
+- 결과 화면은 참가자와 관전자 모두 볼 수 있다 (제안).
+- `ABORTED` 게임은 결과가 없다 (`result` NULL).
+
 ---
 
-## 2-7. 공개 페이지
+## 2-7. ~~공개 페이지~~ — 🟣 폐지
 
-| Method | Path | 설명 | 인증 |
-| --- | --- | --- | --- |
-| GET | `/public/sessions` | 종료된 토론 목록 | — |
-| GET | `/public/sessions/{id}` | 공개 토론 상세 | — |
+채팅 내용을 저장하지 않으므로 끝난 토론을 공개할 수 없다. `/public/sessions`, `/public/sessions/{id}` 는 제거한다.
 
-> 🔴 애드센스 심사와 검색 유입의 핵심.
-> 로그인 없이 전체 내용이 보여야 하고, **SSR 또는 메타태그 처리가 필요**하다. 프론트와 합의할 것.
+> 🔴 공개 페이지는 **애드센스 심사와 검색 유입의 핵심**으로 잡혀 있었다. 대체 전략은 결정 필요 (PART 5).
 
 ---
 
-## 2-8. 관리자
+## 2-8. ~~관리자~~ — 🟣 제거
 
-| Method | Path | 설명 | 인증 |
-| --- | --- | --- | --- |
-| PATCH | `/admin/sessions/{id}/visibility` | 세션 공개 여부 변경 | ADMIN |
-
-> 신고 기능 전체는 2차지만, **문제 있는 내용을 공개 페이지에서 내리는 수단**은 운영 기간에 반드시 필요하다.
+공개 여부 변경(`PATCH /admin/sessions/{id}/visibility`)은 공개 페이지와 함께 제거한다. 관리자 기능이 다시 필요해지면(주제 관리 등) 그때 추가한다.
 
 ---
 
@@ -569,6 +549,7 @@ flowchart TD
 | `CONTENT_TOO_LONG` | 400 | 🔶 글자 수 초과 (최종변론 100자 등) |
 
 > 🔶 `EVIDENCE_LIMIT_EXCEEDED` 는 근거 검색이 사라져 제거했다.
+> 🟣 `NOT_PARTICIPANT` 는 관전자가 SEND 하거나 근거 · 요약을 조회할 때도 쓴다.
 
 ---
 
@@ -615,6 +596,15 @@ POST /sessions/invite/{code}/join         (친구)
      ← MATCHED                            (방장)
 ```
 
+**🟣 관전**
+
+```
+GET  /sessions/live?category=&page=
+WS   SUBSCRIBE /topic/sessions/{id}
+GET  /sessions/{id}/messages?afterSeq=0   (앞부분 대화)
+GET  /sessions/{id}/result                (종료 후)
+```
+
 **토론 진행 (공통 — 사람 · 봇전)**
 
 ```
@@ -646,7 +636,7 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 **서버 규칙**
 
 - 현재 구간은 `now - started_at` 으로 **계산**한다. 서버가 재시작돼도 상태가 깨지지 않는다.
-- 구간 전환 알림(`PHASE_CHANGED`)과 LLM 호출 시작은 **스케줄러**가 맡는다. 재시작 시 `IN_PROGRESS` 세션을 다시 등록한다.
+- 구간 전환 알림(`PHASE_CHANGED`)과 LLM 호출 시작은 **스케줄러**가 맡는다. 🟣 재시작하면 대화가 사라지므로 `IN_PROGRESS` 세션은 다시 등록하지 않고 `ABORTED` 로 정리한다 (1-5). `WAITING` 방의 대기 타이머는 다시 등록한다.
 - **마감 시각의 기준은 서버.** 마감 이후에 도착한 메시지는 거부한다.
 
 **이탈 처리 — 유예 후 몰수패**
@@ -665,7 +655,8 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 | 브로커 목적지 | `/topic`, `/queue` |
 | 브로커 | 서버 1대는 내장 simple broker. **서버를 여러 대로 늘리면 외부 브로커 필요** |
 | 인증 | 🔷 `/ws` 핸드셰이크는 열어 두고, **CONNECT 프레임의 `Authorization: Bearer` JWT** 로 식별한다 (2-1). 핸드셰이크 허용 `Origin` 은 CORS 설정과 맞춘다 |
-| 구독 인가 | SUBSCRIBE 시 해당 세션의 참가자인지 검사 |
+| 구독 인가 | SUBSCRIBE 시 검사 — 🟣 참가자, 또는 진행 중 랜덤 방의 관전자 (2-4) |
+| 하트비트 | 🟣 10초 / 10초. 끊긴 연결(반쯤 열린 연결 포함)을 서버가 정리한다 |
 | 의존성 | `spring-boot-starter-websocket` 추가 필요 |
 
 ---
@@ -678,9 +669,9 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 | **알림** | 07~09시 · 17~19시 푸시 | `push_subscription`, `notification_setting`, `notification` |
 | 🔷 **밸런스 게임** | 랜덤 주제에 예 / 아니오 → 같은 선택을 한 비율(%) 표시. 온보딩에 배치하고 선택 후 링크 공유. **백엔드 개발 가능 여부 결정 필요** | `balance_question`, `balance_vote` (안) |
 | 🔷 **1분 철학** | 주제마다 여러 철학자를 제시하고 각자의 내용을 제공 (확정). 후보: 댓글, 개인 메모 · 하이라이트, 내 생각에 대한 AI 철학자 피드백(MY 에서 확인) | `philosopher`, `philosophy_content`, `comment`, `memo`, `ai_feedback` (안) |
-| **신고 · 차단** | 주장 신고, 사용자 차단 | `report`, `user_block` |
+| **신고 · 차단** | 사용자 신고 · 차단. 🟣 채팅 내용을 저장하지 않으므로 **내용 기반 신고는 대안 필요** (PART 5) | `report`, `user_block` |
 
-> 🔶 **PVP 실시간 토론은 MVP 로 이동**했다. **실시간 관전 · 투표는 범위에서 제외**한다 (`vote` 테이블도 불필요).
+> 🔶 **PVP 실시간 토론은 MVP 로 이동**했다. 🟣 **관전(보기만)은 MVP 에 포함**하고, 투표는 제외한다 (`vote` 테이블도 불필요).
 > 🔷 **봇전(AI 토론)도 MVP 로 이동**했다 (대기 중 AI 전환 · 자동 봇전). AI 반박과 근거 검색 · compose 는 여전히 2차.
 > 🔴 **실시간 토론과 신고 기능은 세트로 연다.** PVP 를 먼저 여는 만큼 `report`, `user_block` 을 MVP 에 넣을지 **결정 필요** (PART 5). 1분 철학에 댓글을 넣으면 신고 대상도 늘어난다.
 
@@ -691,7 +682,7 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 |  | 담당 | 주요 작업 |
 | --- | --- | --- |
 | **A** | 인증 · 토론 코어 | JWT 인증, 게스트, 토론 세션, 주장 |
-| **B** | 콘텐츠 · 공개 영역 | 주제·카테고리, 공개 페이지, 관리자, 지표 집계 |
+| **B** | 콘텐츠 · 공개 영역 | 주제·카테고리, ~~공개 페이지 · 관리자~~ (🟣 폐지), 지표 집계 |
 | **C** | 인프라 · 외부 연동 | 배포/CI-CD, LINER 연동, AI 반박, 판정 생성 |
 
 ### 배치 근거
@@ -710,6 +701,11 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 > - A: 매칭이 방 생성 · 자동 제안 · 거절 순환 · 방 찾기 · 초대 링크 · 대기 타이머로 커졌다.
 > - B: 주제가 카테고리 8개의 주제 풀로 바뀌고 랜덤 추첨 API(`/topics/random`)가 생겼다.
 > - C: **봇전이 MVP 로 들어와** AI 가 채팅 구간에서 발언해야 한다. 외부 연동이 `근거 · 요약 · 판정 · AI 발언` 4곳이 된다.
+>
+> 🟣 **관전 · 채팅 비저장으로 바뀐 영향**
+> - A: 게임 상태를 메모리에서 관리한다 (채팅 · 근거 · 요약 · 판정 상세). 관전 구독 권한과 관전 목록이 추가된다.
+> - B: 공개 페이지 · 관리자 공개 여부가 폐지돼 **작업이 비었다.** 애드센스 · 유입 대체 전략이나 다른 영역 분담이 필요하다.
+> - C: 근거 · 요약 · 판정의 입출력이 DB 가 아니라 **게임 객체(메모리)** 가 된다.
 
 ---
 
@@ -758,8 +754,22 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 - [x] 🔷 **매칭 대기 정책** — 30초마다 AI 전환 팝업, 대기 상한 5분, 제안 2순환 거절(대기 방 1개면 1회 거절) 시 자동 봇전.
 - [x] 🔷 **동시 승낙** — 먼저 성공한 쪽만 입장. 방을 미리 잡아 두지 않는다.
 - [x] 🔷 **카테고리 수** — 8개.
+- [x] 🟣 **관전** — 보기만 가능. 진행 중인 랜덤 방을 관전 목록으로 보여준다.
+- [x] 🟣 **채팅 저장** — DB · Redis 에 저장하지 않고 게임 동안 서버 메모리에만 둔다. 재시작 시 게임 무효(`ABORTED`).
+- [x] 🟣 **결과 기록** — DB 에는 승패만. 점수 · 철학자 판독은 결과 화면에만.
+- [x] 🟣 **공개 페이지** — 폐지.
+- [x] 🟣 **`FORFEIT` 결과 저장** — 승패만 저장하므로 점수 컬럼 문제가 사라졌다. 이탈자 `LOSE`, 남은 쪽 `WIN`.
+- [x] 🟣 **근거 인용 방식** — `used_argument_id` 가 테이블과 함께 사라져 해당 없음.
 
-**미정 — 🔷 이번에 새로 생긴 것**
+**미정 — 🟣 관전 · 비저장으로 새로 생긴 것**
+
+- [ ] **친구 방 · 봇전 관전** — 관전 목록과 구독을 허용할지. 지금은 랜덤 방(사람 대 사람)만 허용.
+- [ ] **결과 화면 보관 시간** — 점수 · 철학자 판독을 메모리에 얼마나 둘지 (제안 10분).
+- [ ] **신고 대안** — 내용을 저장하지 않으므로, 게임 중 신고 시점의 메시지만 첨부해 남길지, 금칙어 필터만 둘지.
+- [ ] **애드센스 · 유입 전략** — 공개 페이지를 대신할 방법.
+- [ ] **B 담당 재배치** — 공개 페이지 · 관리자가 빠진 뒤의 분담.
+
+**미정 — 🔷 방 기반 매칭으로 새로 생긴 것**
 
 - [ ] **카테고리 8개의 이름** — `topic.category` 값.
 - [ ] **5분 상한 이후** — 방을 자동 취소할지, 봇전으로 자동 전환할지.
@@ -774,9 +784,7 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 **미정 — 🔶 PVP 우선에서 이어진 것**
 
 - [ ] **`evidence_mode` 유지 여부** — 근거를 AI 가 항상 제공하므로 `NONE` / `ENABLED` 구분이 필요한지.
-- [ ] **`FORFEIT` 결과 저장** — 점수 · 철학자 컬럼을 NULL 허용으로 바꿀지, `finish_reason` 만으로 처리할지.
 - [ ] **신고 · 차단 범위** — `report`, `user_block` 을 MVP 에 포함할지.
 - [ ] **이탈 유예 시간** — 제안 30초. 양쪽이 동시에 이탈한 경우의 처리도 필요.
 - [ ] **채팅 제한** — 메시지 1건의 글자 수 상한, 도배 제한.
-- [ ] **근거 인용 방식** — 채팅에서 근거를 인용할 때 `used_argument_id` 를 언제 채울지.
 - [ ] **일정 · 담당 재조정** — 매칭 · 스케줄러 · WebSocket 채팅 · 봇전을 A 의 시험 기간 전에 끝낼 수 있는지.
