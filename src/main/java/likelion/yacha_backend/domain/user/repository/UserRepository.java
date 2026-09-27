@@ -14,9 +14,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** 로그인에서 이메일로 사용자를 찾음 */
     Optional<User> findByEmail(String email);
 
-    /**
-     * 소셜 로그인에서 계정을 찾음. 이메일이 아니라 provider + sub 로 찾는다.
-     * (이메일은 사용자가 바꿀 수 있어 식별자로 쓰면 안 됨)
-     */
+    /** 소셜 로그인에서 이메일이 아니라 provider + sub로 계정을 찾음 */
     Optional<User> findByProviderAndProviderId(Provider provider, String providerId);
 }

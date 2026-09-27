@@ -21,8 +21,8 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(
         name = "users",
-        // 같은 소셜 계정으로 두 번 가입되지 않게 합니다.
-        // LOCAL 은 provider_id 가 NULL 이고, UNIQUE 는 NULL 을 중복으로 보지 않아 여러 행이 가능합니다.
+        // 같은 소셜 계정으로 두 번 가입되지 않게 함
+        // LOCAL은 provider_id가 NULL이고, UNIQUE는 NULL을 중복으로 보지 않아 여러 행이 가능
         uniqueConstraints = @UniqueConstraint(
                 name = "uk_users_provider", columnNames = {"provider", "provider_id"})
 )
@@ -58,9 +58,7 @@ public class User extends BaseTimeEntity {
 
     /**
      * 소셜에서 내려주는 고유 id({@code sub}). LOCAL 은 NULL.
-     *
-     * <p>이메일이 아니라 이 값으로 사용자를 찾습니다. 이메일은 사용자가 바꿀 수 있어서
-     * 식별자로 쓰면 다른 사람 계정에 연결될 수 있습니다.
+     * 이메일이 아니라 이 값으로 사용자를 찾음
      */
     @Column(name = "provider_id", length = 255)
     private String providerId;
@@ -87,12 +85,8 @@ public class User extends BaseTimeEntity {
 
     /**
      * 카카오 · 구글로 처음 로그인한 사용자.
-     *
-     * <p><b>비밀번호가 없습니다.</b> 게스트와 같은 구조라 로그인 쪽 코드는 그대로 동작합니다
-     * (비밀번호가 NULL 이면 이메일 로그인이 실패합니다).
-     *
-     * @param email 카카오는 이메일 제공이 <b>선택 동의</b>라 NULL 일 수 있습니다.
-     *              그 계정은 소셜로만 로그인할 수 있고 비밀번호 재설정도 쓸 수 없습니다.
+     * 비밀번호가 없음. 게스트와 같은 구조라 로그인 쪽 코드는 그대로 동작
+     * (비밀번호가 NULL이면 이메일 로그인이 실패)
      */
     public static User createSocial(Provider provider, String providerId, String email, String nickname) {
         if (provider == Provider.LOCAL) {
@@ -109,12 +103,8 @@ public class User extends BaseTimeEntity {
     }
 
     /**
-     * 이메일로 가입했던 계정에 소셜 로그인을 연결합니다. (같은 이메일일 때 자동 연결 — 팀 결정 A안)
-     *
-     * <p>비밀번호는 지우지 않습니다. 연결한 뒤에도 이메일 로그인을 계속 쓸 수 있습니다.
-     *
-     * <p>호출하는 쪽에서 <b>소셜이 확인한 이메일인지</b>(구글 {@code email_verified}) 먼저 검사해야
-     * 합니다. 검사 없이 연결하면 남의 이메일을 적은 소셜 계정으로 그 사람 계정에 들어갈 수 있습니다.
+     * 이메일로 가입했던 계정에 소셜 로그인을 연결 (같은 이메일일 때 자동 연결)
+     * 비밀번호는 지우지 않음. 연결한 뒤에도 이메일 로그인을 계속 사용 가능
      */
     public void linkSocial(Provider provider, String providerId) {
         if (provider == Provider.LOCAL) {
