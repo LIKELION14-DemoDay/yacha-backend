@@ -24,6 +24,10 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	// 소셜 로그인 id_token(OIDC) 검증용. NimbusJwtDecoder 로 공개키(JWKS) 캐시 · 서명 검증을 처리합니다.
+	// 리소스 서버 자동 설정은 spring.security.oauth2.resourceserver.* 가 있을 때만 켜지므로
+	// 우리 필터 체인에는 영향이 없습니다.
+	implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'

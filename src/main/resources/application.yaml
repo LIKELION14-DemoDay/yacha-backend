@@ -37,6 +37,18 @@ auth:
     # 재발급 · 로그아웃에서만 쿠키가 필요함
     path: /api/v1/auth
 
+oauth:
+  # 소셜 로그인 id_token 검증용. clientId 는 프론트 SDK 에 넣는 값과 같아야 합니다(토큰의 aud 검사).
+  # 비밀 값은 아니지만 환경마다 달라서 환경변수로 뺐습니다. 값이 없으면 그 공급자는 비활성화됩니다.
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
+    issuer-uri: https://accounts.google.com
+    jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
+  kakao:
+    client-id: ${KAKAO_CLIENT_ID:}
+    issuer-uri: https://kauth.kakao.com
+    jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
+
 springdoc:
   # 운영에 API 목록이 공개되지 않도록 켜는 환경(local)에서만 true로 덮어씀
   api-docs:
