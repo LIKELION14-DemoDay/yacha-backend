@@ -9,6 +9,7 @@ import likelion.yacha_backend.domain.auth.dto.AuthResponse;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
+import likelion.yacha_backend.domain.auth.dto.SocialLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.service.AuthService;
 import likelion.yacha_backend.global.response.ApiResponse;
@@ -97,6 +98,34 @@ public class AuthController {
     @PostMapping("/token")
     public ResponseEntity<ApiResponse<AuthResponse>> token(@Valid @RequestBody LoginRequest request) {
         return withRefreshCookie(authService.login(request));
+    }
+
+    @Operation(
+            summary = "소셜 로그인 (카카오 · 구글)",
+            description = """
+                    프론트가 카카오 · 구글 SDK 로 받은 **id_token** 을 보내면, 서버가 서명을 확인하고
+                    우리 토큰을 발급합니다. 응답 형태는 일반 로그인과 같습니다.
+
+                    ```json
+                    { "provider": "KAKAO", "idToken": "eyJ..." }
+                    ```
+
+                    - 처음 로그인하면 계정이 자동으로 만들어집니다. 별도 회원가입이 없습니다.
+                    - 소셜이 **확인한 이메일**이 기존 계정과 같으면 그 계정에 연결됩니다.
+                      (기존 비밀번호 로그인도 계속 쓸 수 있습니다)
+                    - 카카오는 이메일 제공이 선택 동의라, 이메일 없이 가입될 수 있습니다.
+                      그 계정은 카카오로만 로그인할 수 있습니다.
+
+                    에러
+                    - `UNSUPPORTED_PROVIDER` (400): 지원하지 않거나 서버에 설정되지 않은 공급자
+                    - `INVALID_SOCIAL_TOKEN` (401): 서명 · 발급자 · 대상 · 만료 검증 실패
+                    - `SOCIAL_EMAIL_CONFLICT` (409): 같은 이메일이 이미 다른 소셜에 연결됨
+                    """)
+    @SecurityRequirements
+    @PostMapping("/social")
+    public ResponseEntity<ApiResponse<AuthResponse>> socialLogin(
+            @Valid @RequestBody SocialLoginRequest request) {
+        return withRefreshCookie(authService.socialLogin(request));
     }
 
     @Operation(

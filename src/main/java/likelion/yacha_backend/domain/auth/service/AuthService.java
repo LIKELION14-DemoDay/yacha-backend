@@ -2,11 +2,17 @@ package likelion.yacha_backend.domain.auth.service;
 
 import jakarta.annotation.PostConstruct;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
+import likelion.yacha_backend.domain.auth.dto.SocialLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
+import likelion.yacha_backend.domain.auth.social.SocialProfile;
+import likelion.yacha_backend.domain.auth.social.SocialTokenVerifier;
+import likelion.yacha_backend.domain.user.entity.Provider;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.exception.BusinessException;
@@ -33,6 +39,11 @@ public class AuthService {
     private final GuestNicknameGenerator nicknameGenerator;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    /** 설정된 소셜 공급자만 들어 있습니다. 없는 공급자로 로그인하면 UNSUPPORTED_PROVIDER. */
+    private final Map<Provider, SocialTokenVerifier> socialTokenVerifiers;
+
+    /** users.nickname 컬럼 길이와 맞춥니다. 소셜 닉네임이 더 길면 잘라서 저장합니다. */
+    private static final int NICKNAME_MAX_LENGTH = 50;
 
     /** 존재하지 않는 이메일로 로그인을 시도했을 때 대조할 가짜 해시 */
     private String dummyPasswordHash;
@@ -139,6 +150,86 @@ public class AuthService {
         // 액세스 토큰만이 아니라 리프레시 토큰도 새로 발급해 저장소 값을 바꿈
         // role을 여기서 DB로부터 다시 읽으므로, 권한 변경도 이 시점에 반영
         return tokenIssuer.issue(user);
+    }
+
+    /**
+     * 카카오 · 구글 로그인
+     *
+     * 인증 방법만 다르고, 성공한 뒤는 이메일 로그인과 완전히 같음
+     *
+     * id_token 검증 → sub · 이메일 · 닉네임
+     * {@code provider + sub} 로 기존 계정 조회
+     * 없으면: 확인된 이메일이 기존 계정과 같으면 연결, 아니면 새 계정
+     */
+    @Transactional
+    public IssuedTokens socialLogin(SocialLoginRequest request) {
+        SocialTokenVerifier verifier = socialTokenVerifiers.get(request.provider());
+        if (verifier == null) {
+            // LOCAL을 보냈거나, 서버에 그 공급자의 클라이언트 ID가 설정되지 않은 경우
+            throw new BusinessException(AuthErrorCode.UNSUPPORTED_PROVIDER);
+        }
+
+        SocialProfile profile = verifier.verify(request.idToken());
+
+        User user = userRepository.findByProviderAndProviderId(profile.provider(), profile.providerId())
+                .orElseGet(() -> linkOrCreate(profile));
+
+        return tokenIssuer.issue(user);
+    }
+
+    /**
+     * 처음 보는 소셜 계정.
+     * 같은 사람의 기존 계정에 붙일지, 새로 만들지 정해야 함
+     *
+     * 확인된 이메일일 때만 연결
+     */
+    private User linkOrCreate(SocialProfile profile) {
+        String email = profile.hasVerifiedEmail() ? normalizeEmail(profile.email()) : null;
+
+        if (email != null) {
+            Optional<User> sameEmail = userRepository.findByEmail(email);
+            if (sameEmail.isPresent()) {
+                User user = sameEmail.get();
+                if (user.getProvider() != Provider.LOCAL) {
+                    // 이미 다른 소셜에 연결된 계정입니다
+                    // 원래 방법으로 로그인해야 함
+                    throw new BusinessException(AuthErrorCode.SOCIAL_EMAIL_CONFLICT);
+                }
+                user.linkSocial(profile.provider(), profile.providerId());
+                log.info("소셜 계정 연결: userId={}, provider={}", user.getId(), profile.provider());
+                return user;
+            }
+        }
+
+        return createSocialUser(profile, email);
+    }
+
+    /**
+     * 새 소셜 계정
+     *
+     * 확인되지 않은 이메일은 저장하지 않음
+     */
+    private User createSocialUser(SocialProfile profile, String verifiedEmail) {
+        String nickname = resolveNickname(profile.nickname());
+        try {
+            return userRepository.saveAndFlush(User.createSocial(
+                    profile.provider(), profile.providerId(), verifiedEmail, nickname));
+        } catch (DataIntegrityViolationException e) {
+            // 같은 소셜 계정으로 동시에 두 번 요청이 들어온 경우
+            // UNIQUE(provider, provider_id 가 막아 주므로, 먼저 만들어진 행을 찾아 사용
+            return userRepository.findByProviderAndProviderId(profile.provider(), profile.providerId())
+                    .orElseThrow(() -> new BusinessException(AuthErrorCode.SOCIAL_EMAIL_CONFLICT, e));
+        }
+    }
+
+    /** 소셜 닉네임이 없거나(카카오 비동의) 너무 길면 우리 규칙에 맞춤 */
+    private String resolveNickname(String socialNickname) {
+        if (socialNickname == null || socialNickname.isBlank()) {
+            return nicknameGenerator.generate();
+        }
+        return socialNickname.length() > NICKNAME_MAX_LENGTH
+                ? socialNickname.substring(0, NICKNAME_MAX_LENGTH)
+                : socialNickname;
     }
 
     /**

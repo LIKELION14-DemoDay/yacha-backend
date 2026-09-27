@@ -17,6 +17,8 @@ public enum AuthErrorCode implements BaseErrorCode {
     INVALID_SOCIAL_TOKEN(HttpStatus.UNAUTHORIZED, "소셜 로그인에 실패했습니다. 다시 시도해 주세요."),
     /** 지원하지 않거나 서버에 설정되지 않은 소셜 공급자 */
     UNSUPPORTED_PROVIDER(HttpStatus.BAD_REQUEST, "지원하지 않는 소셜 로그인입니다."),
+    /** 같은 이메일이 이미 다른 소셜 계정에 연결돼 있음. 원래 쓰던 방법으로 로그인해야 한다 */
+    SOCIAL_EMAIL_CONFLICT(HttpStatus.CONFLICT, "다른 방법으로 가입된 이메일입니다. 기존 로그인 방법을 이용해 주세요."),
     ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 회원으로 전환된 계정입니다."),
     ;
 
