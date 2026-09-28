@@ -7,10 +7,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import likelion.yacha_backend.domain.auth.dto.AuthResponse;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
+import likelion.yacha_backend.domain.auth.dto.KakaoCodeLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
+import likelion.yacha_backend.domain.auth.dto.SocialLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.service.AuthService;
+import likelion.yacha_backend.domain.auth.service.KakaoLoginService;
 import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.cookie.CookieProvider;
 import likelion.yacha_backend.global.security.jwt.AuthUser;
@@ -30,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final KakaoLoginService kakaoLoginService;
     private final CookieProvider cookieProvider;
 
     @Operation(
@@ -97,6 +101,64 @@ public class AuthController {
     @PostMapping("/token")
     public ResponseEntity<ApiResponse<AuthResponse>> token(@Valid @RequestBody LoginRequest request) {
         return withRefreshCookie(authService.login(request));
+    }
+
+    @Operation(
+            summary = "소셜 로그인 (카카오 · 구글)",
+            description = """
+                    프론트가 카카오 · 구글 SDK 로 받은 **id_token** 을 보내면, 서버가 서명을 확인하고
+                    우리 토큰을 발급합니다. 응답 형태는 일반 로그인과 같습니다.
+
+                    ```json
+                    { "provider": "KAKAO", "idToken": "eyJ..." }
+                    ```
+
+                    - 처음 로그인하면 계정이 자동으로 만들어집니다. 별도 회원가입이 없습니다.
+                    - 같은 이메일로 가입된 계정이 이미 있으면 연결하지 않고 409 를 줍니다.
+                      원래 쓰던 방법으로 로그인하도록 안내해 주세요.
+                    - 카카오는 이메일 제공이 선택 동의라, 이메일 없이 가입될 수 있습니다.
+                      그 계정은 카카오로만 로그인할 수 있습니다.
+
+                    에러
+                    - `UNSUPPORTED_PROVIDER` (400): 지원하지 않거나 서버에 설정되지 않은 공급자
+                    - `INVALID_SOCIAL_TOKEN` (401): 서명 · 발급자 · 대상 · 만료 검증 실패
+                    - `SOCIAL_EMAIL_CONFLICT` (409): 같은 이메일로 가입된 계정이 이미 있음
+                    """)
+    @SecurityRequirements
+    @PostMapping("/social")
+    public ResponseEntity<ApiResponse<AuthResponse>> socialLogin(
+            @Valid @RequestBody SocialLoginRequest request) {
+        return withRefreshCookie(authService.socialLogin(request));
+    }
+
+    @Operation(
+            summary = "카카오 로그인 (웹, 인가 코드)",
+            description = """
+                    웹의 카카오 JS SDK 는 id_token 을 바로 주지 않고, redirect URI 로 **인가 코드**만 넘겨줍니다.
+                    그 코드를 보내면 서버가 카카오에 id_token 으로 바꿔 받은 뒤 `/auth/social` 과 같은 절차로 로그인합니다.
+                    응답 · 가입 규칙 · 409 는 `/auth/social` 과 같습니다.
+
+                    ```json
+                    { "code": "인가 코드", "redirectUri": "https://yacha.com/oauth/kakao" }
+                    ```
+
+                    - `redirectUri` 는 `Kakao.Auth.authorize()` 에 넣은 값과 똑같아야 합니다.
+                    - 코드는 10분 안에 한 번만 쓸 수 있습니다. 새로고침 등으로 두 번 보내면 두 번째는 401 입니다.
+                    - `authorize()` 에 `scope` 를 직접 넘긴다면 `openid` 를 꼭 포함하세요. 빠지면 id_token 이 오지 않습니다.
+                    - `state` 로 로그인 CSRF 를 막는 것은 프론트 몫입니다. 콜백에서 확인한 뒤에 이 API 를 호출하세요.
+
+                    에러
+                    - `UNSUPPORTED_PROVIDER` (400): 서버에 카카오 REST API 키가 설정되지 않음
+                    - `INVALID_SOCIAL_CODE` (401): 코드 만료 · 이미 사용됨 · redirectUri 불일치
+                    - `INVALID_SOCIAL_TOKEN` (401): 받은 id_token 검증 실패
+                    - `SOCIAL_EMAIL_CONFLICT` (409): 같은 이메일로 가입된 계정이 이미 있음
+                    - `SOCIAL_PROVIDER_ERROR` (502): 카카오 서버 오류 · 타임아웃, 또는 서버의 키 설정 오류
+                    """)
+    @SecurityRequirements
+    @PostMapping("/social/kakao")
+    public ResponseEntity<ApiResponse<AuthResponse>> kakaoCodeLogin(
+            @Valid @RequestBody KakaoCodeLoginRequest request) {
+        return withRefreshCookie(kakaoLoginService.login(request));
     }
 
     @Operation(

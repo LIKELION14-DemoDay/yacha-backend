@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.user.repository;
 
 import java.util.Optional;
+import likelion.yacha_backend.domain.user.entity.Provider;
 import likelion.yacha_backend.domain.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -12,4 +13,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     /** 로그인에서 이메일로 사용자를 찾음 */
     Optional<User> findByEmail(String email);
+
+    /** 소셜 로그인에서 이메일이 아니라 provider + sub로 계정을 찾음 */
+    Optional<User> findByProviderAndProviderId(Provider provider, String providerId);
 }
