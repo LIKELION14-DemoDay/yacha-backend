@@ -35,6 +35,7 @@ public class AuthController {
     private final AuthService authService;
     private final KakaoLoginService kakaoLoginService;
     private final CookieProvider cookieProvider;
+    private final AuthResponseFactory authResponseFactory;
 
     @Operation(
             summary = "게스트 생성",
@@ -196,7 +197,7 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Void>> logout(@AuthenticationPrincipal AuthUser authUser) {
         authService.logout(authUser.getUserId());
 
-        // 서버 쪽(저장소)과 클라이언트 쪽(쿠키)을 모두 지워야 로그아웃이 끝납니다.
+        // 서버 쪽(저장소)과 클라이언트 쪽(쿠키)을 모두 지워야 로그아웃이 끝남
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookieProvider.deleteRefreshCookie().toString())
                 .body(ApiResponse.noContent());
@@ -224,11 +225,7 @@ public class AuthController {
         return withRefreshCookie(authService.upgrade(authUser.getUserId(), request));
     }
 
-    /** 토큰 두 개를 HTTP 응답으로 포장 */
     private ResponseEntity<ApiResponse<AuthResponse>> withRefreshCookie(IssuedTokens tokens) {
-        return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE,
-                        cookieProvider.createRefreshCookie(tokens.refreshToken()).toString())
-                .body(ApiResponse.success(tokens.toResponse()));
+        return authResponseFactory.withRefreshCookie(tokens);
     }
 }
