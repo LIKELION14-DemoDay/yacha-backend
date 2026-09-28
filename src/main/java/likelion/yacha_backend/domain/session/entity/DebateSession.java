@@ -34,7 +34,7 @@ import org.hibernate.type.SqlTypes;
 @Table(
         name = "debate_session",
         indexes = {
-                // 대기열 · 방 찾기를 오래된 순서로 읽는다
+                // 대기열 · 방 찾기를 오래된 순서로, 관전 목록을 최근 순서로 읽는다
                 @Index(name = "idx_debate_session_queue", columnList = "room_type, status, category, created_at"),
                 @Index(name = "idx_debate_session_topic", columnList = "topic_id, created_at"),
         },
