@@ -24,8 +24,6 @@ import org.hibernate.type.SqlTypes;
 
 /**
  * 토론 참가자 (API 명세 1-2). 한 세션에 사람 2명, 또는 사람 1명 + AI 1명.
- *
- * <p>관전자는 참가자가 아닙니다. 구독만 하고 이 테이블에 행이 생기지 않습니다.
  */
 @Entity
 @Table(

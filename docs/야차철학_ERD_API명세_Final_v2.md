@@ -61,7 +61,7 @@ erDiagram
 | --- | --- | --- | --- |
 | id | BIGINT | PK |  |
 | topic_date | DATE | UNIQUE | 하루 한 주제 |
-| category | VARCHAR(20) | NN | `ETHICS` / `LOVE` / `SCIENCE` / `SOCIETY` |
+| category | VARCHAR(20) | NN | `HUMAN`(인간) / `RELATIONSHIP`(관계) / `ETHICS`(윤리) / `SOCIETY`(사회) / `LIFE_AND_DEATH`(삶과 죽음) / `FUTURE_TECH`(미래기술) / `MONEY_AND_SUCCESS`(돈과 성공) / `TRUTH_AND_LIE`(진실과 거짓) |
 | question | TEXT | NN |  |
 | option_a | VARCHAR(255) | NN |  |
 | option_b | VARCHAR(255) | NN |  |

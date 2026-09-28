@@ -10,6 +10,7 @@ import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.session.entity.Stance;
+import likelion.yacha_backend.domain.topic.entity.Category;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.config.JpaAuditingConfig;
@@ -46,7 +47,7 @@ class DebateParticipantRepositoryTest {
     void setUp() {
         host = userRepository.save(User.createGuest("방장"));
         guest = userRepository.save(User.createGuest("상대"));
-        session = sessionRepository.save(DebateSession.createRandom("ETHICS", 12L));
+        session = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, 12L));
     }
 
     @Test
@@ -91,8 +92,9 @@ class DebateParticipantRepositoryTest {
     @Test
     @DisplayName("끝난 세션만 있으면 참여 중이 아니다")
     void finishedSessionIsNotActive() {
-        DebateSession finished = sessionRepository.save(DebateSession.createAiMatch("ETHICS", 13L, NOW));
-        finished.finish(FinishReason.COMPLETED, NOW.plusMinutes(9));
+        Long finishedId = sessionRepository.save(DebateSession.createAiMatch(Category.ETHICS, 13L, NOW)).getId();
+        sessionRepository.finishIfInProgress(finishedId, FinishReason.COMPLETED, NOW.plusMinutes(9));
+        DebateSession finished = sessionRepository.getReferenceById(finishedId);
         participantRepository.saveAndFlush(DebateParticipant.initiator(finished, guest, Stance.AGREE, NOW));
 
         assertThat(participantRepository.existsByUser_IdAndSession_StatusIn(guest.getId(), ACTIVE)).isFalse();
