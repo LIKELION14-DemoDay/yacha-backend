@@ -1,0 +1,40 @@
+# 로컬 개발용 MySQL · Redis
+# 실행: docker compose up -d / 종료: docker compose down (데이터 초기화는 down -v)
+# 앱은 IntelliJ 등에서 따로 띄우고, 아래 환경변수로 MySQL 에 붙음
+#   SPRING_DATASOURCE_URL=jdbc:mysql://localhost:3307/yacha
+#   SPRING_DATASOURCE_USERNAME=yacha
+#   SPRING_DATASOURCE_PASSWORD=yacha
+# 환경변수를 주지 않으면 지금처럼 H2 로 뜸
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: yacha-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: yacha
+      MYSQL_USER: yacha
+      MYSQL_PASSWORD: yacha
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      # 로컬에 설치된 MySQL(3306)과 겹치지 않게 3307 로 염
+      - "3307:3306"
+    volumes:
+      - yacha-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    # 리프레시 토큰 저장소. 앱 기본값(localhost:6379)과 맞춤
+    image: redis:7-alpine
+    container_name: yacha-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  yacha-mysql-data:
