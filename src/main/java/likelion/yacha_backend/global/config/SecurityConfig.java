@@ -46,6 +46,7 @@ public class SecurityConfig {
             "/swagger-ui/**",
             "/swagger-ui.html",
             "/v3/api-docs/**",
+            "/actuator/health",
     };
 
     /** 인증 없이 GET만 허용할 경로. 주제 · 카테고리 */
