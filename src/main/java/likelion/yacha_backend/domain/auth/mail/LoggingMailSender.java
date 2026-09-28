@@ -2,7 +2,6 @@ package likelion.yacha_backend.domain.auth.mail;
 
 import likelion.yacha_backend.domain.user.entity.Provider;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
 
 /**
@@ -11,7 +10,7 @@ import org.springframework.stereotype.Component;
  *
  * 개발 중에는 로그에 찍힌 링크를 복사해 재설정 흐름을 끝까지 테스트할 수 있음
  *
- * <p>{@code @ConditionalOnMissingBean} 이라, 나중에 실제 발송 구현({@code SesMailSender} 등)을
+ * {@code @ConditionalOnMissingBean}이라, 나중에 실제 발송 구현({@code SesMailSender} 등)을
  * 빈으로 등록하면 이 클래스는 자동으로 빠짐
  *
  * 배포에 이 구현이 올라가면 사용자는 메일을 받지 못함
@@ -19,7 +18,6 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@ConditionalOnMissingBean(MailSender.class)
 public class LoggingMailSender implements MailSender {
 
     @Override
