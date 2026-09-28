@@ -102,22 +102,6 @@ public class User extends BaseTimeEntity {
         return user;
     }
 
-    /**
-     * 이메일로 가입했던 계정에 소셜 로그인을 연결 (같은 이메일일 때 자동 연결)
-     * 비밀번호는 지우지 않음. 연결한 뒤에도 이메일 로그인을 계속 사용 가능
-     */
-    public void linkSocial(Provider provider, String providerId) {
-        if (provider == Provider.LOCAL) {
-            throw new IllegalArgumentException("소셜 계정의 provider 가 LOCAL 일 수 없습니다.");
-        }
-        if (this.provider != Provider.LOCAL) {
-            throw new IllegalStateException(
-                    "이미 다른 소셜 계정에 연결돼 있습니다. userId=" + id + ", provider=" + this.provider);
-        }
-        this.provider = provider;
-        this.providerId = providerId;
-    }
-
     public void upgradeToMember(String email, String encodedPassword, String nickname) {
         if (!isGuest) {
             throw new IllegalStateException("이미 회원인 사용자는 승격할 수 없습니다. userId=" + id);

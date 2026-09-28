@@ -41,12 +41,15 @@ oauth:
   # 소셜 로그인 id_token 검증용. clientId 는 프론트 SDK 에 넣는 값과 같아야 합니다(토큰의 aud 검사).
   # 비밀 값은 아니지만 환경마다 달라서 환경변수로 뺐습니다. 값이 없으면 그 공급자는 비활성화됩니다.
   google:
-    client-id: ${GOOGLE_CLIENT_ID:}
-    issuer-uri: https://accounts.google.com
+    # 웹 · iOS · Android 클라이언트 ID 가 각각 다릅니다. 쉼표로 여러 개를 넣을 수 있습니다.
+    client-ids: ${GOOGLE_CLIENT_IDS:}
+    # 구글은 스킴이 없는 형태도 쓸 수 있다고 안내합니다.
+    issuer-uris: https://accounts.google.com,accounts.google.com
     jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
   kakao:
-    client-id: ${KAKAO_CLIENT_ID:}
-    issuer-uri: https://kauth.kakao.com
+    # 카카오는 앱의 REST API 키입니다. (프론트가 쓰는 JavaScript 키가 아닙니다)
+    client-ids: ${KAKAO_CLIENT_IDS:}
+    issuer-uris: https://kauth.kakao.com
     jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
 
 springdoc:

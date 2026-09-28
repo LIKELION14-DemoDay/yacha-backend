@@ -3,7 +3,6 @@ package likelion.yacha_backend.domain.auth.service;
 import jakarta.annotation.PostConstruct;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
@@ -159,7 +158,7 @@ public class AuthService {
      *
      * id_token 검증 → sub · 이메일 · 닉네임
      * {@code provider + sub} 로 기존 계정 조회
-     * 없으면: 확인된 이메일이 기존 계정과 같으면 연결, 아니면 새 계정
+     * 없으면 새 계정. 단 같은 이메일의 기존 계정이 있으면 만들지 않고 409 (자동 연결하지 않음)
      */
     @Transactional
     public IssuedTokens socialLogin(SocialLoginRequest request) {
@@ -172,33 +171,32 @@ public class AuthService {
         SocialProfile profile = verifier.verify(request.idToken());
 
         User user = userRepository.findByProviderAndProviderId(profile.provider(), profile.providerId())
-                .orElseGet(() -> linkOrCreate(profile));
+                .orElseGet(() -> createIfEmailFree(profile));
 
         return tokenIssuer.issue(user);
     }
 
     /**
-     * 처음 보는 소셜 계정.
-     * 같은 사람의 기존 계정에 붙일지, 새로 만들지 정해야 함
+     * 처음 보는 소셜 계정. 새 계정을 만듭니다.
      *
-     * 확인된 이메일일 때만 연결
+     * 같은 이메일의 기존 계정이 있으면 연결하지 않고 409 로 막습니다 (아래 주석 참고)
      */
-    private User linkOrCreate(SocialProfile profile) {
+    private User createIfEmailFree(SocialProfile profile) {
         String email = profile.hasVerifiedEmail() ? normalizeEmail(profile.email()) : null;
 
-        if (email != null) {
-            Optional<User> sameEmail = userRepository.findByEmail(email);
-            if (sameEmail.isPresent()) {
-                User user = sameEmail.get();
-                if (user.getProvider() != Provider.LOCAL) {
-                    // 이미 다른 소셜에 연결된 계정입니다
-                    // 원래 방법으로 로그인해야 함
-                    throw new BusinessException(AuthErrorCode.SOCIAL_EMAIL_CONFLICT);
-                }
-                user.linkSocial(profile.provider(), profile.providerId());
-                log.info("소셜 계정 연결: userId={}, provider={}", user.getId(), profile.provider());
-                return user;
-            }
+        if (email != null && userRepository.existsByEmail(email)) {
+            // 같은 이메일의 기존 계정이 있어도 <b>자동으로 연결하지 않습니다.</b>
+            //
+            // 소셜 쪽 이메일은 확인됐지만, 우리 쪽 계정의 이메일은 확인된 적이 없습니다.
+            // (가입할 때 메일 인증을 받지 않습니다) 그래서 자동으로 붙이면 이런 일이 가능합니다.
+            //
+            //   1. 공격자가 victim@example.com 으로 먼저 가입 (비밀번호는 공격자 것)
+            //   2. 진짜 주인이 구글로 로그인 → 확인된 이메일이라 공격자의 계정에 연결됨
+            //   3. 비밀번호는 그대로라 공격자도 계속 로그인 가능 = 계정을 나눠 쓰게 됨
+            //
+            // 계정 연결은 이메일 인증을 붙인 뒤, 또는 이미 로그인한 상태에서만 허용해야 합니다.
+            // 그때까지는 원래 쓰던 방법으로 로그인하도록 안내합니다. (코드 리뷰 반영)
+            throw new BusinessException(AuthErrorCode.SOCIAL_EMAIL_CONFLICT);
         }
 
         return createSocialUser(profile, email);
@@ -215,10 +213,15 @@ public class AuthService {
             return userRepository.saveAndFlush(User.createSocial(
                     profile.provider(), profile.providerId(), verifiedEmail, nickname));
         } catch (DataIntegrityViolationException e) {
-            // 같은 소셜 계정으로 동시에 두 번 요청이 들어온 경우
-            // UNIQUE(provider, provider_id 가 막아 주므로, 먼저 만들어진 행을 찾아 사용
-            return userRepository.findByProviderAndProviderId(profile.provider(), profile.providerId())
-                    .orElseThrow(() -> new BusinessException(AuthErrorCode.SOCIAL_EMAIL_CONFLICT, e));
+            // 같은 소셜 계정으로 동시에 두 번 요청이 들어온 경우입니다. UNIQUE(provider, provider_id)가 막습니다.
+            //
+            // 여기서 기존 행을 찾아 "정상 반환" 하면 안 됩니다. 제약 위반이 난 시점에 트랜잭션이
+            // rollback-only 로 표시되기 때문에, 정상으로 끝내려 해도 커밋 때
+            // UnexpectedRollbackException(500)이 납니다. 그 전에 리프레시 토큰이 Redis 에
+            // 저장되므로 DB 와 저장소가 어긋나기까지 합니다. (코드 리뷰 반영)
+            //
+            // 그래서 여기서는 예외로 끝내고, 프론트가 한 번 더 호출하면 그때는 기존 계정으로 로그인됩니다.
+            throw new BusinessException(AuthErrorCode.SOCIAL_LOGIN_RETRY, e);
         }
     }
 

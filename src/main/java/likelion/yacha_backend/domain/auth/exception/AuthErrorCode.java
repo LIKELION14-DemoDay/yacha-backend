@@ -19,6 +19,8 @@ public enum AuthErrorCode implements BaseErrorCode {
     UNSUPPORTED_PROVIDER(HttpStatus.BAD_REQUEST, "지원하지 않는 소셜 로그인입니다."),
     /** 같은 이메일이 이미 다른 소셜 계정에 연결돼 있음. 원래 쓰던 방법으로 로그인해야 한다 */
     SOCIAL_EMAIL_CONFLICT(HttpStatus.CONFLICT, "다른 방법으로 가입된 이메일입니다. 기존 로그인 방법을 이용해 주세요."),
+    /** 같은 소셜 계정으로 동시에 두 번 요청이 들어와 한쪽이 밀림. 다시 호출하면 정상 로그인된다 */
+    SOCIAL_LOGIN_RETRY(HttpStatus.CONFLICT, "로그인 처리가 겹쳤습니다. 다시 시도해 주세요."),
     ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 회원으로 전환된 계정입니다."),
     ;
 

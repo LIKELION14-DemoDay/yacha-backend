@@ -127,30 +127,31 @@ class SocialLoginApiTest {
     }
 
     @Test
-    @DisplayName("확인된 이메일이 기존 계정과 같으면 그 계정에 연결된다 (비밀번호 로그인도 유지)")
-    void linksToExistingAccount() throws Exception {
+    @DisplayName("같은 이메일의 기존 계정이 있으면 연결하지 않고 409")
+    void doesNotAutoLinkExistingAccount() throws Exception {
+        // 우리 가입은 이메일 소유를 확인하지 않습니다. 자동으로 연결하면 남이 먼저 그 이메일로
+        // 가입해 둔 계정에 진짜 주인이 들어가게 됩니다. (코드 리뷰 반영)
         mockMvc.perform(post("/api/v1/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email": "soomin@example.com", "password": "password123", "nickname": "수민"}
                                 """))
                 .andExpect(status().isOk());
-        Long existingId = userRepository.findByEmail("soomin@example.com").orElseThrow().getId();
+        long before = userRepository.count();
 
-        Integer socialId = userIdOf(login("kakao-9|Soomin@example.com|true|수민"));
-
-        assertThat(socialId.longValue()).isEqualTo(existingId);
-
-        User linked = userRepository.findById(existingId).orElseThrow();
-        assertThat(linked.getProvider()).isEqualTo(Provider.KAKAO);
-        assertThat(linked.getPassword()).isNotNull();   // 이메일 로그인도 계속 가능
-
-        mockMvc.perform(post("/api/v1/auth/login")
+        mockMvc.perform(post("/api/v1/auth/social")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"email": "soomin@example.com", "password": "password123"}
+                                {"provider": "KAKAO", "idToken": "kakao-9|Soomin@example.com|true|수민"}
                                 """))
-                .andExpect(status().isOk());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SOCIAL_EMAIL_CONFLICT"));
+
+        // 계정이 만들어지지도, 기존 계정이 바뀌지도 않아야 합니다.
+        assertThat(userRepository.count()).isEqualTo(before);
+        User existing = userRepository.findByEmail("soomin@example.com").orElseThrow();
+        assertThat(existing.getProvider()).isEqualTo(Provider.LOCAL);
+        assertThat(existing.getProviderId()).isNull();
     }
 
     @Test

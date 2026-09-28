@@ -37,27 +37,6 @@ class UserSocialTest {
     }
 
     @Test
-    @DisplayName("이메일 가입 계정에 소셜을 연결해도 비밀번호는 남는다 (두 방법 모두 로그인 가능)")
-    void linkSocialKeepsPassword() {
-        User user = User.createMember("a@example.com", "hash", "수민");
-
-        user.linkSocial(Provider.GOOGLE, "google-sub-1");
-
-        assertThat(user.getProvider()).isEqualTo(Provider.GOOGLE);
-        assertThat(user.getProviderId()).isEqualTo("google-sub-1");
-        assertThat(user.getPassword()).isEqualTo("hash");
-    }
-
-    @Test
-    @DisplayName("이미 다른 소셜에 연결된 계정은 다시 연결할 수 없다")
-    void linkSocialTwice() {
-        User user = User.createSocial(Provider.KAKAO, "kakao-sub-1", "a@example.com", "수민");
-
-        assertThatThrownBy(() -> user.linkSocial(Provider.GOOGLE, "google-sub-1"))
-                .isInstanceOf(IllegalStateException.class);
-    }
-
-    @Test
     @DisplayName("소셜 계정의 provider 는 LOCAL 일 수 없다")
     void socialProviderCannotBeLocal() {
         assertThatThrownBy(() -> User.createSocial(Provider.LOCAL, "x", "a@example.com", "수민"))
