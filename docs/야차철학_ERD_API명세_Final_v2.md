@@ -413,7 +413,7 @@ SEND 처리 중 에러는 `/user/queue/errors` 로 REST 와 같은 형식을 보
 { "success": false, "data": null, "error": { "code": "INVALID_PHASE", "message": "지금은 채팅할 수 없는 구간입니다" }, "traceId": null }
 ```
 
-CONNECT · SUBSCRIBE 가 거부되면 STOMP **ERROR 프레임**이 오고 연결이 끊긴다. `message` 헤더에 에러 코드(`UNAUTHORIZED` · `FORBIDDEN` 등)를 담는다.
+CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니면 STOMP **ERROR 프레임**이 오고 연결이 끊긴다. `message` 헤더에 에러 코드(`UNAUTHORIZED` · `FORBIDDEN` 등)를 담는다.
 
 🔷 **방장 알림 (`/user/queue/match`)**
 
@@ -654,8 +654,9 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 | 앱 목적지 접두사 | `/app` |
 | 브로커 목적지 | `/topic`, `/queue` |
 | 브로커 | 서버 1대는 내장 simple broker. **서버를 여러 대로 늘리면 외부 브로커 필요** |
-| 인증 | 🔷 `/ws` 핸드셰이크는 열어 두고, **CONNECT 프레임의 `Authorization: Bearer` JWT** 로 식별한다 (2-1). 핸드셰이크 허용 `Origin` 은 CORS 설정과 맞춘다 |
+| 인증 | 🔷 `/ws` 핸드셰이크는 열어 두고, **CONNECT 프레임의 `Authorization: Bearer` JWT** 로 식별한다 (2-1). 핸드셰이크 허용 `Origin` 은 CORS 설정과 맞춘다. 토큰은 **CONNECT 때만** 검사하므로 연결 중 만료돼도 연결은 유지된다(연결 수명 = 게임 수명). 프론트는 **CONNECT · 재연결 직전에 토큰을 재발급**한다 |
 | 구독 인가 | SUBSCRIBE 시 검사 — 🟣 참가자, 또는 진행 중 랜덤 방의 관전자 (2-4) |
+| 전송 인가 | SEND 는 앱 목적지(`/app/**`)로만 허용한다. `/topic/**` · `/user/**` 로 직접 보내면 `FORBIDDEN` |
 | 하트비트 | 🟣 10초 / 10초. 끊긴 연결(반쯤 열린 연결 포함)을 서버가 정리한다 |
 | 의존성 | `spring-boot-starter-websocket` 추가 필요 |
 
