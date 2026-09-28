@@ -48,9 +48,17 @@ oauth:
     jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
   kakao:
     # 카카오는 앱의 REST API 키입니다. (프론트가 쓰는 JavaScript 키가 아닙니다)
-    client-ids: ${KAKAO_CLIENT_IDS:}
+    # 따로 넣지 않으면 KAKAO_REST_API_KEY 를 씁니다. 모바일 앱이 붙으면 네이티브 앱 키를 쉼표로 추가합니다.
+    client-ids: ${KAKAO_CLIENT_IDS:${KAKAO_REST_API_KEY:}}
     issuer-uris: https://kauth.kakao.com
     jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
+  kakao-code:
+    # 웹 카카오 로그인(/auth/social/kakao)에서 인가 코드를 id_token 으로 바꿀 때 씁니다.
+    # 콘솔에서 OpenID Connect 를 켜야 응답에 id_token 이 들어 있습니다.
+    client-id: ${KAKAO_REST_API_KEY:}
+    # 콘솔에서 Client Secret 을 켰을 때만 넣습니다. 비밀 값이라 저장소에 적지 마세요.
+    client-secret: ${KAKAO_CLIENT_SECRET:}
+    token-uri: https://kauth.kakao.com/oauth/token
 
 springdoc:
   # 운영에 API 목록이 공개되지 않도록 켜는 환경(local)에서만 true로 덮어씀

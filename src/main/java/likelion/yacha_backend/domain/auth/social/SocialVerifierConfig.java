@@ -33,7 +33,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
  * 재사용할 수 있다는 한계가 있습니다. 알려진 제약으로 두고, 필요해지면 프론트와 함께 붙입니다.
  */
 @Configuration
-@EnableConfigurationProperties(SocialProperties.class)
+@EnableConfigurationProperties({SocialProperties.class, KakaoCodeProperties.class})
 public class SocialVerifierConfig {
 
     /**

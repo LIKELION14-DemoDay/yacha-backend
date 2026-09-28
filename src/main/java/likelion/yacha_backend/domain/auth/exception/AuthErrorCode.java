@@ -21,6 +21,10 @@ public enum AuthErrorCode implements BaseErrorCode {
     SOCIAL_EMAIL_CONFLICT(HttpStatus.CONFLICT, "다른 방법으로 가입된 이메일입니다. 기존 로그인 방법을 이용해 주세요."),
     /** 같은 소셜 계정으로 동시에 두 번 요청이 들어와 한쪽이 밀림. 다시 호출하면 정상 로그인된다 */
     SOCIAL_LOGIN_RETRY(HttpStatus.CONFLICT, "로그인 처리가 겹쳤습니다. 다시 시도해 주세요."),
+    /** 카카오 인가 코드가 만료됐거나(10분) 이미 쓰였거나, redirectUri 가 인가 요청 때와 다름 */
+    INVALID_SOCIAL_CODE(HttpStatus.UNAUTHORIZED, "소셜 로그인에 실패했습니다. 다시 시도해 주세요."),
+    /** 카카오 서버 오류 · 타임아웃, 또는 우리 쪽 키 설정 오류. 사용자가 다시 해도 해결되지 않을 수 있다 */
+    SOCIAL_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "소셜 로그인 서버와 통신하지 못했습니다. 잠시 후 다시 시도해 주세요."),
     ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 회원으로 전환된 계정입니다."),
     ;
 
