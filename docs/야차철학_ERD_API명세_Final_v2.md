@@ -65,7 +65,7 @@ erDiagram
 | 컬럼 | 타입 | 제약 | 비고 |
 | --- | --- | --- | --- |
 | id | BIGINT | PK |  |
-| category | VARCHAR(20) | NN | 🔷 **8개로 확정**. 값(이름)은 결정 필요 (PART 5) |
+| category | VARCHAR(20) | NN | 🔷 **8개로 확정** — `HUMAN`(인간) / `RELATIONSHIP`(관계) / `ETHICS`(윤리) / `SOCIETY`(사회) / `LIFE_AND_DEATH`(삶과 죽음) / `FUTURE_TECH`(미래기술) / `MONEY_AND_SUCCESS`(돈과 성공) / `TRUTH_AND_LIE`(진실과 거짓) |
 | statement | TEXT | NN | 🔷 동의 / 비동의로 답하는 **명제** (구 `question` + `option_a` / `option_b`) |
 | is_active | BOOLEAN | NN | 🔷 랜덤 추첨 대상 여부. 내린 주제는 `false` |
 | created_at | DATETIME | NN |  |
@@ -771,7 +771,7 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 
 **미정 — 🔷 방 기반 매칭으로 새로 생긴 것**
 
-- [ ] **카테고리 8개의 이름** — `topic.category` 값.
+- [x] **카테고리 8개의 이름** — `topic.category` 값. `HUMAN`(인간) / `RELATIONSHIP`(관계) / `ETHICS`(윤리) / `SOCIETY`(사회) / `LIFE_AND_DEATH`(삶과 죽음) / `FUTURE_TECH`(미래기술) / `MONEY_AND_SUCCESS`(돈과 성공) / `TRUTH_AND_LIE`(진실과 거짓).
 - [ ] **5분 상한 이후** — 방을 자동 취소할지, 봇전으로 자동 전환할지.
 - [ ] **팝업 무응답** — 30초 팝업에 아무것도 누르지 않으면 "더 기다리기" 로 볼지.
 - [ ] **주제 다시 뽑기 횟수** — 제한할지.
