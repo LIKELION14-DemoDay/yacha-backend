@@ -21,10 +21,13 @@ import org.springframework.stereotype.Component;
  *
  * <ul>
  *   <li><b>CONNECT</b> — {@code Authorization: Bearer} 의 액세스 토큰으로 사용자를 식별해 연결에 붙입니다.
- *       이후 프레임은 이 사용자로 처리됩니다.</li>
+ *       이후 프레임은 이 사용자로 처리됩니다. 토큰은 CONNECT 때만 검사하므로, 연결 중에 액세스 토큰이
+ *       만료돼도 연결은 끊지 않습니다(연결 수명 = 게임 수명). 프론트는 CONNECT · 재연결 직전에 토큰을
+ *       재발급해 남은 시간이 짧은 토큰으로 연결하지 않게 합니다.</li>
  *   <li><b>SUBSCRIBE</b> — 허용한 목적지만 구독할 수 있습니다. simple broker 는 구독자 전원에게 메시지를
  *       그대로 보내므로, 권한은 구독하는 순간에만 막을 수 있습니다.</li>
- *   <li><b>SEND</b> — CONNECT 에서 인증된 연결만 보낼 수 있습니다.</li>
+ *   <li><b>SEND</b> — 인증된 연결이 앱 목적지({@code /app/**})로만 보낼 수 있습니다. 브로커 목적지로 직접
+ *       보내면 서버 로직을 거치지 않고 남의 개인 큐나 토론방에 메시지가 그대로 전달되므로 막습니다.</li>
  * </ul>
  *
  * <p>여기서 던진 예외는 {@link StompErrorHandler} 가 ERROR 프레임으로 바꾸고, 서버는 연결을 끊습니다.
@@ -39,6 +42,9 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 
     /** 본인에게만 오는 큐(매칭 알림 · 에러). Spring 이 연결된 사용자별 목적지로 바꿔 줍니다. */
     private static final String USER_QUEUE_PREFIX = "/user/queue/";
+
+    /** 클라이언트가 보낼 수 있는 유일한 목적지. {@code @MessageMapping} 컨트롤러로 갑니다. */
+    private static final String APP_DESTINATION_PREFIX = "/app/";
 
     private final JwtTokenProvider jwtTokenProvider;
 
@@ -58,6 +64,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
             authorizeSubscribe(accessor.getDestination());
         } else if (command == StompCommand.SEND) {
             requireUser(accessor);
+            authorizeSend(accessor.getDestination());
         }
         return message;
     }
@@ -100,6 +107,19 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
      */
     private void authorizeSubscribe(String destination) {
         if (destination != null && destination.startsWith(USER_QUEUE_PREFIX)) {
+            return;
+        }
+        throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+    }
+
+    /**
+     * 앱 목적지만 허용합니다. {@code /user/{userId}/queue/**} 나 {@code /topic/**} 로 직접 보내면 브로커가
+     * 그대로 전달해, 다른 사용자에게 가짜 매칭 알림을 보내거나 남의 토론방에 끼어들 수 있습니다.
+     *
+     * <p>TODO: 채팅 컨트롤러({@code /app/sessions/{id}/**})를 붙일 때 해당 세션의 참가자인지 검사해야 합니다.
+     */
+    private void authorizeSend(String destination) {
+        if (destination != null && destination.startsWith(APP_DESTINATION_PREFIX)) {
             return;
         }
         throw new BusinessException(GlobalErrorCode.FORBIDDEN);

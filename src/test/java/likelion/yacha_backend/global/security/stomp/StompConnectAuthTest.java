@@ -174,6 +174,33 @@ class StompConnectAuthTest {
     }
 
     @Test
+    @DisplayName("다른 사용자의 개인 큐(/user/{userId}/queue/**)로 SEND 하면 FORBIDDEN 으로 거부하고 전달하지 않는다")
+    void rejectsSendToOtherUserQueue() throws Exception {
+        StompSession victim = connect(bearer(jwtTokenProvider.createAccessToken(7L, Role.USER)), new ErrorCapturingHandler());
+        CompletableFuture<String> received = new CompletableFuture<>();
+        victim.subscribe("/user/queue/errors", new CapturingFrameHandler(received));
+        ErrorCapturingHandler attackerHandler = new ErrorCapturingHandler();
+        StompSession attacker = connect(bearer(jwtTokenProvider.createAccessToken(8L, Role.USER)), attackerHandler);
+
+        attacker.send("/user/7/queue/errors", "spoofed");
+
+        assertThat(attackerHandler.errorCode()).isEqualTo("FORBIDDEN");
+        assertThatThrownBy(() -> received.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+        victim.disconnect();
+    }
+
+    @Test
+    @DisplayName("브로커 목적지(/topic/**)로 직접 SEND 하면 FORBIDDEN 으로 거부한다")
+    void rejectsSendToBrokerDestination() throws Exception {
+        ErrorCapturingHandler handler = new ErrorCapturingHandler();
+        StompSession session = connect(bearer(jwtTokenProvider.createAccessToken(1L, Role.USER)), handler);
+
+        session.send("/topic/sessions/1", "hello");
+
+        assertThat(handler.errorCode()).isEqualTo("FORBIDDEN");
+    }
+
+    @Test
     @DisplayName("허용하지 않은 Origin 의 핸드셰이크는 거부한다")
     void rejectsDisallowedOrigin() {
         WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
