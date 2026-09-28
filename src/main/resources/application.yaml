@@ -27,6 +27,12 @@ jwt:
   refresh-token-validity: 1209600000  # 14일 (ms)
 
 auth:
+  password-reset:
+    # 재설정 링크 유효시간. 길면 메일함이 털렸을 때 위험 구간이 길어짐 (팀 결정)
+    token-ttl: 30m
+    # 같은 이메일로 다시 보낼 수 있을 때까지의 간격. 남의 메일함에 계속 보내는 것을 막음 (팀 결정)
+    send-interval: 1m
+
   cookie:
     # 리프레시 토큰 쿠키 설정
     # local에서만 application-local.yaml이 secure를 false로
