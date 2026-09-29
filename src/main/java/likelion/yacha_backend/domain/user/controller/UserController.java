@@ -7,18 +7,18 @@ import likelion.yacha_backend.domain.auth.controller.AuthResponseFactory;
 import likelion.yacha_backend.domain.auth.dto.AuthResponse;
 import likelion.yacha_backend.domain.auth.service.AuthService;
 import likelion.yacha_backend.domain.user.dto.MyInfoResponse;
-import likelion.yacha_backend.domain.user.dto.PasswordChangeRequest;
 import likelion.yacha_backend.domain.user.dto.NicknameUpdateRequest;
+import likelion.yacha_backend.domain.user.dto.PasswordChangeRequest;
 import likelion.yacha_backend.domain.user.service.UserService;
 import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 
@@ -36,7 +36,7 @@ public class UserController {
     @Operation(
             summary = "내 정보 조회",
             description = """
-                    게스트도 호출 가능 
+                    게스트도 호출 가능
                     게스트는 `email`이 `null`
 
                     `stats`는 판정 도메인 연동 전까지 0으로 내려감

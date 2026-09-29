@@ -156,6 +156,32 @@ class PasswordChangeApiTest {
     }
 
     @Test
+    @DisplayName("한글 비밀번호가 72바이트를 넘으면 400 (500 이 아니라)")
+    void tooManyBytes() throws Exception {
+        // 30자지만 90바이트입니다. 글자 수만 보면 통과하지만 BCrypt 는 72바이트까지만 받습니다.
+        String korean = "가".repeat(30);
+
+        mockMvc.perform(patch("/api/v1/users/me/password")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"currentPassword": "%s", "newPassword": "%s"}
+                                """.formatted(OLD_PASSWORD, korean)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("72바이트 안쪽의 한글 비밀번호는 정상 동작한다")
+    void koreanPasswordWithinLimit() throws Exception {
+        String korean = "가".repeat(20);   // 20자 / 60바이트
+
+        changePassword(accessToken, OLD_PASSWORD, korean);
+
+        expectLogin(korean, 200);
+    }
+
+    @Test
     @DisplayName("비밀번호가 없는 계정(게스트)은 409")
     void guestCannotChange() throws Exception {
         MvcResult guest = mockMvc.perform(post("/api/v1/auth/guest")).andReturn();

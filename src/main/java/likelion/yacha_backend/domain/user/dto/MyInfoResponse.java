@@ -10,8 +10,11 @@ public record MyInfoResponse(
         String email,
         boolean isGuest,
         /**
-         * 가입 경로. 프론트가 "비밀번호 변경" 메뉴를 보여줄지 판단하는 데 사용
-         * {@code LOCAL}이 아니면 비밀번호가 없는 계정이라 변경할 것도 없음
+         * 가입 경로
+         * 프론트가 "비밀번호 변경" 메뉴를 보여줄지 판단하는 데 사용
+         *
+         * 게스트도 LOCAL (User.createGuest가 LOCAL로 만듦)
+         * 그래서 비밀번호가 있는 계정은 provider == LOCAL && !isGuest인 경우뿐
          */
         Provider provider,
         StatsResponse stats
