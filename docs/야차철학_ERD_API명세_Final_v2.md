@@ -252,9 +252,8 @@ erDiagram
 | POST | `/sessions/invite/{code}/join` | 🔷 **초대 코드로 입장** (친구 방) | ✅ |
 | POST | `/sessions/{id}/ai` | 🔷 **AI 대결로 전환** — 방장만, `WAITING` 일 때만 | ✅ |
 | DELETE | `/sessions/{id}` | 대기 취소 — 방장만, `WAITING` 일 때만 | ✅ |
-| GET | `/sessions/{id}` | 세션 상세 | ✅ |
-| GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용) | ✅ |
-| GET | `/sessions/live?category=&page=` | 🟣 **관전 목록** — 진행 중(`IN_PROGRESS`)인 랜덤 방 (최근 시작 순) | ✅ |
+| GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용). 세션 상세(방 정보 · 참가자)도 여기서 준다. 승패 · 사용자 id 는 넣지 않는다 | ✅ |
+| GET | `/sessions/live?category=&page=` | 🟣 **관전 목록** — 진행 중(`IN_PROGRESS`)인 랜덤 사람전(`RANDOM` + `HUMAN`, 최근 시작 순). 친구 방 · 봇전은 나오지 않는다 | ✅ |
 | GET | `/sessions/me` | 전투 기록 — 🟣 주제 · 상대 · 날짜 · **승패**만 (대화 내용 없음) | ✅ (회원) |
 
 > 🔷 모든 세션 API 는 토큰이 필요하다. 비회원은 **`/auth/guest` 로 토큰을 받은 뒤** 호출한다.
@@ -270,7 +269,7 @@ erDiagram
 친구 방 응답에는 초대 코드와 만료 시각이 들어간다.
 
 ```json
-{ "sessionId": 31, "inviteCode": "k3Xp9aQ2", "expiresAt": "2026-10-31T12:10:00Z" }
+{ "sessionId": 31, "inviteCode": "k3Xp9aQ2", "expiresAt": "2026-10-31T12:10:00+09:00" }
 ```
 
 **제안 · 거절 응답**
@@ -381,7 +380,7 @@ flowchart TD
 
 | 목적지 | 허용 |
 | --- | --- |
-| `/topic/sessions/{id}` | 🟣 그 세션의 **참가자**, 또는 세션이 `IN_PROGRESS` 인 **랜덤 방**이면 누구나(관전). 친구 방 · 봇전 관전 허용은 결정 필요 (PART 5) |
+| `/topic/sessions/{id}` | 🟣 그 세션의 **참가자**, 또는 세션이 `IN_PROGRESS` 인 **랜덤 사람전**(`RANDOM` + `HUMAN`)이면 누구나(관전). **친구 방 · 봇전은 관전 없이 항상 비공개** — 봇전은 `room_type` 이 `RANDOM` 으로 남으므로 `mode` 로 구분한다 |
 | `/user/queue/**` | 본인 |
 | 그 외 | 거부 |
 
@@ -397,13 +396,16 @@ flowchart TD
 **이벤트 형식 (`/topic/sessions/{id}`)**
 
 ```json
-{ "type": "CHAT", "seqNo": 12, "senderId": 7, "phase": "CHAT_1", "content": "..." }
-{ "type": "PHASE_CHANGED", "phase": "REBUTTAL", "endsAt": "2026-10-31T12:04:30Z", "serverNow": "2026-10-31T12:04:00Z" }
-{ "type": "OPPONENT_DISCONNECTED", "graceEndsAt": "2026-10-31T12:05:00Z" }
+{ "type": "CHAT", "seqNo": 12, "senderId": 7, "phase": "CHAT_1", "content": "...", "receivedAt": "2026-10-31T12:02:10+09:00" }
+{ "type": "FINAL", "seqNo": 40, "senderId": 7, "phase": "FINAL", "content": "...", "receivedAt": "2026-10-31T12:07:40+09:00" }
+{ "type": "PHASE_CHANGED", "phase": "REBUTTAL", "endsAt": "2026-10-31T12:04:30+09:00", "serverNow": "2026-10-31T12:04:00+09:00" }
+{ "type": "OPPONENT_DISCONNECTED", "graceEndsAt": "2026-10-31T12:05:00+09:00" }
 { "type": "SESSION_FINISHED", "reason": "COMPLETED" }
 ```
 
 > 🟣 `senderId` 는 **참가자 id** 다 (사용자 id 가 아님). 관전자에게 사용자 id 를 노출하지 않는다.
+> 최종변론은 `type: "FINAL"` 로 같은 형식이다. `GET /sessions/{id}/messages` 도 같은 형식의 배열을 돌려준다.
+> 시각은 모두 **KST 에 `+09:00` 오프셋**을 붙여 보낸다 (서버 · DB · JVM 은 KST 로 통일).
 
 🟣 **에러 (`/user/queue/errors`, STOMP ERROR 프레임)**
 
@@ -419,7 +421,7 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 
 ```json
 { "type": "MATCHED", "sessionId": 31 }
-{ "type": "WAIT_PROMPT", "sessionId": 31, "waitedSeconds": 30, "expiresAt": "2026-10-31T12:05:00Z" }
+{ "type": "WAIT_PROMPT", "sessionId": 31, "waitedSeconds": 30, "expiresAt": "2026-10-31T12:05:00+09:00" }
 { "type": "WAIT_EXPIRED", "sessionId": 31 }
 { "type": "INVITE_EXPIRED", "sessionId": 31 }
 ```
@@ -756,6 +758,7 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 - [x] 🔷 **동시 승낙** — 먼저 성공한 쪽만 입장. 방을 미리 잡아 두지 않는다.
 - [x] 🔷 **카테고리 수** — 8개.
 - [x] 🟣 **관전** — 보기만 가능. 진행 중인 랜덤 방을 관전 목록으로 보여준다.
+- [x] 🟣 **친구 방 · 봇전 관전** — 허용하지 않는다. 관전 목록 · 구독 · 메시지 · 상태 조회 모두 참가자만. 관전은 랜덤 사람전만.
 - [x] 🟣 **채팅 저장** — DB · Redis 에 저장하지 않고 게임 동안 서버 메모리에만 둔다. 재시작 시 게임 무효(`ABORTED`).
 - [x] 🟣 **결과 기록** — DB 에는 승패만. 점수 · 철학자 판독은 결과 화면에만.
 - [x] 🟣 **공개 페이지** — 폐지.
@@ -764,7 +767,6 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 
 **미정 — 🟣 관전 · 비저장으로 새로 생긴 것**
 
-- [ ] **친구 방 · 봇전 관전** — 관전 목록과 구독을 허용할지. 지금은 랜덤 방(사람 대 사람)만 허용.
 - [ ] **결과 화면 보관 시간** — 점수 · 철학자 판독을 메모리에 얼마나 둘지 (제안 10분).
 - [ ] **신고 대안** — 내용을 저장하지 않으므로, 게임 중 신고 시점의 메시지만 첨부해 남길지, 금칙어 필터만 둘지.
 - [ ] **애드센스 · 유입 전략** — 공개 페이지를 대신할 방법.

@@ -60,6 +60,14 @@ oauth:
     client-secret: ${KAKAO_CLIENT_SECRET:}
     token-uri: https://kauth.kakao.com/oauth/token
 
+game:
+  # 토론 중 채팅 · 최종변론은 서버 메모리에만 둡니다 (명세 1-5)
+  # 아래 두 값은 명세 PART 5 에서 확정 전이라 설정으로 뺐습니다. 최종변론 100자는 코드(Game)에 있습니다.
+  # 채팅 한 건의 글자 수 상한 (이모지도 한 글자)
+  chat-max-length: 300
+  # 게임 하나에 쌓을 수 있는 메시지 수 (채팅 + 최종변론). 도배 제한이 정해지기 전까지 메모리 안전장치
+  max-messages: 500
+
 springdoc:
   # 운영에 API 목록이 공개되지 않도록 켜는 환경(local)에서만 true로 덮어씀
   api-docs:

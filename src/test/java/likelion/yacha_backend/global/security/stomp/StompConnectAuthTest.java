@@ -163,12 +163,23 @@ class StompConnectAuthTest {
     }
 
     @Test
-    @DisplayName("토론방(/topic/sessions/**) 구독은 참가자 검사가 붙기 전까지 FORBIDDEN 으로 거부한다")
-    void rejectsDebateTopicSubscription() throws Exception {
+    @DisplayName("없는 토론방(/topic/sessions/{id}) 구독은 FORBIDDEN 으로 거부한다")
+    void rejectsUnknownDebateTopicSubscription() throws Exception {
         ErrorCapturingHandler handler = new ErrorCapturingHandler();
         StompSession session = connect(bearer(jwtTokenProvider.createAccessToken(1L, Role.USER)), handler);
 
-        session.subscribe("/topic/sessions/1", new IgnoringFrameHandler());
+        session.subscribe("/topic/sessions/999999", new IgnoringFrameHandler());
+
+        assertThat(handler.errors.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isEqualTo("FORBIDDEN");
+    }
+
+    @Test
+    @DisplayName("맡는 곳이 없는 목적지(/topic/**) 구독은 FORBIDDEN 으로 거부한다")
+    void rejectsUnknownTopicSubscription() throws Exception {
+        ErrorCapturingHandler handler = new ErrorCapturingHandler();
+        StompSession session = connect(bearer(jwtTokenProvider.createAccessToken(1L, Role.USER)), handler);
+
+        session.subscribe("/topic/anything", new IgnoringFrameHandler());
 
         assertThat(handler.errors.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isEqualTo("FORBIDDEN");
     }
