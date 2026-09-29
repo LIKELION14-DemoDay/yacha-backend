@@ -84,13 +84,13 @@ public class User extends BaseTimeEntity {
     }
 
     /**
-     * 카카오 · 구글로 처음 로그인한 사용자.
+     * 카카오 · 구글로 처음 로그인한 사용자
      * 비밀번호가 없음. 게스트와 같은 구조라 로그인 쪽 코드는 그대로 동작
      * (비밀번호가 NULL이면 이메일 로그인이 실패)
      */
     public static User createSocial(Provider provider, String providerId, String email, String nickname) {
         if (provider == Provider.LOCAL) {
-            throw new IllegalArgumentException("소셜 계정의 provider 가 LOCAL 일 수 없습니다.");
+            throw new IllegalArgumentException("소셜 계정의 provider가 LOCAL일 수 없습니다.");
         }
         User user = new User();
         user.provider = provider;
@@ -110,6 +110,14 @@ public class User extends BaseTimeEntity {
         this.password = encodedPassword;
         this.nickname = nickname;
         this.isGuest = false;
+    }
+
+    /** 비밀번호 변경. 현재 비밀번호 확인과 규칙 검증은 서비스에서 끝낸 뒤 호출 */
+    public void changePassword(String encodedPassword) {
+        if (password == null) {
+            throw new IllegalStateException("비밀번호로 로그인하는 계정이 아닙니다. userId=" + id);
+        }
+        this.password = encodedPassword;
     }
 
     public void changeNickname(String nickname) {
