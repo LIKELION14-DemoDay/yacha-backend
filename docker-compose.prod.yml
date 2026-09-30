@@ -73,6 +73,8 @@ services:
       KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
 
+      LINER_API_KEY: ${LINER_API_KEY:-}
+
     ports:
       - "127.0.0.1:8080:8080"
 
