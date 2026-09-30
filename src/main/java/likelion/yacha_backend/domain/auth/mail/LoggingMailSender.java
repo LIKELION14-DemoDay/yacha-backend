@@ -13,8 +13,8 @@ import org.springframework.stereotype.Component;
  * local · test 프로필에서만 등록됨
  * 링크에 재설정 토큰이 그대로 들어 있어, 운영 로그에 남으면 로그를 볼 수 있는 사람이 남의 비밀번호를 바꿀 수 있음
  *
- * 운영(prod)에는 이 구현이 없으므로 실제 발송 구현({@code SesMailSender} 등)이 없으면 기동이 실패함
- * 메일 없이 조용히 배포되는 것보다 기동 단계에서 바로 드러나는 편이 안전함
+ * 단, 프로필을 지정하지 않으면 기본값(local)으로 떠서 이 구현이 등록됨
+ * 배포에서는 SPRING_PROFILES_ACTIVE 를 반드시 지정해야 함
  * 실제 발송 구현을 붙일 때 기동 로그에서 어떤 구현이 등록됐는지 확인해야 함
  */
 @Slf4j
