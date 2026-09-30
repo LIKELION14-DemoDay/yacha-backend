@@ -41,4 +41,8 @@ out/
 *.mv.db
 *.trace.db
 
+### Environment ###
 .env
+.env.*
+!.env.example
+

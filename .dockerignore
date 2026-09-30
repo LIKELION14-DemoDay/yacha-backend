@@ -6,3 +6,6 @@ build
 *.iml
 README.md
 HELP.md
+
+.env
+.env.*
