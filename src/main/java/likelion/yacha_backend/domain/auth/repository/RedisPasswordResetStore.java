@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.auth.repository;
 
+import java.time.Duration;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Repository;
  * 두 값 모두 TTL 로 알아서 사라지므로 정리 작업이 필요 없음
  *
  *   password-reset:{토큰}        → userId   (30분)
+ *   password-reset-user:{userId}  → 토큰     (30분)  사용자당 마지막 토큰
  *   password-reset-send:{이메일} → "1"      (1분)
  */
 @Repository
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Repository;
 public class RedisPasswordResetStore implements PasswordResetStore {
 
     private static final String TOKEN_PREFIX = "password-reset:";
+    private static final String USER_PREFIX = "password-reset-user:";
     private static final String SEND_PREFIX = "password-reset-send:";
 
     private final StringRedisTemplate redisTemplate;
@@ -26,8 +29,16 @@ public class RedisPasswordResetStore implements PasswordResetStore {
 
     @Override
     public void save(String token, Long userId) {
+        Duration ttl = properties.tokenTtl();
+        // SET ... GET — 새 토큰을 기록하면서 이전 토큰을 같은 동작으로 받아옴
+        // 이전 토큰을 지워 사용자당 하나만 유효하게 함
+        String previous = redisTemplate.opsForValue()
+                .setGet(USER_PREFIX + userId, token, ttl);
+        if (previous != null) {
+            redisTemplate.delete(TOKEN_PREFIX + previous);
+        }
         redisTemplate.opsForValue()
-                .set(TOKEN_PREFIX + token, String.valueOf(userId), properties.tokenTtl());
+                .set(TOKEN_PREFIX + token, String.valueOf(userId), ttl);
     }
 
     @Override

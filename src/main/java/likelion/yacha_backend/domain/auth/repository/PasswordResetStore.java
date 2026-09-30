@@ -15,7 +15,7 @@ import java.util.Optional;
  */
 public interface PasswordResetStore {
 
-    /** 토큰 → userId 로 저장하고, 설정한 유효시간이 지나면 사라짐 */
+    /** 토큰 → userId 로 저장. 같은 사용자의 이전 토큰은 무효가 됨(사용자당 하나). 유효시간이 지나면 사라짐 */
     void save(String token, Long userId);
 
     /**

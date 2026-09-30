@@ -56,4 +56,34 @@ class PasswordResetStoreTest {
         assertThat(store.tryAcquireSendSlot("b@example.com")).isTrue();
         assertThat(store.tryAcquireSendSlot("c@example.com")).isTrue();
     }
+
+    @Test
+    @DisplayName("같은 사용자에게 새 토큰을 발급하면 이전 토큰은 쓸 수 없다")
+    void newTokenInvalidatesPrevious() {
+        store.save("token-a", 101L);
+        store.save("token-b", 101L);
+
+        assertThat(store.consume("token-a")).isEmpty();
+        assertThat(store.consume("token-b")).contains(101L);
+    }
+
+    @Test
+    @DisplayName("새 토큰으로 재설정한 뒤에도 이전 토큰은 쓸 수 없다")
+    void previousTokenStaysInvalidAfterReset() {
+        store.save("token-c", 102L);
+        store.save("token-d", 102L);
+
+        assertThat(store.consume("token-d")).contains(102L);
+        assertThat(store.consume("token-c")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("다른 사용자의 토큰은 서로 무효화하지 않는다")
+    void tokensArePerUser() {
+        store.save("token-e", 103L);
+        store.save("token-f", 104L);
+
+        assertThat(store.consume("token-e")).contains(103L);
+        assertThat(store.consume("token-f")).contains(104L);
+    }
 }
