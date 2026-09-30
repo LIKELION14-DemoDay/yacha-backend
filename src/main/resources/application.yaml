@@ -70,3 +70,7 @@ springdoc:
 cors:
   # 배포 시 CORS_ALLOWED_ORIGINS로 덮어쓰세요!
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+
+liner:
+  base-url: https://platform.liner.com
+  api-key: ${LINER_API_KEY:}
