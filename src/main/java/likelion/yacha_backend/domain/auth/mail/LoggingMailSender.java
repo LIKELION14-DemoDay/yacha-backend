@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.auth.mail;
 
 import likelion.yacha_backend.domain.user.entity.Provider;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
@@ -9,15 +10,16 @@ import org.springframework.stereotype.Component;
  * 실제로 메일을 보내지 않고 로그에 남김
  *
  * 개발 중에는 로그에 찍힌 링크를 복사해 재설정 흐름을 끝까지 테스트할 수 있음
+ * local · test 프로필에서만 등록됨
+ * 링크에 재설정 토큰이 그대로 들어 있어, 운영 로그에 남으면 로그를 볼 수 있는 사람이 남의 비밀번호를 바꿀 수 있음
  *
- * {@code @ConditionalOnMissingBean}이라, 나중에 실제 발송 구현({@code SesMailSender} 등)을
- * 빈으로 등록하면 이 클래스는 자동으로 빠짐
- *
- * 배포에 이 구현이 올라가면 사용자는 메일을 받지 못함
+ * 운영(prod)에는 이 구현이 없으므로 실제 발송 구현({@code SesMailSender} 등)이 없으면 기동이 실패함
+ * 메일 없이 조용히 배포되는 것보다 기동 단계에서 바로 드러나는 편이 안전함
  * 실제 발송 구현을 붙일 때 기동 로그에서 어떤 구현이 등록됐는지 확인해야 함
  */
 @Slf4j
 @Component
+@Profile({"local", "test"})
 public class LoggingMailSender implements MailSender {
 
     @Override
