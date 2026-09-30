@@ -184,6 +184,22 @@ class PasswordResetApiTest {
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
     }
 
+    @Test
+    @DisplayName("이메일이 255자를 넘으면 400")
+    void rejectsTooLongEmail() throws Exception {
+        // @Email은 통과하는 형식이어야 길이 제한만 확인할 수 있음 (로컬 64자·라벨 63자 이하)
+        String label = "b".repeat(60);
+        String longEmail = "a".repeat(10) + "@" + String.join(".", label, label, label, label) + ".com";
+
+        mockMvc.perform(post("/api/v1/auth/password/reset-request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "%s"}
+                                """.formatted(longEmail)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
     // --- 재설정 -----------------------------------------------------
 
     @Test
