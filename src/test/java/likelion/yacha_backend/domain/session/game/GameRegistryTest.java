@@ -23,10 +23,10 @@ class GameRegistryTest {
     private GameProperties properties;
 
     @Test
-    @DisplayName("application.yaml 의 game.* 이 바인딩된다 (채팅 300자 · 메시지 500건)")
+    @DisplayName("application.yaml 의 game.* 이 바인딩된다 (채팅 300자 · 참가자당 채팅 500건)")
     void bindsProperties() {
         assertThat(properties.chatMaxLength()).isEqualTo(300);
-        assertThat(properties.maxMessages()).isEqualTo(500);
+        assertThat(properties.maxChatsPerParticipant()).isEqualTo(500);
     }
 
     @Test

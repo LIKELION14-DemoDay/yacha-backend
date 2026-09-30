@@ -18,7 +18,7 @@ public enum SessionErrorCode implements BaseErrorCode {
     CONTENT_TOO_LONG(HttpStatus.BAD_REQUEST, "글자 수를 초과했습니다."),
     FINAL_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "최종변론은 한 번만 제출할 수 있습니다."),
     /** 게임 하나에 쌓을 수 있는 메시지 수를 넘음. 도배 제한이 정해지기 전까지 메모리를 지키는 안전장치입니다. */
-    MESSAGE_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "이 토론에서 보낼 수 있는 메시지 수를 넘었습니다."),
+    MESSAGE_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "이 토론에서 보낼 수 있는 채팅 수를 넘었습니다."),
     ;
 
     private final HttpStatus status;

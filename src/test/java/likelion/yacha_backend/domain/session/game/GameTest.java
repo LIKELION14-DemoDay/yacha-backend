@@ -33,9 +33,9 @@ class GameTest {
     private static final LocalDateTime CHAT_1 = STARTED_AT.plusSeconds(60);
     private static final LocalDateTime FINAL = STARTED_AT.plusSeconds(450);
 
-    private static Game newGame(int chatMaxLength, int maxMessages) {
+    private static Game newGame(int chatMaxLength, int maxChatsPerParticipant) {
         return new Game(1L, STARTED_AT, Map.of(ALICE, ALICE_PARTICIPANT, BOB, BOB_PARTICIPANT),
-                chatMaxLength, maxMessages);
+                chatMaxLength, maxChatsPerParticipant);
     }
 
     private static Game newGame() {
@@ -214,16 +214,46 @@ class GameTest {
         }
     }
 
-    @Test
-    @DisplayName("메시지 수 상한에 닿으면 MESSAGE_LIMIT_EXCEEDED (최종변론 포함)")
-    void messageLimit() {
-        Game game = newGame(300, 2);
+    @Nested
+    @DisplayName("채팅 수 상한 (참가자별)")
+    class ChatLimit {
 
-        game.appendChat(ALICE, "1", CHAT_1);
-        game.appendChat(BOB, "2", CHAT_1);
+        @Test
+        @DisplayName("한 참가자가 상한에 닿으면 그 참가자만 MESSAGE_LIMIT_EXCEEDED")
+        void perParticipant() {
+            Game game = newGame(300, 2);
 
-        assertError(() -> game.appendChat(ALICE, "3", CHAT_1), SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
-        assertError(() -> game.submitFinal(ALICE, "결론", FINAL), SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
+            game.appendChat(ALICE, "1", CHAT_1);
+            game.appendChat(ALICE, "2", CHAT_1);
+
+            assertError(() -> game.appendChat(ALICE, "3", CHAT_1), SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
+            // 상대는 영향을 받지 않는다
+            game.appendChat(BOB, "반박", CHAT_1);
+            game.appendChat(BOB, "재반박", CHAT_1);
+            assertError(() -> game.appendChat(BOB, "또", CHAT_1), SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
+        }
+
+        @Test
+        @DisplayName("채팅 상한에 닿아도 최종변론은 낼 수 있다")
+        void finalNotCounted() {
+            Game game = newGame(300, 1);
+            game.appendChat(ALICE, "1", CHAT_1);
+            game.appendChat(BOB, "2", CHAT_1);
+
+            game.submitFinal(ALICE, "결론", FINAL);
+            game.submitFinal(BOB, "결론", FINAL);
+
+            assertThat(game.messagesAfter(0)).hasSize(4);
+        }
+
+        @Test
+        @DisplayName("거부된 채팅은 개수에 들어가지 않는다")
+        void rejectedNotCounted() {
+            Game game = newGame(3, 1);
+
+            assertError(() -> game.appendChat(ALICE, "너무 길다", CHAT_1), SessionErrorCode.CONTENT_TOO_LONG);
+            game.appendChat(ALICE, "짧다", CHAT_1);
+        }
     }
 
     @Test

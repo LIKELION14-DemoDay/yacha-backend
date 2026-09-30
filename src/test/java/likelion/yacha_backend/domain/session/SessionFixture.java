@@ -8,6 +8,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
+import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
@@ -139,6 +140,16 @@ public class SessionFixture {
                     DebateParticipant.initiator(session, host, Stance.AGREE, LocalDateTime.now(clock))).getId();
             return new Room(session.getId(), host.getId(), hostParticipant, null, null);
         });
+    }
+
+    /**
+     * 게임 종료 처리를 흉내 냅니다. 세션을 {@code FINISHED} 로 바꾸고 게임은 막기만 합니다.
+     * 정상 종료는 판정이 끝날 때까지 메시지가 메모리에 남아 있습니다.
+     */
+    public void finish(Room room) {
+        inTransaction(() -> sessionRepository.finishIfInProgress(
+                room.sessionId(), FinishReason.COMPLETED, LocalDateTime.now(clock)));
+        gameRegistry.find(room.sessionId()).orElseThrow().finish();
     }
 
     public void removeGame(Room room) {

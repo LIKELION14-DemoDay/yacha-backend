@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.session.game;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -47,20 +48,26 @@ public class Game {
     private final Map<Long, Long> participantIdByUserId;
 
     private final int chatMaxLength;
-    private final int maxMessages;
+
+    /**
+     * 참가자 한 명이 보낼 수 있는 채팅 수. 게임 전체로 세면 한쪽이 상한을 채웠을 때 상대가 채팅도,
+     * 최종변론도 못 보내므로 참가자별로 셉니다. 최종변론은 참가자당 1건이고 판정에 꼭 필요해 세지 않습니다.
+     */
+    private final int maxChatsPerParticipant;
 
     /** seqNo 오름차순. seqNo 는 1 부터 빈틈없이 매기므로 인덱스 = seqNo - 1 입니다. */
     private final List<GameMessage> messages = new ArrayList<>();
+    private final Map<Long, Integer> chatCountByParticipantId = new HashMap<>();
     private final Set<Long> finalSubmitted = new HashSet<>();
     private boolean finished;
 
     Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId,
-         int chatMaxLength, int maxMessages) {
+         int chatMaxLength, int maxChatsPerParticipant) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
         this.participantIdByUserId = Map.copyOf(participantIdByUserId);
         this.chatMaxLength = chatMaxLength;
-        this.maxMessages = maxMessages;
+        this.maxChatsPerParticipant = maxChatsPerParticipant;
     }
 
     /**
@@ -75,7 +82,13 @@ public class Game {
             throw new BusinessException(SessionErrorCode.INVALID_PHASE);
         }
         checkLength(content, chatMaxLength);
-        return append(participantId, MessageType.CHAT, phase, content, now);
+        int chatCount = chatCountByParticipantId.getOrDefault(participantId, 0);
+        if (chatCount >= maxChatsPerParticipant) {
+            throw new BusinessException(SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
+        }
+        GameMessage message = append(participantId, MessageType.CHAT, phase, content, now);
+        chatCountByParticipantId.put(participantId, chatCount + 1);
+        return message;
     }
 
     /**
@@ -113,7 +126,10 @@ public class Game {
         return participantIdByUserId.containsKey(userId);
     }
 
-    /** 이후 채팅 · 최종변론을 받지 않습니다. 이미 받은 메시지는 결과 화면 보관 동안 조회할 수 있습니다. */
+    /**
+     * 이후 채팅 · 최종변론을 받지 않습니다. 이미 받은 메시지는 판정 LLM 이 읽도록 남겨 둡니다.
+     * 사용자의 메시지 조회는 세션 상태로 막습니다 ({@code SessionQueryService#getMessages}).
+     */
     public synchronized void finish() {
         finished = true;
     }
@@ -151,9 +167,6 @@ public class Game {
 
     private GameMessage append(Long participantId, MessageType type, DebatePhase phase,
                                String content, LocalDateTime now) {
-        if (messages.size() >= maxMessages) {
-            throw new BusinessException(SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
-        }
         GameMessage message = new GameMessage(messages.size() + 1L, participantId, type, phase, content, now);
         messages.add(message);
         return message;

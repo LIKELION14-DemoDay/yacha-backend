@@ -37,10 +37,16 @@ public class SessionQueryService {
      * {@code seqNo > afterSeq} 인 메시지. 재접속 보충과 늦게 들어온 관전자용입니다.
      *
      * <p>채팅은 게임 메모리에만 있으므로 게임이 없으면(시작 전 · 정리됨 · 서버 재시작) 조회되지 않습니다.
+     *
+     * <p>게임이 끝난 뒤에도 판정 LLM 이 읽도록 메시지가 메모리에 남아 있습니다. 게임 존재 여부만 보면
+     * 종료된 토론의 채팅을 참가자가 다시 받아 갈 수 있으므로, 세션이 진행 중일 때만 돌려줍니다.
      */
     public List<GameMessageResponse> getMessages(Long sessionId, Long userId, long afterSeq) {
         DebateSession session = sessionAccessService.getSession(sessionId);
         sessionAccessService.checkViewer(session, userId);
+        if (!session.isInProgress()) {
+            throw new BusinessException(SessionErrorCode.SESSION_NOT_IN_PROGRESS);
+        }
 
         ZoneId zone = clock.getZone();
         return gameRegistry.find(sessionId)

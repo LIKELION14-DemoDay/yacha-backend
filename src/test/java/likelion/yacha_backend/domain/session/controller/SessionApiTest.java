@@ -232,6 +232,19 @@ class SessionApiTest {
         }
 
         @Test
+        @DisplayName("끝난 토론은 메시지가 메모리에 남아 있어도 참가자가 조회할 수 없다 (SESSION_NOT_IN_PROGRESS)")
+        void finished() throws Exception {
+            room = fixture.randomHuman(IN_CHAT_1);
+            gameRegistry.find(room.sessionId()).orElseThrow()
+                    .appendChat(room.hostUserId(), "주장", LocalDateTime.now());
+            fixture.finish(room);
+
+            getAs(room.hostUserId(), room.sessionId() + "/messages")
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error.code").value("SESSION_NOT_IN_PROGRESS"));
+        }
+
+        @Test
         @DisplayName("게임이 메모리에 없으면(시작 전 · 정리됨) SESSION_NOT_IN_PROGRESS")
         void noGame() throws Exception {
             room = fixture.waitingRandom();
