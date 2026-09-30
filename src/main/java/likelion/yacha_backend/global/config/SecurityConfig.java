@@ -1,5 +1,7 @@
 package likelion.yacha_backend.global.config;
 
+import likelion.yacha_backend.domain.auth.mail.MailProperties;
+import likelion.yacha_backend.domain.auth.repository.PasswordResetProperties;
 import likelion.yacha_backend.global.security.cookie.CookieProperties;
 import likelion.yacha_backend.global.security.jwt.JwtAccessDeniedHandler;
 import likelion.yacha_backend.global.security.jwt.JwtAuthenticationEntryPoint;
@@ -23,7 +25,8 @@ import org.springframework.web.cors.CorsConfigurationSource;
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
-@EnableConfigurationProperties({JwtProperties.class, CookieProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, CookieProperties.class, MailProperties.class,
+        PasswordResetProperties.class})
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -39,6 +42,8 @@ public class SecurityConfig {
             "/api/v1/auth/token/refresh",
             "/api/v1/auth/guest",
             "/api/v1/auth/social",
+            "/api/v1/auth/password/reset-request",
+            "/api/v1/auth/password/reset",
             "/api/v1/auth/social/kakao",
             // WebSocket 핸드셰이크. 브라우저는 핸드셰이크에 Authorization 헤더를 붙일 수 없어서
             // 여기서는 열어 두고, STOMP CONNECT 프레임의 JWT 로 인증합니다 (StompAuthChannelInterceptor).
