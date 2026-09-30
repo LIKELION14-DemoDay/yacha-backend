@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
  * 실제로 메일을 보내지 않고 로그에 남김
  *
  * 개발 중에는 로그에 찍힌 링크를 복사해 재설정 흐름을 끝까지 테스트할 수 있음
- * local · test 프로필에서만 등록됨
+ * local · test 프로필에서만 등록됨 (그 밖의 프로필은 NoOpMailSender)
  * 링크에 재설정 토큰이 그대로 들어 있어, 운영 로그에 남으면 로그를 볼 수 있는 사람이 남의 비밀번호를 바꿀 수 있음
  *
  * 단, 프로필을 지정하지 않으면 기본값(local)으로 떠서 이 구현이 등록됨
