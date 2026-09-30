@@ -28,3 +28,9 @@ management:
   endpoint:
     health:
       show-details: never
+
+springdoc:
+    api-docs:
+      enabled: true
+    swagger-ui:
+      enabled: true
