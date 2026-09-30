@@ -21,7 +21,7 @@ services:
       - yacha-mysql-data:/var/lib/mysql
 
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -53,9 +53,6 @@ services:
       redis:
         condition: service_healthy
 
-    env_file:
-      - .env
-
     environment:
       SPRING_PROFILES_ACTIVE: prod
 
@@ -68,6 +65,13 @@ services:
 
       TZ: Asia/Seoul
       JAVA_TOOL_OPTIONS: -Duser.timezone=Asia/Seoul
+
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
 
     ports:
       - "127.0.0.1:8080:8080"

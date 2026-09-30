@@ -6,6 +6,8 @@ spring:
 
   jpa:
     hibernate:
+      # 데모 기간에는 별도 마이그레이션 도구 없이 스키마 변경을 반영하기 위해 update 사용
+      # 운영 안정화 이후에는 validate 또는 none으로 전환 예정
       ddl-auto: update
     properties:
       hibernate:
