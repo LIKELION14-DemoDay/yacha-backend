@@ -30,15 +30,18 @@ public class RedisPasswordResetStore implements PasswordResetStore {
     @Override
     public void save(String token, Long userId) {
         Duration ttl = properties.tokenTtl();
-        // SET ... GET — 새 토큰을 기록하면서 이전 토큰을 같은 동작으로 받아옴
+        // 새 토큰을 먼저 기록한 뒤 포인터를 바꿈
+        // 순서가 반대면, 동시에 발급될 때 상대가 지우려 한 뒤에 기록돼 두 토큰이 함께 남을 수 있음
+        redisTemplate.opsForValue()
+                .set(TOKEN_PREFIX + token, String.valueOf(userId), ttl);
+
+        // SET ... GET — 포인터를 새 토큰으로 바꾸면서 이전 토큰을 같은 동작으로 받아옴
         // 이전 토큰을 지워 사용자당 하나만 유효하게 함
         String previous = redisTemplate.opsForValue()
                 .setGet(USER_PREFIX + userId, token, ttl);
         if (previous != null) {
             redisTemplate.delete(TOKEN_PREFIX + previous);
         }
-        redisTemplate.opsForValue()
-                .set(TOKEN_PREFIX + token, String.valueOf(userId), ttl);
     }
 
     @Override

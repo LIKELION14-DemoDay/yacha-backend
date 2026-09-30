@@ -25,12 +25,12 @@ public class InMemoryPasswordResetStore implements PasswordResetStore {
 
     @Override
     public void save(String token, Long userId) {
-        // Redis 구현과 같게, 이전 토큰을 지워 사용자당 하나만 유효하게 함
+        // Redis 구현과 같은 순서 — 새 토큰을 먼저 넣고, 이전 토큰을 지워 사용자당 하나만 유효하게 함
+        tokens.put(token, new Entry(userId, Instant.now().plus(properties.tokenTtl())));
         String previous = latestByUser.put(userId, token);
         if (previous != null) {
             tokens.remove(previous);
         }
-        tokens.put(token, new Entry(userId, Instant.now().plus(properties.tokenTtl())));
     }
 
     @Override
