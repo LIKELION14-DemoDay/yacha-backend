@@ -12,6 +12,16 @@ public enum LinerErrorCode implements BaseErrorCode {
             "LINER API 설정이 완료되지 않았습니다."
     ),
 
+    LINER_INVALID_REQUEST(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "LINER API 요청 형식이 올바르지 않습니다."
+    ),
+
+    LINER_REQUEST_REJECTED(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "LINER API 요청이 거부되었습니다."
+    ),
+
     LINER_CREDIT_EXHAUSTED(
             HttpStatus.BAD_GATEWAY,
             "LINER API 크레딧이 부족합니다."

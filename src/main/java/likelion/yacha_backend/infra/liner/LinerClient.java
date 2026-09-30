@@ -86,6 +86,20 @@ public class LinerClient {
 
         } catch (HttpClientErrorException e) {
 
+            if (e.getStatusCode() == HttpStatus.BAD_REQUEST) {
+                throw new BusinessException(
+                        LinerErrorCode.LINER_INVALID_REQUEST,
+                        e
+                );
+            }
+
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new BusinessException(
+                        LinerErrorCode.LINER_NOT_CONFIGURED,
+                        e
+                );
+            }
+
             if (e.getStatusCode() == HttpStatus.PAYMENT_REQUIRED) {
                 throw new BusinessException(
                         LinerErrorCode.LINER_CREDIT_EXHAUSTED,
@@ -108,7 +122,7 @@ public class LinerClient {
             );
 
             throw new BusinessException(
-                    LinerErrorCode.LINER_PROVIDER_ERROR,
+                    LinerErrorCode.LINER_REQUEST_REJECTED,
                     e
             );
 

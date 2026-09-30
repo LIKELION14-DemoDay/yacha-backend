@@ -229,4 +229,48 @@ class LinerClientTest {
 
         server.verify();
     }
+
+    @Test
+    @DisplayName("LINER 요청 형식이 잘못되면 LINER_INVALID_REQUEST")
+    void badRequest() {
+        LinerClient client = client();
+
+        server.expect(
+                        requestTo(BASE_URL + "/api/v1/tools/search/web")
+                )
+                .andRespond(
+                        withStatus(HttpStatus.BAD_REQUEST)
+                );
+
+        assertThatThrownBy(
+                () -> client.searchWeb("테스트", 3)
+        )
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(LinerErrorCode.LINER_INVALID_REQUEST);
+
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("LINER API Key가 유효하지 않으면 LINER_NOT_CONFIGURED")
+    void unauthorized() {
+        LinerClient client = client();
+
+        server.expect(
+                        requestTo(BASE_URL + "/api/v1/tools/search/web")
+                )
+                .andRespond(
+                        withStatus(HttpStatus.UNAUTHORIZED)
+                );
+
+        assertThatThrownBy(
+                () -> client.searchWeb("테스트", 3)
+        )
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(LinerErrorCode.LINER_NOT_CONFIGURED);
+
+        server.verify();
+    }
 }
