@@ -14,12 +14,14 @@ import org.springframework.validation.annotation.Validated;
  * 토론이 시작된 뒤에야 모든 채팅이 거부되므로, {@code @Positive} 로 검증해 기동 단계에서 실패시킵니다.
  *
  * @param chatMaxLength          채팅 한 건의 글자 수 상한
- * @param maxChatsPerParticipant 참가자 한 명이 한 게임에서 보낼 수 있는 채팅 수 (최종변론 제외)
+ * @param maxChatsPerParticipant 참가자 한 명이 한 게임에서 보낼 수 있는 채팅 수 (최종변론 · 주장 제외)
+ * @param memoMaxLength          {@code PREP} · {@code REBUTTAL} 에 작성하는 주장 한 건의 글자 수 상한
  */
 @Validated
 @ConfigurationProperties(prefix = "game")
 public record GameProperties(
         @Positive int chatMaxLength,
-        @Positive int maxChatsPerParticipant
+        @Positive int maxChatsPerParticipant,
+        @Positive int memoMaxLength
 ) {
 }

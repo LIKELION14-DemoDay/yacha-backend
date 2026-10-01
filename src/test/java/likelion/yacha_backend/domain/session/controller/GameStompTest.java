@@ -3,6 +3,7 @@ package likelion.yacha_backend.domain.session.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Type;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
+import likelion.yacha_backend.domain.session.game.Game;
+import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
 import likelion.yacha_backend.global.security.jwt.Role;
 import org.junit.jupiter.api.AfterEach;
@@ -37,7 +40,7 @@ import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(SessionFixture.class)
-@DisplayName("토론방 STOMP — 채팅 · 최종변론 · 관전 구독")
+@DisplayName("토론방 STOMP — 채팅 · 주장 공개 · 최종변론 · 관전 구독")
 class GameStompTest {
 
     private static final long TIMEOUT_SECONDS = 5;
@@ -46,7 +49,7 @@ class GameStompTest {
 
     private static final long IN_PREP = 10;
     private static final long IN_CHAT_1 = 90;
-    private static final long IN_FINAL = 460;
+    private static final long IN_FINAL = 340;
 
     @Value("${local.server.port}")
     private int port;
@@ -59,6 +62,9 @@ class GameStompTest {
 
     @Autowired
     private SessionFixture fixture;
+
+    @Autowired
+    private GameRegistry gameRegistry;
 
     private WebSocketStompClient stompClient;
     private ThreadPoolTaskScheduler clientScheduler;
@@ -114,6 +120,38 @@ class GameStompTest {
                 assertThat(event).doesNotContainKey("userId");
             }
             assertThat(spectator.errorFrame).isNotDone();
+        }
+
+        @Test
+        @DisplayName("구간 첫 채팅 전에 양쪽 PREP 주장이 ARGUMENT 로 공개돼 참가자 · 관전자 모두 seqNo 순서대로 받는다")
+        void revealsArgumentsBeforeFirstChat() throws Exception {
+            Room room = track(fixture.randomHuman(IN_CHAT_1));
+            Game game = gameRegistry.find(room.sessionId()).orElseThrow();
+            LocalDateTime inPrep = game.getStartedAt().plusSeconds(IN_PREP);
+            game.saveMemo(room.hostUserId(), "방장 주장", inPrep);
+            game.saveMemo(room.opponentUserId(), "상대 주장", inPrep);
+            Client host = connect(room.hostUserId());
+            Client opponent = connect(room.opponentUserId());
+            Client spectator = connect(fixture.newUser());
+            BlockingQueue<Map<String, Object>> toHost = host.subscribeTopic(room.sessionId());
+            BlockingQueue<Map<String, Object>> toSpectator = spectator.subscribeTopic(room.sessionId());
+
+            opponent.send("/app/sessions/" + room.sessionId() + "/chat", Map.of("content", "첫 채팅"));
+
+            for (BlockingQueue<Map<String, Object>> inbox : List.of(toHost, toSpectator)) {
+                long timeout = TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS);
+                Map<String, Object> first = next(inbox, timeout);
+                Map<String, Object> second = next(inbox, timeout);
+                Map<String, Object> third = next(inbox, timeout);
+                assertThat(first).containsEntry("type", "ARGUMENT").containsEntry("phase", "CHAT_1")
+                        .containsEntry("content", "방장 주장");
+                assertThat(((Number) first.get("senderId")).longValue()).isEqualTo(room.hostParticipantId());
+                assertThat(second).containsEntry("type", "ARGUMENT").containsEntry("content", "상대 주장");
+                assertThat(third).containsEntry("type", "CHAT").containsEntry("content", "첫 채팅");
+                assertThat(List.of(first, second, third))
+                        .extracting(event -> ((Number) event.get("seqNo")).longValue())
+                        .containsExactly(1L, 2L, 3L);
+            }
         }
 
         @Test

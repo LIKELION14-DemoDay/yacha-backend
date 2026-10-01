@@ -23,6 +23,11 @@
 > - DB 에 남는 게임 기록은 **참가자별 승패(WIN / LOSE / DRAW)뿐**이다. 점수 · 철학자 판독은 결과 화면에만 보여준다 (2-6).
 > - **공개 페이지는 폐지**한다 (2-7).
 > - 이번에 바뀐 부분은 🟣 로 표시했다.
+>
+> 🟢 **시간표 · 주장 작성 개정 (10/1)**
+> - 토론 시간표를 **8분 → 6분**으로 줄였다. `PREP` 60 · `CHAT_1` 90 · `REBUTTAL` 120 · `CHAT_2` 60 · `FINAL` 30초 (2-11).
+> - `PREP` · `REBUTTAL` 은 채팅 대신 **주장을 작성**하는 구간이다. 작성 중에는 본인만 보고, 다음 채팅 구간이 시작되면 양쪽 주장을 **`ARGUMENT` 메시지로 공개**한다 (2-4).
+> - 이번에 바뀐 부분은 🟢 로 표시했다.
 
 ---
 
@@ -157,7 +162,8 @@ erDiagram
 
 | 데이터 | 내용 | 생기는 시점 | 버리는 시점 |
 | --- | --- | --- | --- |
-| 채팅 메시지 | `seqNo`, 보낸 참가자, 구간, 내용, 수신 시각 | 채팅 · 최종변론 수신 | 판정 완료 (`FORFEIT` · `ABORTED` 는 종료 즉시) |
+| 채팅 메시지 | `seqNo`, 보낸 참가자, 구간, 내용, 수신 시각 | 채팅 · 최종변론 수신, 🟢 주장 공개 | 판정 완료 (`FORFEIT` · `ABORTED` 는 종료 즉시) |
+| 🟢 작성 중 주장 | 참가자별 · 작성 구간(`PREP` · `REBUTTAL`)별 1건, 내용, 저장 시각. 공개 전에는 본인만 | 주장 저장 | 게임 종료 (공개된 내용은 채팅 메시지로 남음) |
 | 근거 | 참가자별 3건 (`title`, `url`, `snippet`, `sourceType`) | 매칭 성사 직후 | 게임 종료 |
 | 상대 요약 | 참가자별 `PENDING` / `READY` / `FAILED` + 내용 | `CHAT_1` 종료 | 게임 종료 |
 | 판정 상세 | 5항목 점수 · 총점 · 철학자 판독 · `matched_sentence` | 판정 완료 | **결과 화면 보관 시간** 경과 (제안 10분, 결정 필요) |
@@ -365,6 +371,8 @@ flowchart TD
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
 | GET | `/sessions/{id}/messages?afterSeq=N` | 메시지 조회 — 재접속 · 누락 보충 · 🟣 늦게 들어온 관전자 (`seqNo > N`, 오름차순). 🟣 **게임 중에만** 조회된다 (메모리) | ✅ |
+| PUT | `/sessions/{id}/memo` | 🟢 **내 주장 저장** — `PREP` · `REBUTTAL` 구간, 구간당 1건 덮어쓰기, **300자**. 비우려면 빈 문자열. 참가자만 | ✅ |
+| GET | `/sessions/{id}/memo` | 🟢 **내 작성 중 주장** (작성 구간 순). 새로고침 복구용. 참가자만, 게임 중에만 | ✅ |
 
 **WebSocket (STOMP)**
 
@@ -372,7 +380,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | SEND | `/app/sessions/{id}/chat` | 참가자 | 채팅 전송 — `CHAT_1`, `CHAT_2` 구간에서만 |
 | SEND | `/app/sessions/{id}/final` | 참가자 | 최종변론 제출 — `FINAL` 구간, **1인 1회, 100자 이내** |
-| SUBSCRIBE | `/topic/sessions/{id}` | 참가자 · 🟣 관전자 | 채팅 · 구간 · 종료 이벤트 |
+| SUBSCRIBE | `/topic/sessions/{id}` | 참가자 · 🟣 관전자 | 채팅 · 🟢 공개된 주장 · 구간 · 종료 이벤트 |
 | SUBSCRIBE | `/user/queue/match` | 본인 | 🔷 방장 알림 — 매칭 성사 · 30초 팝업 · 5분 상한 · 초대 만료 |
 | SUBSCRIBE | `/user/queue/errors` | 본인 | 🟣 SEND 처리 중 난 에러 (아래 형식) |
 
@@ -393,18 +401,27 @@ flowchart TD
 - 🟣 **메모리 기록 → 브로드캐스트** 순서. 브로드캐스트한 메시지는 반드시 게임 객체에 있다 (재접속 보충이 빠지지 않도록)
 - 채팅 1건의 글자 수 상한과 도배 제한은 결정 필요 (PART 5)
 
+🟢 **주장 작성 · 공개**
+
+- `PREP` · `REBUTTAL` 에는 상대에게 보내지 않고 **주장을 작성**한다 (`PUT /sessions/{id}/memo`). 작성 중에는 **본인만** 본다. 상대 · 관전자는 볼 수 없고, 관전자 화면은 프론트가 구간만 보고 "주장 작성 중" 을 띄운다
+- 다음 채팅 구간이 시작되면 양쪽 주장을 **`ARGUMENT` 메시지로 공개**한다: `PREP` 주장 → `CHAT_1` 시작(60초), `REBUTTAL` 주장 → `CHAT_2` 시작(270초)
+- `ARGUMENT` 는 채팅과 같은 형식이고 `seqNo` 를 받는다. `phase` 는 공개된 채팅 구간이다. 빈 주장은 공개하지 않고, 참가자별 채팅 수 상한에 세지 않는다
+- 공개는 구간마다 한 번이다. 구간 스케줄러가 채팅 구간 시작 때 공개하고, 그보다 **첫 채팅 · 최종변론이 먼저 와도 공개를 먼저 한다** → 주장이 항상 앞 `seqNo`
+- 공개된 주장은 대화 기록이라 `/messages` 와 판정 입력에 들어간다
+
 **이벤트 형식 (`/topic/sessions/{id}`)**
 
 ```json
+{ "type": "ARGUMENT", "seqNo": 1, "senderId": 7, "phase": "CHAT_1", "content": "...", "receivedAt": "2026-10-31T12:01:00+09:00" }
 { "type": "CHAT", "seqNo": 12, "senderId": 7, "phase": "CHAT_1", "content": "...", "receivedAt": "2026-10-31T12:02:10+09:00" }
-{ "type": "FINAL", "seqNo": 40, "senderId": 7, "phase": "FINAL", "content": "...", "receivedAt": "2026-10-31T12:07:40+09:00" }
-{ "type": "PHASE_CHANGED", "phase": "REBUTTAL", "endsAt": "2026-10-31T12:04:30+09:00", "serverNow": "2026-10-31T12:04:00+09:00" }
+{ "type": "FINAL", "seqNo": 40, "senderId": 7, "phase": "FINAL", "content": "...", "receivedAt": "2026-10-31T12:05:40+09:00" }
+{ "type": "PHASE_CHANGED", "phase": "REBUTTAL", "endsAt": "2026-10-31T12:04:30+09:00", "serverNow": "2026-10-31T12:02:30+09:00" }
 { "type": "OPPONENT_DISCONNECTED", "graceEndsAt": "2026-10-31T12:05:00+09:00" }
 { "type": "SESSION_FINISHED", "reason": "COMPLETED" }
 ```
 
 > 🟣 `senderId` 는 **참가자 id** 다 (사용자 id 가 아님). 관전자에게 사용자 id 를 노출하지 않는다.
-> 최종변론은 `type: "FINAL"` 로 같은 형식이다. `GET /sessions/{id}/messages` 도 같은 형식의 배열을 돌려준다.
+> 최종변론은 `type: "FINAL"`, 🟢 공개된 주장은 `type: "ARGUMENT"` 로 같은 형식이다. `GET /sessions/{id}/messages` 도 같은 형식의 배열을 돌려준다.
 > 시각은 모두 **KST 에 `+09:00` 오프셋**을 붙여 보낸다 (서버 · DB · JVM 은 KST 로 통일).
 
 🟣 **에러 (`/user/queue/errors`, STOMP ERROR 프레임)**
@@ -455,7 +472,7 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 | GET | `/sessions/{id}/summary` | 상대 발언 요약 — `PENDING` / `READY` / `FAILED` | ✅ |
 
 - `CHAT_1` 이 끝나는 시점에 서버가 각 참가자의 발언을 요약해 **상대에게** 보여준다.
-- `REBUTTAL` 30초 안에 나와야 한다. 실패하면 `FAILED` 로 두고, 프론트는 `/messages` 로 상대의 마지막 발언 몇 건을 원문 그대로 보여준다.
+- 🟢 `REBUTTAL` 120초 안에 나와야 한다. 실패하면 `FAILED` 로 두고, 프론트는 `/messages` 로 상대의 마지막 발언 몇 건을 원문 그대로 보여준다.
 - 🟣 요약도 **메모리에만** 두고 게임이 끝나면 버린다. **참가자만** 조회한다.
 
 ---
@@ -527,10 +544,10 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 | 호출 | 시도당 타임아웃 | 최대 시도 | 최종 실패 시 |
 | --- | --- | --- | --- |
 | 근거 3건 (PREP 60초 안) | 10초 | 3 | 근거 없이 진행 |
-| 상대 요약 (REBUTTAL 30초 안) | 10초 | 2 | 상대 발언 원문 표시 (`FAILED`) |
+| 상대 요약 (🟢 REBUTTAL 120초 안) | 10초 | 3 | 상대 발언 원문 표시 (`FAILED`) |
 | 판정 | 10초 | 3 | `FAILED`, 재요청 허용 |
 
-> 시도 횟수는 **구간의 남은 시간**이 정한다. 요약은 10초씩 3번이면 30초 구간을 넘기므로 2번이 한계다.
+> 시도 횟수는 **구간의 남은 시간**이 정한다. 🟢 `REBUTTAL` 이 120초로 늘어 요약도 3번까지 시도할 수 있다 (이전 30초 구간에서는 2번이 한계였다).
 
 **에러 코드**
 
@@ -613,7 +630,9 @@ GET  /sessions/{id}/result                (종료 후)
 WS   SUBSCRIBE /topic/sessions/{id}
 GET  /sessions/{id}/state                 (현재 구간 · 남은 시간)
 GET  /sessions/{id}/evidence              (PREP: 내 근거 3건, 폴링)
-WS   SEND /app/sessions/{id}/chat         (CHAT_1, CHAT_2)
+PUT  /sessions/{id}/memo                  (PREP, REBUTTAL: 내 주장 저장, 🟢)
+GET  /sessions/{id}/memo                  (새로고침 시 내 작성 중 주장, 🟢)
+WS   SEND /app/sessions/{id}/chat         (CHAT_1, CHAT_2 — 시작 시 양쪽 주장이 ARGUMENT 로 공개)
 GET  /sessions/{id}/summary               (REBUTTAL: 상대 요약, 폴링)
 WS   SEND /app/sessions/{id}/final        (FINAL: 100자, 1회)
 GET  /sessions/{id}/result                (폴링)
@@ -624,16 +643,18 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 
 ## 2-11. 토론 진행 시간표 (🔶 신규)
 
-| 구간 | 길이 | 누적 | 채팅 | 서버 동작 |
-| --- | --- | --- | --- | --- |
-| `PREP` | 60초 | 0~60 | ✕ | 주제 표시. 매칭 직후 양쪽 근거 3건 생성 |
-| `CHAT_1` (ARGUMENT) | 180초 | 60~240 | ○ | 실시간 채팅으로 주장 |
-| `REBUTTAL` | 30초 | 240~270 | ✕ | `CHAT_1` 종료 시 상대 요약 생성. 반박 질문은 프론트 메모 |
-| `CHAT_2` (REBUTTAL) | 180초 | 270~450 | ○ | 실시간 채팅으로 반박 |
-| `FINAL` | 30초 | 450~480 | ✕ | 채팅 정지. **참가자당 100자 이내 1건**만 제출 |
-| `JUDGING` | — | 480~ | — | 판정 (FORFEIT 이면 생략) |
+🟢 10/1 개정. 이전 시간표는 `PREP` 60 · `CHAT_1` 180 · `REBUTTAL` 30 · `CHAT_2` 180 · `FINAL` 30초(8분)였다.
 
-전체 토론은 **8분** + 판정 시간이다.
+| 구간 | 길이 | 누적 | 참가자 | 서버 동작 |
+| --- | --- | --- | --- | --- |
+| `PREP` | 60초 | 0~60 | 🟢 **주장 작성** (본인만) | 주제 표시. 매칭 직후 양쪽 근거 3건 생성 |
+| `CHAT_1` | 90초 | 60~150 | 채팅 | 🟢 시작 시 `PREP` 주장을 `ARGUMENT` 로 공개 |
+| `REBUTTAL` | 120초 | 150~270 | 🟢 **반박 작성** (본인만) | `CHAT_1` 종료 시 상대 요약 생성 |
+| `CHAT_2` | 60초 | 270~330 | 채팅 | 🟢 시작 시 `REBUTTAL` 주장을 `ARGUMENT` 로 공개 |
+| `FINAL` | 30초 | 330~360 | 최종변론 | 채팅 정지. **참가자당 100자 이내 1건**만 제출 |
+| `JUDGING` | — | 360~ | — | 판정 (FORFEIT 이면 생략) |
+
+전체 토론은 🟢 **6분** + 판정 시간이다. 작성 구간의 관전자 화면은 프론트가 "주장 작성 중" 을 띄운다.
 
 **서버 규칙**
 

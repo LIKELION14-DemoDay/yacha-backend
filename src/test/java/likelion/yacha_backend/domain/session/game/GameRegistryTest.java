@@ -25,10 +25,11 @@ class GameRegistryTest {
     private GameProperties properties;
 
     @Test
-    @DisplayName("application.yaml 의 game.* 이 바인딩된다 (채팅 300자 · 참가자당 채팅 500건)")
+    @DisplayName("application.yaml 의 game.* 이 바인딩된다 (채팅 300자 · 참가자당 채팅 500건 · 주장 300자)")
     void bindsProperties() {
         assertThat(properties.chatMaxLength()).isEqualTo(300);
         assertThat(properties.maxChatsPerParticipant()).isEqualTo(500);
+        assertThat(properties.memoMaxLength()).isEqualTo(300);
     }
 
     @Test
@@ -82,7 +83,7 @@ class GameRegistryTest {
         assertThat(held.isFinished()).isTrue();
         assertThatThrownBy(() -> held.appendChat(1L, "지운 뒤 채팅", STARTED_AT.plusSeconds(60)))
                 .hasMessage("이미 종료되었거나 진행 중이 아닌 토론입니다.");
-        assertThatThrownBy(() -> held.submitFinal(1L, "지운 뒤 최종변론", STARTED_AT.plusSeconds(450)))
+        assertThatThrownBy(() -> held.submitFinal(1L, "지운 뒤 최종변론", STARTED_AT.plusSeconds(330)))
                 .hasMessage("이미 종료되었거나 진행 중이 아닌 토론입니다.");
         assertThat(held.messagesAfter(0)).isEmpty();
     }

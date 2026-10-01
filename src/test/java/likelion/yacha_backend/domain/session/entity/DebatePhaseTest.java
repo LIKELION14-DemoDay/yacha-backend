@@ -18,14 +18,14 @@ class DebatePhaseTest {
     @CsvSource({
             "0,      PREP,     60",
             "59999,  PREP,     60",
-            "60000,  CHAT_1,   240",
-            "239999, CHAT_1,   240",
-            "240000, REBUTTAL, 270",
+            "60000,  CHAT_1,   150",
+            "149999, CHAT_1,   150",
+            "150000, REBUTTAL, 270",
             "269999, REBUTTAL, 270",
-            "270000, CHAT_2,   450",
-            "449999, CHAT_2,   450",
-            "450000, FINAL,    480",
-            "479999, FINAL,    480",
+            "270000, CHAT_2,   330",
+            "329999, CHAT_2,   330",
+            "330000, FINAL,    360",
+            "359999, FINAL,    360",
     })
     @DisplayName("구간은 시작 시각을 포함하고 끝 시각은 포함하지 않는다")
     void phaseBoundaries(long elapsedMillis, DebatePhase expected, long endsAtSeconds) {
@@ -36,8 +36,8 @@ class DebatePhaseTest {
     }
 
     @ParameterizedTest(name = "시작 후 {0}초 → JUDGING")
-    @CsvSource({"480", "481", "3600"})
-    @DisplayName("480초부터는 끝이 없는 JUDGING 이다")
+    @CsvSource({"360", "361", "3600"})
+    @DisplayName("360초(6분)부터는 끝이 없는 JUDGING 이다")
     void judgingHasNoEnd(long elapsedSeconds) {
         PhaseState state = DebatePhase.at(STARTED_AT, STARTED_AT.plusSeconds(elapsedSeconds));
 
@@ -55,14 +55,27 @@ class DebatePhaseTest {
     }
 
     @Test
-    @DisplayName("채팅은 CHAT_1 · CHAT_2, 최종변론은 FINAL 에서만 허용된다")
+    @DisplayName("주장 작성은 PREP · REBUTTAL, 채팅은 CHAT_1 · CHAT_2, 최종변론은 FINAL 에서만 허용된다")
     void allowedActions() {
+        assertThat(DebatePhase.values())
+                .filteredOn(DebatePhase::isMemoAllowed)
+                .containsExactly(DebatePhase.PREP, DebatePhase.REBUTTAL);
         assertThat(DebatePhase.values())
                 .filteredOn(DebatePhase::isChatAllowed)
                 .containsExactly(DebatePhase.CHAT_1, DebatePhase.CHAT_2);
         assertThat(DebatePhase.values())
                 .filteredOn(DebatePhase::isFinalAllowed)
                 .containsExactly(DebatePhase.FINAL);
+    }
+
+    @Test
+    @DisplayName("CHAT_1 은 PREP 주장을, CHAT_2 는 REBUTTAL 주장을 시작할 때 공개하고 나머지는 공개할 주장이 없다")
+    void argumentPhase() {
+        assertThat(DebatePhase.CHAT_1.argumentPhase()).isEqualTo(DebatePhase.PREP);
+        assertThat(DebatePhase.CHAT_2.argumentPhase()).isEqualTo(DebatePhase.REBUTTAL);
+        assertThat(DebatePhase.values())
+                .filteredOn(phase -> phase.argumentPhase() != null)
+                .containsExactly(DebatePhase.CHAT_1, DebatePhase.CHAT_2);
     }
 
     @Test

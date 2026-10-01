@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.session.controller;
 
 import static org.hamcrest.Matchers.endsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,6 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,9 +31,11 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 @Import(SessionFixture.class)
-@DisplayName("토론방 조회 — 현재 상태 · 메시지")
+@DisplayName("토론방 조회 — 현재 상태 · 메시지 · 내 주장")
 class SessionApiTest {
 
+    /** 시작 후 10초 = PREP (주장 작성) */
+    private static final long IN_PREP = 10;
     /** 시작 후 90초 = CHAT_1 */
     private static final long IN_CHAT_1 = 90;
 
@@ -57,6 +61,14 @@ class SessionApiTest {
     private ResultActions getAs(Long userId, String path) throws Exception {
         return mockMvc.perform(get("/api/v1/sessions/" + path)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtTokenProvider.createAccessToken(userId, Role.USER)));
+    }
+
+    private ResultActions putMemoAs(Long userId, Long sessionId, String content) throws Exception {
+        String body = content == null ? "{}" : "{\"content\":\"" + content + "\"}";
+        return mockMvc.perform(put("/api/v1/sessions/" + sessionId + "/memo")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtTokenProvider.createAccessToken(userId, Role.USER))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
     }
 
     @Nested
@@ -250,6 +262,94 @@ class SessionApiTest {
             room = fixture.waitingRandom();
 
             getAs(room.hostUserId(), room.sessionId() + "/messages")
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error.code").value("SESSION_NOT_IN_PROGRESS"));
+        }
+    }
+
+    @Nested
+    @DisplayName("PUT · GET /sessions/{id}/memo")
+    class Memo {
+
+        @Test
+        @DisplayName("PREP 에 저장한 주장을 덮어쓰고, 본인은 조회할 수 있다 (+09:00)")
+        void saveAndRead() throws Exception {
+            room = fixture.randomHuman(IN_PREP);
+
+            putMemoAs(room.hostUserId(), room.sessionId(), "초안").andExpect(status().isOk());
+            putMemoAs(room.hostUserId(), room.sessionId(), "고친 주장")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.phase").value("PREP"))
+                    .andExpect(jsonPath("$.data.content").value("고친 주장"))
+                    .andExpect(jsonPath("$.data.updatedAt", endsWith("+09:00")));
+
+            getAs(room.hostUserId(), room.sessionId() + "/memo")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.length()").value(1))
+                    .andExpect(jsonPath("$.data[0].phase").value("PREP"))
+                    .andExpect(jsonPath("$.data[0].content").value("고친 주장"));
+        }
+
+        @Test
+        @DisplayName("상대는 내 작성 중 주장을 볼 수 없고 자기 주장만 받는다")
+        void opponentSeesOnlyOwn() throws Exception {
+            room = fixture.randomHuman(IN_PREP);
+            putMemoAs(room.hostUserId(), room.sessionId(), "방장 주장").andExpect(status().isOk());
+
+            getAs(room.opponentUserId(), room.sessionId() + "/memo")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.length()").value(0));
+            getAs(room.opponentUserId(), room.sessionId() + "/messages")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.length()").value(0));
+        }
+
+        @Test
+        @DisplayName("관전자는 저장 · 조회 모두 NOT_PARTICIPANT")
+        void spectator() throws Exception {
+            room = fixture.randomHuman(IN_PREP);
+            Long spectator = fixture.newUser();
+
+            putMemoAs(spectator, room.sessionId(), "끼어들기")
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.error.code").value("NOT_PARTICIPANT"));
+            getAs(spectator, room.sessionId() + "/memo")
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.error.code").value("NOT_PARTICIPANT"));
+        }
+
+        @Test
+        @DisplayName("채팅 구간에는 저장할 수 없다 (INVALID_PHASE)")
+        void notInChatPhase() throws Exception {
+            room = fixture.randomHuman(IN_CHAT_1);
+
+            putMemoAs(room.hostUserId(), room.sessionId(), "늦은 주장")
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_PHASE"));
+        }
+
+        @Test
+        @DisplayName("300자를 넘으면 CONTENT_TOO_LONG, 본문이 없으면 VALIDATION_FAILED")
+        void validation() throws Exception {
+            room = fixture.randomHuman(IN_PREP);
+
+            putMemoAs(room.hostUserId(), room.sessionId(), "가".repeat(301))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("CONTENT_TOO_LONG"));
+            putMemoAs(room.hostUserId(), room.sessionId(), null)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+        }
+
+        @Test
+        @DisplayName("게임이 메모리에 없으면(시작 전 · 정리됨) SESSION_NOT_IN_PROGRESS")
+        void noGame() throws Exception {
+            room = fixture.waitingRandom();
+
+            putMemoAs(room.hostUserId(), room.sessionId(), "주장")
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error.code").value("SESSION_NOT_IN_PROGRESS"));
+            getAs(room.hostUserId(), room.sessionId() + "/memo")
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.error.code").value("SESSION_NOT_IN_PROGRESS"));
         }
