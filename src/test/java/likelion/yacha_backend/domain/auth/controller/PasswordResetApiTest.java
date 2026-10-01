@@ -10,6 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import likelion.yacha_backend.domain.auth.mail.MailSender;
 import likelion.yacha_backend.domain.user.entity.Provider;
+import likelion.yacha_backend.domain.user.entity.User;
+import likelion.yacha_backend.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -61,19 +63,34 @@ class PasswordResetApiTest {
         final List<String> resetUrls = new ArrayList<>();
         final List<Provider> socialNotices = new ArrayList<>();
 
+        /** true 면 메일 서버가 죽은 것처럼 발송마다 예외를 던집니다. 시도 횟수는 그대로 셉니다. */
+        boolean failing;
+        int attempts;
+
         @Override
         public void sendPasswordReset(String email, String resetUrl) {
+            attempt();
             resetUrls.add(resetUrl);
         }
 
         @Override
         public void sendPasswordResetForSocialAccount(String email, Provider provider) {
+            attempt();
             socialNotices.add(provider);
+        }
+
+        private void attempt() {
+            attempts++;
+            if (failing) {
+                throw new IllegalStateException("메일 서버 응답 없음");
+            }
         }
 
         void clear() {
             resetUrls.clear();
             socialNotices.clear();
+            failing = false;
+            attempts = 0;
         }
     }
 
@@ -82,6 +99,9 @@ class PasswordResetApiTest {
 
     @Autowired
     private RecordingMailSender mailSender;
+
+    @Autowired
+    private UserRepository userRepository;
 
     private Cookie refreshCookie;
 
@@ -108,6 +128,13 @@ class PasswordResetApiTest {
                                 {"email": "%s"}
                                 """.formatted(email)))
                 .andExpect(status().isOk());
+    }
+
+    /** 비밀번호 없이 카카오로만 가입한 계정을 만들고 그 이메일을 돌려줍니다. */
+    private String saveSocialUser() {
+        String socialEmail = "social-%d@example.com".formatted(SEQ.incrementAndGet());
+        userRepository.save(User.createSocial(Provider.KAKAO, "kakao-" + socialEmail, socialEmail, "소셜"));
+        return socialEmail;
     }
 
     /** 메일 링크에서 토큰만 꺼냅니다. */
@@ -170,6 +197,39 @@ class PasswordResetApiTest {
 
         // 응답은 둘 다 200이지만 메일은 한 번만 갑니다.
         assertThat(mailSender.resetUrls).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("소셜 전용 계정에는 링크 대신 안내 메일이 간다")
+    void sendsNoticeToSocialAccount() throws Exception {
+        String socialEmail = saveSocialUser();
+
+        requestReset(socialEmail);
+
+        assertThat(mailSender.resetUrls).isEmpty();
+        assertThat(mailSender.socialNotices).containsExactly(Provider.KAKAO);
+    }
+
+    @Test
+    @DisplayName("재설정 링크 발송이 실패해도 200 (가입 여부가 드러나지 않음)")
+    void hidesResetLinkFailure() throws Exception {
+        mailSender.failing = true;
+
+        // requestReset 이 200 을 확인합니다.
+        requestReset(email);
+
+        assertThat(mailSender.attempts).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("소셜 전용 계정 안내 발송이 실패해도 200")
+    void hidesSocialNoticeFailure() throws Exception {
+        String socialEmail = saveSocialUser();
+        mailSender.failing = true;
+
+        requestReset(socialEmail);
+
+        assertThat(mailSender.attempts).isEqualTo(1);
     }
 
     @Test
