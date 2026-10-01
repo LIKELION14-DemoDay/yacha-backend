@@ -1,9 +1,13 @@
 package likelion.yacha_backend.global.security.jwt;
 
+import likelion.yacha_backend.global.exception.BusinessException;
+import likelion.yacha_backend.global.exception.GlobalErrorCode;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.security.Principal;
 import java.util.Collection;
 import java.util.List;
 
@@ -27,6 +31,18 @@ public record AuthUser(Long userId, Role role) implements UserDetails {
     /** 공개 GET처럼 비로그인도 허용하는 엔드포인트에서, {@code authUser}가 null일 수 있을 때 씁니다. */
     public static Long idOrNull(AuthUser authUser) {
         return authUser == null ? null : authUser.getUserId();
+    }
+
+    /**
+     * STOMP 연결에 붙인 사용자에서 {@link AuthUser} 를 꺼냅니다. CONNECT 때 {@code StompAuthChannelInterceptor} 가
+     * {@code UsernamePasswordAuthenticationToken(authUser, ...)} 로 붙여 둡니다.
+     */
+    public static AuthUser from(Principal principal) {
+        if (principal instanceof Authentication authentication
+                && authentication.getPrincipal() instanceof AuthUser authUser) {
+            return authUser;
+        }
+        throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
     }
 
     @Override
