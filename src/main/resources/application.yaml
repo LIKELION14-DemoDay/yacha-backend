@@ -27,6 +27,12 @@ jwt:
   refresh-token-validity: 1209600000  # 14일 (ms)
 
 auth:
+  password-reset:
+    # 재설정 링크 유효시간. 길면 메일함이 털렸을 때 위험 구간이 길어짐 (팀 결정)
+    token-ttl: 30m
+    # 같은 이메일로 다시 보낼 수 있을 때까지의 간격. 남의 메일함에 계속 보내는 것을 막음 (팀 결정)
+    send-interval: 1m
+
   cookie:
     # 리프레시 토큰 쿠키 설정
     # local에서만 application-local.yaml이 secure를 false로
@@ -59,6 +65,13 @@ oauth:
     # 콘솔에서 Client Secret 을 켰을 때만 넣습니다. 비밀 값이라 저장소에 적지 마세요.
     client-secret: ${KAKAO_CLIENT_SECRET:}
     token-uri: https://kauth.kakao.com/oauth/token
+
+mail:
+  # 비밀번호 재설정 메일에 넣을 링크. 재설정 페이지는 프론트가 그리고, 서버는 주소만 만들어 보냄
+  # 배포에서는 FRONTEND_BASE_URL 로 실제 도메인을 넘김
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  # 프론트와 맞춰야 하는 값. 경로가 정해지면 여기만 바꾸면 됨
+  reset-path: /reset-password
 
 springdoc:
   # 기본값은 비활성화하고, local 및 데모 기간의 prod 프로필에서 필요한 경우 명시적으로 활성화한다.
