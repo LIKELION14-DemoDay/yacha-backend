@@ -70,6 +70,11 @@ jobs:
               "sudo -u ec2-user git -C /home/ec2-user/yacha-backend fetch origin main",
               "sudo -u ec2-user git -C /home/ec2-user/yacha-backend reset --hard ${{ github.sha }}",
               "cd /home/ec2-user/yacha-backend",
+              "df -h /",
+              "docker system df",
+              "docker image prune -f",
+              "docker builder prune -af",
+              "df -h /",
               "docker compose -f docker-compose.prod.yml up -d --build --remove-orphans",
               "for i in $(seq 1 60); do if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q UP; then echo Application healthy; exit 0; fi; sleep 5; done; docker logs --tail 200 yacha-backend; exit 1"
             ]}' \
