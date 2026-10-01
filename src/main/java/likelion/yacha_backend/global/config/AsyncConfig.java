@@ -21,6 +21,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * 기본 실행기를 쓰지 않고 메일 전용 풀을 둠
  * 메일 서버가 느려져도 쌓이는 작업 수가 정해져 있어 다른 기능에 번지지 않음
  *
+ * {@code @Async} 에는 반드시 실행기 이름을 지정함 (예: {@code @Async(AsyncConfig.MAIL_EXECUTOR)})
+ * 이 앱에는 실행기 빈이 여러 개(STOMP 채널 실행기 등)라 기본 실행기를 하나로 고르지 못함
+ * 이름 없이 붙이면 스레드를 제한 없이 만드는 SimpleAsyncTaskExecutor 로 돌아감
+ *
  * 테스트에서는 같은 이름의 동기 실행기로 바꿔 끼움 (src/test 의 SyncMailExecutorConfig)
  * 발송 결과를 요청 직후 바로 확인할 수 있어야 하기 때문
  */
