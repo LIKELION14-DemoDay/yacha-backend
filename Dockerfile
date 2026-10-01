@@ -22,6 +22,8 @@ WORKDIR /app
 
 COPY --from=builder /app/build/libs/*.jar app.jar
 
+ENV SPRING_PROFILES_ACTIVE=prod
+
 EXPOSE 8080
 
 # 서버 · DB · JVM 시간대를 KST 로 통일합니다. 베이스 이미지의 기본값은 UTC 라, 지정하지 않으면

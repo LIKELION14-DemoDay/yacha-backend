@@ -11,6 +11,7 @@ import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
 import likelion.yacha_backend.domain.auth.social.SocialProfile;
 import likelion.yacha_backend.domain.auth.social.SocialTokenVerifier;
+import likelion.yacha_backend.domain.user.dto.PasswordChangeRequest;
 import likelion.yacha_backend.domain.user.entity.Provider;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
@@ -38,10 +39,10 @@ public class AuthService {
     private final GuestNicknameGenerator nicknameGenerator;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
-    /** 설정된 소셜 공급자만 들어 있습니다. 없는 공급자로 로그인하면 UNSUPPORTED_PROVIDER. */
+    /** 설정된 소셜 공급자만 들어 있음. 없는 공급자로 로그인하면 UNSUPPORTED_PROVIDER. */
     private final Map<Provider, SocialTokenVerifier> socialTokenVerifiers;
 
-    /** users.nickname 컬럼 길이와 맞춥니다. 소셜 닉네임이 더 길면 잘라서 저장합니다. */
+    /** users.nickname 컬럼 길이와 맞춤. 소셜 닉네임이 더 길면 잘라서 저장. */
     private static final int NICKNAME_MAX_LENGTH = 50;
 
     /** 존재하지 않는 이메일로 로그인을 시도했을 때 대조할 가짜 해시 */
@@ -109,12 +110,11 @@ public class AuthService {
     /**
      * 액세스 토큰 재발급
      *
-     * <p>쿠키로 온 리프레시 토큰을 <b>세 단계</b>로 검사
-     * <ol>
-     *   <li>서명·만료 — 토큰 자체가 우리 서버가 발급한 것이고 아직 살아 있는가</li>
-     *   <li>종류 — 리프레시 토큰인가 (액세스 토큰으로 재발급받지 못하게)</li>
-     *   <li>저장소 — 지금 유효한 토큰인가</li>
-     * </ol>
+     * 쿠키로 온 리프레시 토큰을 세 단계로 검사
+     *
+     *   서명·만료 — 토큰 자체가 우리 서버가 발급한 것이고 아직 살아 있는가
+     *   종류 — 리프레시 토큰인가 (액세스 토큰으로 재발급받지 못하게)
+     *   저장소 — 지금 유효한 토큰인가
      */
     public IssuedTokens reissue(String refreshToken) {
         if (refreshToken == null || refreshToken.isBlank()) {
@@ -177,25 +177,26 @@ public class AuthService {
     }
 
     /**
-     * 처음 보는 소셜 계정. 새 계정을 만듭니다.
+     * 처음 보는 소셜 계정
+     * 새 계정 생성
      *
-     * 같은 이메일의 기존 계정이 있으면 연결하지 않고 409 로 막습니다 (아래 주석 참고)
+     * 같은 이메일의 기존 계정이 있으면 연결하지 않고 409로 막음
      */
     private User createIfEmailFree(SocialProfile profile) {
         String email = profile.hasVerifiedEmail() ? normalizeEmail(profile.email()) : null;
 
         if (email != null && userRepository.existsByEmail(email)) {
-            // 같은 이메일의 기존 계정이 있어도 <b>자동으로 연결하지 않습니다.</b>
+            // 같은 이메일의 기존 계정이 있어도 자동으로 연결하지 않음
             //
-            // 소셜 쪽 이메일은 확인됐지만, 우리 쪽 계정의 이메일은 확인된 적이 없습니다.
-            // (가입할 때 메일 인증을 받지 않습니다) 그래서 자동으로 붙이면 이런 일이 가능합니다.
+            // 소셜 쪽 이메일은 확인됐지만, 우리 쪽 계정의 이메일은 확인된 적이 없음
+            // 가입할 때 메일 인증을 받지 않아 자동으로 붙이면 이런 일이 가능함
             //
-            //   1. 공격자가 victim@example.com 으로 먼저 가입 (비밀번호는 공격자 것)
+            //   1. 공격자가 victim@example.com으로 먼저 가입 (비밀번호는 공격자 것)
             //   2. 진짜 주인이 구글로 로그인 → 확인된 이메일이라 공격자의 계정에 연결됨
             //   3. 비밀번호는 그대로라 공격자도 계속 로그인 가능 = 계정을 나눠 쓰게 됨
             //
-            // 계정 연결은 이메일 인증을 붙인 뒤, 또는 이미 로그인한 상태에서만 허용해야 합니다.
-            // 그때까지는 원래 쓰던 방법으로 로그인하도록 안내합니다. (코드 리뷰 반영)
+            // 계정 연결은 이메일 인증을 붙인 뒤, 또는 이미 로그인한 상태에서만 허용해야 함
+            // 그때까지는 원래 쓰던 방법으로 로그인하도록 안내
             throw new BusinessException(AuthErrorCode.SOCIAL_EMAIL_CONFLICT);
         }
 
@@ -213,14 +214,15 @@ public class AuthService {
             return userRepository.saveAndFlush(User.createSocial(
                     profile.provider(), profile.providerId(), verifiedEmail, nickname));
         } catch (DataIntegrityViolationException e) {
-            // 같은 소셜 계정으로 동시에 두 번 요청이 들어온 경우입니다. UNIQUE(provider, provider_id)가 막습니다.
+            // 같은 소셜 계정으로 동시에 두 번 요청이 들어온 경우
+            // UNIQUE(provider, provider_id)가 막음
             //
-            // 여기서 기존 행을 찾아 "정상 반환" 하면 안 됩니다. 제약 위반이 난 시점에 트랜잭션이
+            // 여기서 기존 행을 찾아 "정상 반환"하면 안 됨. 제약 위반이 난 시점에 트랜잭션이
             // rollback-only 로 표시되기 때문에, 정상으로 끝내려 해도 커밋 때
-            // UnexpectedRollbackException(500)이 납니다. 그 전에 리프레시 토큰이 Redis 에
-            // 저장되므로 DB 와 저장소가 어긋나기까지 합니다. (코드 리뷰 반영)
+            // UnexpectedRollbackException(500)이 남
+            // 그 전에 리프레시 토큰이 Redis에 저장되므로 DB와 저장소가 어긋남
             //
-            // 그래서 여기서는 예외로 끝내고, 프론트가 한 번 더 호출하면 그때는 기존 계정으로 로그인됩니다.
+            // 그래서 여기서는 예외로 끝내고, 프론트가 한 번 더 호출하면 그때는 기존 계정으로 로그인됨
             throw new BusinessException(AuthErrorCode.SOCIAL_LOGIN_RETRY, e);
         }
     }
@@ -237,7 +239,7 @@ public class AuthService {
 
     /**
      * 로그아웃
-     * 저장된 리프레시 토큰을 지웁니다
+     * 저장된 리프레시 토큰을 지움
      * 최대 10분 뒤 만료되면서 차단되고, 그전에 재발급을 시도하면 저장소가 비어 있어 실패
      * 프론트도 로그아웃할 때 메모리의 액세스 토큰을 버려야 함
      */
@@ -273,6 +275,41 @@ public class AuthService {
         // 게스트 → 회원으로 상태가 바뀌었으니 토큰을 새로 발급, 이전 리프레시 토큰은 무효
         IssuedTokens tokens = tokenIssuer.issue(user);
         log.info("회원 승격: userId={}", userId);
+        return tokens;
+    }
+
+    /**
+     * 비밀번호 변경 (로그인한 상태)
+     *
+     * 비밀번호를 모를 때 하는 재설정(메일 발송)과 다름
+     * 현재 비밀번호를 아는 사람이 대상이라 본인 확인이 그걸로 끝남
+     *
+     * 바꾼 뒤 토큰을 새로 발급.
+     * 계정을 도둑맞아 바꾸는 경우가 있어서, 다른 기기에 남아 있는 로그인을 끊어야 의미가 있음
+     * 리프레시 토큰이 사용자당 1개라 새로 발급하면 이전 것이 자동으로 무효
+     * 응답으로 새 토큰을 받는 현재 기기만 유지
+     */
+    @Transactional
+    public IssuedTokens changePassword(Long userId, PasswordChangeRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.USER_NOT_FOUND));
+
+        if (user.getPassword() == null) {
+            // 소셜 전용 계정과 게스트. 대조할 비밀번호가 없음.
+            throw new BusinessException(AuthErrorCode.PASSWORD_NOT_SET);
+        }
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            throw new BusinessException(AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
+        }
+        if (passwordEncoder.matches(request.newPassword(), user.getPassword())) {
+            // 바뀐 줄 알고 넘어가지 않도록 알려줌
+            throw new BusinessException(AuthErrorCode.SAME_AS_CURRENT_PASSWORD);
+        }
+
+        user.changePassword(passwordEncoder.encode(request.newPassword()));
+
+        IssuedTokens tokens = tokenIssuer.issue(user);
+        log.info("비밀번호 변경: userId={}", userId);
         return tokens;
     }
 

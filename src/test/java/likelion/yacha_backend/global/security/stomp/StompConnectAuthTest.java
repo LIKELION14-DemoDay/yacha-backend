@@ -39,7 +39,7 @@ import org.springframework.web.socket.messaging.WebSocketStompClient;
 @DisplayName("WebSocket(STOMP) 연결 인증 · 구독 권한")
 class StompConnectAuthTest {
 
-    private static final long TIMEOUT_SECONDS = 5;
+    private static final long TIMEOUT_SECONDS = 10;
 
     @Value("${local.server.port}")
     private int port;

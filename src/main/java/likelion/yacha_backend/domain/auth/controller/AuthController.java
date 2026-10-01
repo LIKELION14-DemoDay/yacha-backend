@@ -9,10 +9,13 @@ import likelion.yacha_backend.domain.auth.dto.AuthResponse;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.KakaoCodeLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
+import likelion.yacha_backend.domain.auth.dto.PasswordResetConfirmRequest;
+import likelion.yacha_backend.domain.auth.dto.PasswordResetRequest;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
 import likelion.yacha_backend.domain.auth.dto.SocialLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.service.AuthService;
+import likelion.yacha_backend.domain.auth.service.PasswordResetService;
 import likelion.yacha_backend.domain.auth.service.KakaoLoginService;
 import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.cookie.CookieProvider;
@@ -35,6 +38,8 @@ public class AuthController {
     private final AuthService authService;
     private final KakaoLoginService kakaoLoginService;
     private final CookieProvider cookieProvider;
+    private final AuthResponseFactory authResponseFactory;
+    private final PasswordResetService passwordResetService;
 
     @Operation(
             summary = "게스트 생성",
@@ -162,6 +167,49 @@ public class AuthController {
     }
 
     @Operation(
+            summary = "비밀번호 재설정 메일 요청",
+            description = """
+                    로그인 화면의 "비밀번호 찾기"
+                    입력한 주소로 재설정 링크를 보냄
+
+                    가입되지 않은 이메일이어도 200
+                    어떤 주소가 가입돼 있는지 알려주지 않기 위해서임
+                    프론트도 "가입된 계정이 있다면 메일을 보냈습니다"처럼 안내해 주세요
+
+                    - 링크는 30분 동안 유효하고 한 번만 사용 가능
+                    - 같은 이메일로는 1분에 한 번만 보냄. 제한에 걸려도 응답은 200.
+                    - 소셜(카카오 · 구글)로만 가입한 계정은 바꿀 비밀번호가 없어서, 링크 대신
+                      "소셜 로그인을 이용하세요" 안내 메일이 갑니다
+                    """)
+    @SecurityRequirements
+    @PostMapping("/password/reset-request")
+    public ApiResponse<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
+        passwordResetService.sendResetMail(request);
+        return ApiResponse.noContent();
+    }
+
+    @Operation(
+            summary = "비밀번호 재설정",
+            description = """
+                    메일 링크로 들어와 새 비밀번호를 정함
+                    링크의 `?token=` 값을 그대로 보내주세요.
+
+                    성공하면 모든 기기에서 로그아웃
+                    계정을 도둑맞아 재설정하는 경우 위함
+                    새 비밀번호로 다시 로그인하면 됨
+
+                    에러
+                    - `VALIDATION_FAILED` (400): 새 비밀번호가 8자 미만 또는 72자 초과
+                    - `INVALID_RESET_TOKEN` (401): 링크 만료(30분) · 이미 사용됨 · 잘못된 토큰
+                    """)
+    @SecurityRequirements
+    @PostMapping("/password/reset")
+    public ApiResponse<Void> resetPassword(@Valid @RequestBody PasswordResetConfirmRequest request) {
+        passwordResetService.reset(request);
+        return ApiResponse.noContent();
+    }
+
+    @Operation(
             summary = "토큰 재발급",
             description = """
                     액세스 토큰이 만료됐을 때(401) 호출
@@ -171,7 +219,7 @@ public class AuthController {
                     이전 리프레시 토큰은 그 즉시 무효
 
                     프론트는 재발급 요청을 하나로 묶어서 보내야 함
-                    401 을 받은 요청마다 따로 호출하면, 먼저 성공한 요청이 토큰을 바꾼 뒤라 
+                    401 을 받은 요청마다 따로 호출하면, 먼저 성공한 요청이 토큰을 바꾼 뒤라
                     나머지가 이미 사용된 토큰 으로 판정되어 로그아웃됨
 
                     에러
@@ -196,7 +244,7 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Void>> logout(@AuthenticationPrincipal AuthUser authUser) {
         authService.logout(authUser.getUserId());
 
-        // 서버 쪽(저장소)과 클라이언트 쪽(쿠키)을 모두 지워야 로그아웃이 끝납니다.
+        // 서버 쪽(저장소)과 클라이언트 쪽(쿠키)을 모두 지워야 로그아웃이 끝남
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookieProvider.deleteRefreshCookie().toString())
                 .body(ApiResponse.noContent());
@@ -224,11 +272,7 @@ public class AuthController {
         return withRefreshCookie(authService.upgrade(authUser.getUserId(), request));
     }
 
-    /** 토큰 두 개를 HTTP 응답으로 포장 */
     private ResponseEntity<ApiResponse<AuthResponse>> withRefreshCookie(IssuedTokens tokens) {
-        return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE,
-                        cookieProvider.createRefreshCookie(tokens.refreshToken()).toString())
-                .body(ApiResponse.success(tokens.toResponse()));
+        return authResponseFactory.withRefreshCookie(tokens);
     }
 }

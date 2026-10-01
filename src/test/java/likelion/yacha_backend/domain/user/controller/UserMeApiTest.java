@@ -49,6 +49,8 @@ class UserMeApiTest {
                 .andExpect(jsonPath("$.data.nickname").isNotEmpty())
                 .andExpect(jsonPath("$.data.email").doesNotExist())
                 .andExpect(jsonPath("$.data.isGuest").value(true))
+                // 프론트가 "비밀번호 변경" 메뉴 노출을 판단하는 값
+                .andExpect(jsonPath("$.data.provider").value("LOCAL"))
                 .andExpect(jsonPath("$.data.stats.total").value(0))
                 .andExpect(jsonPath("$.data.stats.wins").value(0));
     }

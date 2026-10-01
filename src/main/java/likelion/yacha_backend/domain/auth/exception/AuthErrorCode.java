@@ -21,11 +21,17 @@ public enum AuthErrorCode implements BaseErrorCode {
     SOCIAL_EMAIL_CONFLICT(HttpStatus.CONFLICT, "다른 방법으로 가입된 이메일입니다. 기존 로그인 방법을 이용해 주세요."),
     /** 같은 소셜 계정으로 동시에 두 번 요청이 들어와 한쪽이 밀림. 다시 호출하면 정상 로그인된다 */
     SOCIAL_LOGIN_RETRY(HttpStatus.CONFLICT, "로그인 처리가 겹쳤습니다. 다시 시도해 주세요."),
-    /** 카카오 인가 코드가 만료됐거나(10분) 이미 쓰였거나, redirectUri 가 인가 요청 때와 다름 */
     INVALID_SOCIAL_CODE(HttpStatus.UNAUTHORIZED, "소셜 로그인에 실패했습니다. 다시 시도해 주세요."),
-    /** 카카오 서버 오류 · 타임아웃, 또는 우리 쪽 키 설정 오류. 사용자가 다시 해도 해결되지 않을 수 있다 */
     SOCIAL_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "소셜 로그인 서버와 통신하지 못했습니다. 잠시 후 다시 시도해 주세요."),
     ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 회원으로 전환된 계정입니다."),
+    /** 재설정 링크가 없거나 만료(30분)됐거나 이미 사용됨. 원인은 구분하지 않는다 */
+    INVALID_RESET_TOKEN(HttpStatus.UNAUTHORIZED, "링크가 만료됐거나 이미 사용됐습니다. 다시 요청해 주세요."),
+    /** 비밀번호 변경에서 현재 비밀번호가 틀림. 이미 인증된 본인이라 원인을 알려줘도 된다 */
+    CURRENT_PASSWORD_MISMATCH(HttpStatus.UNAUTHORIZED, "현재 비밀번호가 올바르지 않습니다."),
+    /** 비밀번호가 없는 계정(소셜 전용 · 게스트)이라 변경할 대상이 없음 */
+    PASSWORD_NOT_SET(HttpStatus.CONFLICT, "비밀번호로 로그인하는 계정이 아닙니다."),
+    /** 새 비밀번호가 현재와 같음. 바뀐 줄 알고 넘어가지 않도록 알려준다 */
+    SAME_AS_CURRENT_PASSWORD(HttpStatus.BAD_REQUEST, "현재 비밀번호와 다른 비밀번호를 입력해 주세요."),
     ;
 
     private final HttpStatus status;
