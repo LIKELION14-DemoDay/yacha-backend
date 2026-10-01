@@ -1,9 +1,12 @@
 package likelion.yacha_backend.global.config;
 
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -45,9 +48,33 @@ public class AsyncConfig {
                 log.warn("메일 발송 대기열이 가득 차 요청을 버렸습니다. active={}, queued={}",
                         pool.getActiveCount(), pool.getQueue().size()));
 
+        executor.setTaskDecorator(copyMdc());
+
         // 배포로 서버가 내려갈 때 대기 중인 메일을 잃지 않도록 잠시 기다림
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(10);
         return executor;
+    }
+
+    /**
+     * 요청 스레드의 MDC(TraceIdFilter 의 traceId 등)를 작업 스레드로 옮김
+     * MDC 는 스레드마다 따로라, 옮기지 않으면 발송 실패 로그를 어느 요청에서 왔는지 이어서 찾을 수 없음
+     *
+     * 작업이 끝나면 비움. 풀의 스레드는 재사용되므로 남겨 두면 다음 작업에 이전 요청의 값이 섞임
+     */
+    static TaskDecorator copyMdc() {
+        return task -> {
+            Map<String, String> context = MDC.getCopyOfContextMap();
+            return () -> {
+                if (context != null) {
+                    MDC.setContextMap(context);
+                }
+                try {
+                    task.run();
+                } finally {
+                    MDC.clear();
+                }
+            };
+        };
     }
 }
