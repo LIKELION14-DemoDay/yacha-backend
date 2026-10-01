@@ -47,7 +47,19 @@ public class GameRegistry {
         return Optional.ofNullable(games.get(sessionId));
     }
 
+    /**
+     * 게임을 지웁니다. 맵에서 빼기 전에 {@link Game#finish()} 로 쓰기부터 막습니다.
+     *
+     * <p>맵에서만 빼면 직전에 {@link #find} 로 게임을 받아 둔 요청이 지워진 게임에 채팅을 기록 · 전송할 수 있고,
+     * 그 메시지는 {@code /messages} 로도 복구되지 않습니다. {@code finish()} 는 게임 락을 잡으므로 진행 중인
+     * 기록 · 전송이 끝난 뒤에 적용되고, 그 뒤의 기록은 {@code SESSION_NOT_IN_PROGRESS} 로 거부됩니다.
+     */
     public void remove(Long sessionId) {
-        games.remove(sessionId);
+        Game game = games.get(sessionId);
+        if (game == null) {
+            return;
+        }
+        game.finish();
+        games.remove(sessionId, game);
     }
 }
