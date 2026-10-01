@@ -21,9 +21,9 @@ public class TokenIssuer {
 
     /** 액세스·리프레시 토큰을 발급하고 리프레시 토큰을 저장소에 기록 */
     public IssuedTokens issue(User user) {
-        // role 은 DB 의 현재 값을 그대로
+        // role은 DB의 현재 값을 그대로 (게스트는 GUEST)
         // 권한이 바뀌어도 늦어도 액세스 토큰 수명(10분) 안에는 반영
-        String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getRole());
+        String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.tokenRole());
 
         // 리프레시 토큰에는 role 을 싣지 않음
         // 인가 판단은 액세스 토큰
