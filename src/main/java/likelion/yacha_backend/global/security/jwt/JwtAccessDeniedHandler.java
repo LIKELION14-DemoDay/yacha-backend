@@ -1,6 +1,5 @@
 package likelion.yacha_backend.global.security.jwt;
 
-import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
 import likelion.yacha_backend.global.exception.BaseErrorCode;
 import likelion.yacha_backend.global.exception.GlobalErrorCode;
 import likelion.yacha_backend.global.response.ApiResponse;
@@ -33,7 +32,7 @@ public class JwtAccessDeniedHandler implements AccessDeniedHandler {
 
         // 게스트가 회원 전용 기능을 부른 경우는 코드를 따로 내려줌
         // 프론트가 일반 권한 오류와 구분해 가입 안내를 띄울 수 있게
-        BaseErrorCode errorCode = isGuest() ? AuthErrorCode.GUEST_NOT_ALLOWED : GlobalErrorCode.FORBIDDEN;
+        BaseErrorCode errorCode = isGuest() ? GlobalErrorCode.GUEST_NOT_ALLOWED : GlobalErrorCode.FORBIDDEN;
 
         log.warn("권한 없음: {} {} ({})", request.getMethod(), request.getRequestURI(), errorCode);
 

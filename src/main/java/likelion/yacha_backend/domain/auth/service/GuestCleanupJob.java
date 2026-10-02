@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import likelion.yacha_backend.domain.auth.service.GuestCleanupService.Batch;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@EnableConfigurationProperties(GuestCleanupProperties.class)
 public class GuestCleanupJob {
 
     private final GuestCleanupService guestCleanupService;

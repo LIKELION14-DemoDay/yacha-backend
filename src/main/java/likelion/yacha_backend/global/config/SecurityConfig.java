@@ -1,8 +1,5 @@
 package likelion.yacha_backend.global.config;
 
-import likelion.yacha_backend.domain.auth.mail.MailProperties;
-import likelion.yacha_backend.domain.auth.repository.PasswordResetProperties;
-import likelion.yacha_backend.domain.auth.service.GuestCleanupProperties;
 import likelion.yacha_backend.global.security.cookie.CookieProperties;
 import likelion.yacha_backend.global.security.jwt.JwtAccessDeniedHandler;
 import likelion.yacha_backend.global.security.jwt.JwtAuthenticationEntryPoint;
@@ -26,8 +23,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
-@EnableConfigurationProperties({JwtProperties.class, CookieProperties.class, MailProperties.class,
-        PasswordResetProperties.class, GuestCleanupProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, CookieProperties.class})
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
