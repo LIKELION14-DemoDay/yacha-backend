@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import likelion.yacha_backend.domain.auth.repository.RefreshTokenStore;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
+import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Limit;
@@ -43,12 +44,27 @@ public class GuestCleanupService {
         List<Long> stale = candidates.stream()
                 .filter(userId -> refreshTokenStore.find(userId).isEmpty())
                 .toList();
-        if (!stale.isEmpty()) {
+        List<Long> deletable = stale.isEmpty() ? List.of() : lockStillGuests(stale);
+        if (!deletable.isEmpty()) {
             // 참가 기록이 users를 참조하므로 연결을 먼저 끊어야 지울 수 있음
-            participantRepository.detachUsers(stale);
-            userRepository.deleteAllByIdInBatch(stale);
+            participantRepository.detachUsers(deletable);
+            userRepository.deleteAllByIdInBatch(deletable);
         }
-        return new Batch(candidates.size(), stale.size(), candidates.get(candidates.size() - 1));
+        return new Batch(candidates.size(), deletable.size(), candidates.get(candidates.size() - 1));
+    }
+
+    /**
+     * 지우기 직전에 아직 게스트인지 다시 확인하고, 남은 행을 잠금
+     *
+     * 후보를 고른 뒤 지우기 전에 회원으로 승격할 수 있음 (로그아웃 직후 남은 액세스 토큰으로 /auth/upgrade)
+     * 그 계정을 지우면 방금 가입한 회원이 사라짐
+     *   이미 승격이 끝났으면 → is_guest가 false라 여기서 빠짐
+     *   승격이 아직이면 → 행을 잠가 두었으므로 승격은 이 트랜잭션이 끝날 때까지 기다리고, 그 뒤 실패함
+     */
+    private List<Long> lockStillGuests(List<Long> userIds) {
+        return userRepository.findGuestsByIdForUpdate(userIds).stream()
+                .map(User::getId)
+                .toList();
     }
 
     /**

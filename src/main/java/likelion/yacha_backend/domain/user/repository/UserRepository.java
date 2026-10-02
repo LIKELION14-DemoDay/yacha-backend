@@ -1,12 +1,15 @@
 package likelion.yacha_backend.domain.user.repository;
 
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import likelion.yacha_backend.domain.user.entity.Provider;
 import likelion.yacha_backend.domain.user.entity.User;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -34,4 +37,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<Long> findGuestIdsCreatedBefore(@Param("before") LocalDateTime before,
                                          @Param("afterId") long afterId,
                                          Limit limit);
+
+    /**
+     * 게스트 정리: 넘긴 id 중 아직 게스트인 행만 잠그며 읽음 (SELECT ... FOR UPDATE)
+     * 잠금은 정리 트랜잭션이 끝날 때까지 유지돼, 그 사이 같은 계정의 승격은 기다림
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id in :ids and u.isGuest = true")
+    List<User> findGuestsByIdForUpdate(@Param("ids") Collection<Long> ids);
 }

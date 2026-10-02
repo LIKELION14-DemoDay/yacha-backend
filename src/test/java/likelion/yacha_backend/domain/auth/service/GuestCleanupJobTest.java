@@ -128,6 +128,21 @@ class GuestCleanupJobTest {
     }
 
     @Test
+    @DisplayName("지우기 직전 다시 확인할 때 이미 회원이 된 계정은 빠진다 (정리 중 승격)")
+    void recheckSkipsUpgradedUser() {
+        Long stillGuest = oldGuest();
+        User upgraded = userRepository.save(User.createGuest("승격할게스트"));
+        backdate(upgraded.getId(), 15);
+        // 후보로 뽑힌 뒤 지우기 전에 승격된 상황
+        upgraded.upgradeToMember("upgraded@example.com", "encoded", "승격");
+        userRepository.flush();
+
+        List<User> deletable = userRepository.findGuestsByIdForUpdate(List.of(stillGuest, upgraded.getId()));
+
+        assertThat(deletable).extracting(User::getId).containsExactly(stillGuest);
+    }
+
+    @Test
     @DisplayName("묶음 크기보다 많아도, 중간에 남길 계정이 섞여 있어도 끝까지 정리한다")
     void processesAllBatches() {
         Long first = oldGuest();
