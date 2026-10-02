@@ -50,8 +50,10 @@ class GuestAccessTest {
     @DisplayName("게스트도 게임 · 관전 경로(/sessions/**)는 통과한다")
     void guestPassesSessionEndpoints() throws Exception {
         // 없는 세션이라 서비스에서 404 — 보안에서 막히지 않았다는 뜻
-        getAs(Role.GUEST, "/api/v1/sessions/1/state")
-                .andExpect(status().isNotFound());
+        // 다른 테스트가 커밋한 세션과 겹치지 않도록 생길 수 없는 id 를 씀 (1번이면 NOT_PARTICIPANT 403 이 될 수 있음)
+        getAs(Role.GUEST, "/api/v1/sessions/" + Long.MAX_VALUE + "/state")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("SESSION_NOT_FOUND"));
     }
 
     @Test
