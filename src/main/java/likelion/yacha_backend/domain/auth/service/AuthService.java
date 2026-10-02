@@ -1,8 +1,10 @@
 package likelion.yacha_backend.domain.auth.service;
 
 import jakarta.annotation.PostConstruct;
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
@@ -11,6 +13,8 @@ import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
 import likelion.yacha_backend.domain.auth.social.SocialProfile;
 import likelion.yacha_backend.domain.auth.social.SocialTokenVerifier;
+import likelion.yacha_backend.domain.session.entity.SessionStatus;
+import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
 import likelion.yacha_backend.domain.user.dto.PasswordChangeRequest;
 import likelion.yacha_backend.domain.user.entity.Provider;
 import likelion.yacha_backend.domain.user.entity.User;
@@ -34,7 +38,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class AuthService {
 
+    /** 승격할 때 참가 기록을 그대로 둘 세션 상태. 끊으면 지금 하는 게임의 참가자로 인정되지 않음 */
+    private static final Set<SessionStatus> ACTIVE_SESSION_STATUSES =
+            EnumSet.of(SessionStatus.WAITING, SessionStatus.IN_PROGRESS);
+
     private final UserRepository userRepository;
+    private final DebateParticipantRepository participantRepository;
     private final TokenIssuer tokenIssuer;
     private final GuestNicknameGenerator nicknameGenerator;
     private final PasswordEncoder passwordEncoder;
@@ -271,6 +280,10 @@ public class AuthService {
         // 변경 감지로 UPDATE 되지만, UNIQUE 위반은 flush 시점에 드러남
         // 지금 내보내지 않으면 커밋 시점에 터져 500이 됨
         flushOrThrowDuplicateEmail();
+
+        // 비회원 게임 결과는 전적에 넣지 않으므로, 게스트 때 끝난 경기는 이 계정과 연결을 끊음
+        // 같은 계정을 그대로 쓰므로 끊지 않으면 승격 뒤 회원 전적에 섞임. 대기 · 진행 중인 경기는 그대로 둠
+        participantRepository.detachUserFromEndedSessions(userId, ACTIVE_SESSION_STATUSES);
 
         // 게스트 → 회원으로 상태가 바뀌었으니 토큰을 새로 발급, 이전 리프레시 토큰은 무효
         IssuedTokens tokens = tokenIssuer.issue(user);

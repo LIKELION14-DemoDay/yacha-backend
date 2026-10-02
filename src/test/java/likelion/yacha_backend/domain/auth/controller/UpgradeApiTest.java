@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.auth.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -7,6 +8,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import jakarta.servlet.http.Cookie;
+import java.time.LocalDateTime;
+import likelion.yacha_backend.domain.session.entity.DebateParticipant;
+import likelion.yacha_backend.domain.session.entity.DebateSession;
+import likelion.yacha_backend.domain.session.entity.FinishReason;
+import likelion.yacha_backend.domain.session.entity.Stance;
+import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
+import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
+import likelion.yacha_backend.domain.topic.entity.Category;
+import likelion.yacha_backend.domain.user.entity.User;
+import likelion.yacha_backend.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,6 +38,15 @@ class UpgradeApiTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private DebateSessionRepository sessionRepository;
+
+    @Autowired
+    private DebateParticipantRepository participantRepository;
 
     private String guestAccessToken;
     private Cookie guestRefreshCookie;
@@ -51,17 +71,51 @@ class UpgradeApiTest {
     }
 
     @Test
-    @DisplayName("승격하면 같은 계정이 회원이 됨 (userId 유지 = 기록 이어짐)")
+    @DisplayName("승격하면 같은 계정이 회원이 됨 (userId 유지)")
     void upgradeKeepsSameAccount() throws Exception {
         mockMvc.perform(post("/api/v1/auth/upgrade")
                         .header(HttpHeaders.AUTHORIZATION, bearer(guestAccessToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(UPGRADE_BODY))
                 .andExpect(status().isOk())
-                // 새 계정이 아니라 같은 행이어야 합니다. id 가 바뀌면 토론 기록이 끊깁니다.
+                // 새 계정이 아니라 같은 행이어야 합니다. id 가 바뀌면 대기 · 진행 중인 게임에서 참가자로 인정되지 않습니다.
                 .andExpect(jsonPath("$.data.userId").value(guestUserId))
                 .andExpect(jsonPath("$.data.isGuest").value(false))
                 .andExpect(jsonPath("$.data.nickname").value("멋사"));
+    }
+
+    @Test
+    @DisplayName("게스트 때 끝난 경기는 연결이 끊기고, 진행 중인 경기는 그대로 (비회원 결과는 전적 제외)")
+    void detachesEndedGuestGamesOnUpgrade() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        User guest = userRepository.getReferenceById(guestUserId.longValue());
+        User other = userRepository.save(User.createMember("other@example.com", "encoded", "상대"));
+
+        DebateSession ended = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, 1L));
+        Long endedParticipant = participantRepository.save(
+                DebateParticipant.initiator(ended, guest, Stance.AGREE, now)).getId();
+        participantRepository.save(DebateParticipant.opponent(ended, other, Stance.DISAGREE, now));
+        sessionRepository.startIfWaiting(ended.getId(), now);
+        sessionRepository.finishIfInProgress(ended.getId(), FinishReason.COMPLETED, now);
+
+        DebateSession playing = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, 1L));
+        Long playingParticipant = participantRepository.save(
+                DebateParticipant.initiator(playing, guest, Stance.AGREE, now)).getId();
+        sessionRepository.startIfWaiting(playing.getId(), now);
+
+        mockMvc.perform(post("/api/v1/auth/upgrade")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(guestAccessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(UPGRADE_BODY))
+                .andExpect(status().isOk());
+
+        assertThat(participantRepository.findById(endedParticipant)).get()
+                .extracting(DebateParticipant::getUser).isNull();
+        // 상대(회원)의 기록은 그대로
+        assertThat(participantRepository.existsBySession_IdAndUser_Id(ended.getId(), other.getId())).isTrue();
+        // 진행 중인 경기는 승격한 회원이 계속 참가자
+        assertThat(participantRepository.existsBySession_IdAndUser_Id(playing.getId(), guestUserId.longValue())).isTrue();
+        assertThat(participantRepository.findById(playingParticipant)).isPresent();
     }
 
     @Test
