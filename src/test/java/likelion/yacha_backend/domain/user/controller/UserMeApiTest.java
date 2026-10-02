@@ -40,6 +40,18 @@ class UserMeApiTest {
         return "Bearer " + guestAccessToken;
     }
 
+    /** 닉네임 변경은 회원 전용이라 회원으로 가입해 토큰을 받습니다. */
+    private String memberBearer() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "me@example.com", "password": "password123", "nickname": "수민"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+        return "Bearer " + JsonPath.read(result.getResponse().getContentAsString(), "$.data.accessToken");
+    }
+
     @Test
     @DisplayName("게스트도 조회할 수 있고, 이메일은 null 이며 전적은 0")
     void guestCanReadOwnInfo() throws Exception {
@@ -65,8 +77,10 @@ class UserMeApiTest {
     @Test
     @DisplayName("닉네임을 바꾸면 응답과 이후 조회에 모두 반영됨")
     void changeNickname() throws Exception {
+        String member = memberBearer();
+
         mockMvc.perform(patch("/api/v1/users/me")
-                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .header(HttpHeaders.AUTHORIZATION, member)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"nickname": "소크라테스"}
@@ -74,15 +88,28 @@ class UserMeApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.nickname").value("소크라테스"));
 
-        mockMvc.perform(get("/api/v1/users/me").header(HttpHeaders.AUTHORIZATION, bearer()))
+        mockMvc.perform(get("/api/v1/users/me").header(HttpHeaders.AUTHORIZATION, member))
                 .andExpect(jsonPath("$.data.nickname").value("소크라테스"));
+    }
+
+    @Test
+    @DisplayName("게스트는 닉네임을 바꿀 수 없음 (403 GUEST_NOT_ALLOWED)")
+    void guestCannotChangeNickname() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname": "소크라테스"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("GUEST_NOT_ALLOWED"));
     }
 
     @Test
     @DisplayName("빈 닉네임이면 400")
     void rejectsBlankNickname() throws Exception {
         mockMvc.perform(patch("/api/v1/users/me")
-                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .header(HttpHeaders.AUTHORIZATION, memberBearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"nickname": "  "}

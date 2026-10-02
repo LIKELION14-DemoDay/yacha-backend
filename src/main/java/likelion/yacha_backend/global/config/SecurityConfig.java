@@ -62,6 +62,29 @@ public class SecurityConfig {
             "/api/v1/categories",
     };
 
+    /**
+     * 게스트(비회원)도 쓸 수 있는 경로. 로그인(게스트 토큰)은 필요
+     *
+     * 비회원은 관전 · 게임만 할 수 있음
+     * 여기에 없는 경로는 모두 회원 전용이라, 새 기능은 따로 막지 않아도 회원 전용이 됨
+     * 게임 · 관전에 쓰는 경로를 새로 만들면 여기에 추가해야 함
+     */
+    private static final String[] GUEST_ENDPOINTS = {
+            "/api/v1/auth/logout",
+            // 게스트 전용. 회원이 부르면 서비스에서 ALREADY_MEMBER
+            "/api/v1/auth/upgrade",
+            // 게임 · 관전 (방 · 상태 · 메시지 · 주장 등). 회원 전용인 전투 기록(GET /sessions/me)은 위에서 먼저 막음
+            "/api/v1/sessions/**",
+    };
+
+    /** 게스트도 GET 으로 쓸 수 있는 경로 */
+    private static final String[] GUEST_GET_ENDPOINTS = {
+            // 내 정보. 게스트는 isGuest 로 화면을 나눔
+            "/api/v1/users/me",
+            // 랜덤 주제 등 로그인이 필요한 주제 조회
+            "/api/v1/topics/**",
+    };
+
     /** 서블릿 컨테이너 자동 등록을 끔 */
     @Bean
     public FilterRegistrationBean<JwtAuthenticationFilter> jwtAuthenticationFilterRegistration() {
@@ -87,7 +110,12 @@ public class SecurityConfig {
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_GET_ENDPOINTS).permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                        .anyRequest().authenticated()
+                        // 전투 기록(승패)은 회원 전용. 아래 /sessions/** 보다 먼저 와야 함
+                        .requestMatchers(HttpMethod.GET, "/api/v1/sessions/me").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers(GUEST_ENDPOINTS).authenticated()
+                        .requestMatchers(HttpMethod.GET, GUEST_GET_ENDPOINTS).authenticated()
+                        // 나머지는 회원 전용. 게스트가 오면 403 GUEST_NOT_ALLOWED (JwtAccessDeniedHandler)
+                        .anyRequest().hasAnyRole("USER", "ADMIN")
                 )
 
                 .exceptionHandling(handler -> handler
