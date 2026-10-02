@@ -4,7 +4,6 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 
 import likelion.yacha_backend.global.exception.BusinessException;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -16,7 +15,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-@Slf4j
+
 @Component
 public class LinerClient {
 
@@ -76,13 +75,21 @@ public class LinerClient {
         );
 
         try {
-            return restClient.post()
+            LinerSearchResponse response = restClient.post()
                     .uri("/api/v1/tools/search/web")
                     .contentType(MediaType.APPLICATION_JSON)
                     .header("x-api-key", properties.apiKey())
                     .body(request)
                     .retrieve()
                     .body(LinerSearchResponse.class);
+
+            if (response == null || response.results() == null) {
+                throw new BusinessException(
+                        LinerErrorCode.LINER_PROVIDER_ERROR
+                );
+            }
+
+            return response;
 
         } catch (HttpClientErrorException e) {
 
@@ -114,12 +121,7 @@ public class LinerClient {
                 );
             }
 
-            log.error(
-                    "LINER Web Search API가 요청을 거부했습니다. status={}, query={}",
-                    e.getStatusCode(),
-                    query,
-                    e
-            );
+
 
             throw new BusinessException(
                     LinerErrorCode.LINER_REQUEST_REJECTED,
@@ -128,12 +130,6 @@ public class LinerClient {
 
         } catch (HttpServerErrorException e) {
 
-            log.error(
-                    "LINER Web Search API 서버 오류입니다. status={}, query={}",
-                    e.getStatusCode(),
-                    query,
-                    e
-            );
 
             throw new BusinessException(
                     LinerErrorCode.LINER_PROVIDER_ERROR,
@@ -142,11 +138,6 @@ public class LinerClient {
 
         } catch (RestClientException e) {
 
-            log.error(
-                    "LINER Web Search API 통신에 실패했습니다. query={}",
-                    query,
-                    e
-            );
 
             throw new BusinessException(
                     LinerErrorCode.LINER_PROVIDER_ERROR,

@@ -41,6 +41,28 @@ class LinerClientTest {
     }
 
     @Test
+    @DisplayName("LINER 응답 본문이 비어 있으면 LINER_PROVIDER_ERROR")
+    void emptyResponse() {
+        LinerClient client = client();
+
+        server.expect(
+                        requestTo(BASE_URL + "/api/v1/tools/search/web")
+                )
+                .andRespond(
+                        withSuccess()
+                );
+
+        assertThatThrownBy(
+                () -> client.searchWeb("테스트", 3)
+        )
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(LinerErrorCode.LINER_PROVIDER_ERROR);
+
+        server.verify();
+    }
+
+    @Test
     @DisplayName("검색어와 API Key를 보내고 검색 결과를 반환한다")
     void searchWeb() {
         LinerClient client = client();
