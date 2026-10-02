@@ -6,6 +6,9 @@ import java.util.Optional;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface DebateParticipantRepository extends JpaRepository<DebateParticipant, Long> {
 
@@ -21,4 +24,12 @@ public interface DebateParticipantRepository extends JpaRepository<DebatePartici
      * 호출할 때 {@code WAITING}, {@code IN_PROGRESS} 를 넘깁니다.
      */
     boolean existsByUser_IdAndSession_StatusIn(Long userId, Collection<SessionStatus> statuses);
+
+    /**
+     * 참가 기록에서 사용자 연결을 끊습니다. 오래된 게스트 계정을 지우기 전에 부릅니다 (users FK).
+     * 참가 기록은 남고, AI 참가자처럼 {@code user_id} 가 비게 됩니다.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update DebateParticipant p set p.user = null where p.user.id in :userIds")
+    int detachUsers(@Param("userIds") Collection<Long> userIds);
 }
