@@ -3,14 +3,23 @@ package likelion.yacha_backend.domain.session.game;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Delayed;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.Trigger;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 @DisplayName("GameTimers — 세션별 타이머")
@@ -18,99 +27,126 @@ class GameTimersTest {
 
     private static final long SESSION = 1L;
     private static final long OTHER_SESSION = 2L;
-    /** 실행되지 않아야 할 타이머를 기다리는 시간 */
-    private static final long SILENCE_MILLIS = 300;
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-31T03:00:00Z"), KST);
+    private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
 
-    private final Clock clock = Clock.systemDefaultZone();
-    private ThreadPoolTaskScheduler scheduler;
+    private ManualTaskScheduler scheduler;
     private GameTimers timers;
 
     @BeforeEach
     void setUp() {
-        scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(2);
-        scheduler.setRemoveOnCancelPolicy(true);
-        scheduler.initialize();
-        timers = new GameTimers(scheduler, clock);
+        scheduler = new ManualTaskScheduler();
+        timers = new GameTimers(scheduler, CLOCK);
     }
 
-    @AfterEach
-    void tearDown() {
-        scheduler.shutdown();
-    }
-
-    private LocalDateTime now() {
-        return LocalDateTime.now(clock);
+    private static Instant instant(LocalDateTime at) {
+        return at.atZone(KST).toInstant();
     }
 
     @Test
-    @DisplayName("정해진 시각이 되면 실행한다")
-    void runsAtTime() throws Exception {
-        CountDownLatch ran = new CountDownLatch(1);
-        LocalDateTime at = now().plusNanos(200_000_000);
+    @DisplayName("KST 시각을 그 시각의 Instant 로 등록하고, 그 시각이 되면 실행한다")
+    void runsAtTime() {
+        AtomicInteger runs = new AtomicInteger();
+        LocalDateTime at = NOW.plusSeconds(60);
 
-        timers.schedule(SESSION, at, ran::countDown);
+        timers.schedule(SESSION, at, runs::incrementAndGet);
 
-        assertThat(ran.getCount()).isEqualTo(1);
-        assertThat(ran.await(5, TimeUnit.SECONDS)).isTrue();
-        assertThat(now()).isAfterOrEqualTo(at);
+        assertThat(scheduler.startTimes()).containsExactly(instant(at));
+        scheduler.runUntil(instant(at).minusMillis(1));
+        assertThat(runs).hasValue(0);
+        scheduler.runUntil(instant(at));
+        assertThat(runs).hasValue(1);
     }
 
     @Test
-    @DisplayName("이미 지난 시각이면 바로 실행한다 (재시작 뒤 다시 등록할 때)")
+    @DisplayName("이미 지난 시각이면 바로 실행한다 (재시작 뒤 다시 등록할 때, 실제 스케줄러)")
     void runsPastTimeImmediately() throws Exception {
-        CountDownLatch ran = new CountDownLatch(1);
+        ThreadPoolTaskScheduler realScheduler = new ThreadPoolTaskScheduler();
+        realScheduler.initialize();
+        try {
+            GameTimers realTimers = new GameTimers(realScheduler, Clock.system(KST));
+            CountDownLatch ran = new CountDownLatch(1);
 
-        timers.schedule(SESSION, now().minusMinutes(3), ran::countDown);
+            realTimers.schedule(SESSION, LocalDateTime.now(KST).minusMinutes(3), ran::countDown);
 
-        assertThat(ran.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(ran.await(5, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            realScheduler.shutdown();
+        }
     }
 
     @Test
     @DisplayName("cancelAll 하면 그 세션의 남은 타이머는 실행되지 않고, 다른 세션은 영향이 없다")
-    void cancelAll() throws Exception {
+    void cancelAll() {
         AtomicInteger cancelledRuns = new AtomicInteger();
-        CountDownLatch otherRan = new CountDownLatch(1);
-        LocalDateTime soon = now().plusNanos(200_000_000);
-        timers.schedule(SESSION, soon, cancelledRuns::incrementAndGet);
-        timers.schedule(SESSION, soon.plusSeconds(1), cancelledRuns::incrementAndGet);
-        timers.schedule(OTHER_SESSION, soon, otherRan::countDown);
+        AtomicInteger otherRuns = new AtomicInteger();
+        timers.schedule(SESSION, NOW.plusSeconds(1), cancelledRuns::incrementAndGet);
+        timers.schedule(SESSION, NOW.plusSeconds(2), cancelledRuns::incrementAndGet);
+        timers.schedule(OTHER_SESSION, NOW.plusSeconds(1), otherRuns::incrementAndGet);
 
         timers.cancelAll(SESSION);
+        scheduler.runUntil(instant(NOW.plusMinutes(10)));
 
         assertThat(timers.pendingCount(SESSION)).isZero();
-        assertThat(otherRan.await(5, TimeUnit.SECONDS)).isTrue();
-        Thread.sleep(SILENCE_MILLIS);
         assertThat(cancelledRuns).hasValue(0);
+        assertThat(otherRuns).hasValue(1);
+    }
+
+    @Test
+    @DisplayName("cancelAll 뒤 같은 세션에 다시 등록하면 새 목록에 들어가 다시 취소할 수 있다")
+    void schedulesAgainAfterCancel() {
+        AtomicInteger runs = new AtomicInteger();
+        timers.schedule(SESSION, NOW.plusSeconds(1), runs::incrementAndGet);
+        timers.cancelAll(SESSION);
+
+        timers.schedule(SESSION, NOW.plusSeconds(2), runs::incrementAndGet);
+        assertThat(timers.pendingCount(SESSION)).isEqualTo(1);
+
+        timers.cancelAll(SESSION);
+        scheduler.runUntil(instant(NOW.plusMinutes(10)));
+        assertThat(runs).hasValue(0);
+    }
+
+    @Test
+    @DisplayName("작업 안에서 같은 세션의 다음 타이머를 등록할 수 있다 (구간 전환이 다음 구간을 거는 경우)")
+    void schedulesNextFromTask() {
+        AtomicInteger runs = new AtomicInteger();
+        timers.schedule(SESSION, NOW.plusSeconds(1), () -> {
+            runs.incrementAndGet();
+            timers.schedule(SESSION, NOW.plusSeconds(2), runs::incrementAndGet);
+        });
+
+        scheduler.runUntil(instant(NOW.plusSeconds(1)));
+        assertThat(timers.pendingCount(SESSION)).isEqualTo(1);
+
+        scheduler.runUntil(instant(NOW.plusSeconds(2)));
+        assertThat(runs).hasValue(2);
+        assertThat(timers.pendingCount(SESSION)).isZero();
     }
 
     @Test
     @DisplayName("작업이 예외를 던져도 다음 타이머는 실행된다")
-    void survivesFailingTask() throws Exception {
-        CountDownLatch next = new CountDownLatch(1);
-        LocalDateTime past = now().minusSeconds(1);
-
-        timers.schedule(SESSION, past, () -> {
+    void survivesFailingTask() {
+        AtomicInteger next = new AtomicInteger();
+        timers.schedule(SESSION, NOW, () -> {
             throw new IllegalStateException("타이머 실패");
         });
-        timers.schedule(SESSION, past, next::countDown);
+        timers.schedule(SESSION, NOW, next::incrementAndGet);
 
-        assertThat(next.await(5, TimeUnit.SECONDS)).isTrue();
+        scheduler.runUntil(instant(NOW));
+
+        assertThat(next).hasValue(1);
+        assertThat(timers.pendingCount(SESSION)).isZero();
     }
 
     @Test
     @DisplayName("끝난 타이머는 목록에서 빠지고, 남은 타이머만 센다")
-    void removesFinishedTimers() throws Exception {
-        CountDownLatch ran = new CountDownLatch(1);
-        timers.schedule(SESSION, now().minusSeconds(1), ran::countDown);
-        timers.schedule(SESSION, now().plusMinutes(10), () -> { });
+    void removesFinishedTimers() {
+        timers.schedule(SESSION, NOW, () -> { });
+        timers.schedule(SESSION, NOW.plusMinutes(10), () -> { });
 
-        assertThat(ran.await(5, TimeUnit.SECONDS)).isTrue();
-        // 실행이 끝난 뒤 목록에서 빠지기까지 잠깐 기다립니다
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (timers.pendingCount(SESSION) != 1 && System.nanoTime() < deadline) {
-            Thread.sleep(10);
-        }
+        scheduler.runUntil(instant(NOW));
         assertThat(timers.pendingCount(SESSION)).isEqualTo(1);
 
         timers.cancelAll(SESSION);
@@ -123,5 +159,77 @@ class GameTimersTest {
         timers.cancelAll(404L);
 
         assertThat(timers.pendingCount(404L)).isZero();
+    }
+
+    /** 등록만 받아 두고, 테스트가 {@link #runUntil} 로 시각을 정해 직접 실행하는 스케줄러 */
+    private static final class ManualTaskScheduler implements TaskScheduler {
+
+        private final List<ManualTask> tasks = new ArrayList<>();
+
+        @Override
+        public ScheduledFuture<?> schedule(Runnable task, Instant startTime) {
+            ManualTask scheduled = new ManualTask(task, startTime);
+            tasks.add(scheduled);
+            return scheduled;
+        }
+
+        List<Instant> startTimes() {
+            return tasks.stream().map(task -> task.startTime).toList();
+        }
+
+        /** {@code now} 까지 예정된 작업을 등록 순서대로 실행. 취소됐거나 이미 실행한 작업은 건너뜀 (FutureTask) */
+        void runUntil(Instant now) {
+            for (int i = 0; i < tasks.size(); i++) {
+                ManualTask task = tasks.get(i);
+                if (!task.startTime.isAfter(now)) {
+                    task.run();
+                }
+            }
+        }
+
+        @Override
+        public ScheduledFuture<?> schedule(Runnable task, Trigger trigger) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleAtFixedRate(Runnable task, Instant startTime, Duration period) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleAtFixedRate(Runnable task, Duration period) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Instant startTime, Duration delay) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Duration delay) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    private static final class ManualTask extends FutureTask<Void> implements ScheduledFuture<Void> {
+
+        private final Instant startTime;
+
+        ManualTask(Runnable task, Instant startTime) {
+            super(task, null);
+            this.startTime = startTime;
+        }
+
+        @Override
+        public long getDelay(TimeUnit unit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int compareTo(Delayed other) {
+            throw new UnsupportedOperationException();
+        }
     }
 }

@@ -115,6 +115,9 @@ public interface DebateSessionRepository extends JpaRepository<DebateSession, Lo
 
     Optional<DebateSession> findByInviteCode(String inviteCode);
 
-    /** 서버 재시작 정리용. 메모리에 있던 게임은 이어갈 수 없으므로 IN_PROGRESS 를 {@link #finishIfInProgress} 로 ABORTED 처리합니다. */
-    List<DebateSession> findAllByStatus(SessionStatus status);
+    /**
+     * 서버 재시작 정리용. 메모리에 있던 게임은 이어갈 수 없으므로 IN_PROGRESS 를 {@link #finishIfInProgress} 로 ABORTED 처리합니다.
+     * 이 서버가 뜬 뒤 시작된 게임은 이어갈 수 있으므로 {@code startedAt} 이 {@code before} 보다 앞선 세션만 찾습니다.
+     */
+    List<DebateSession> findAllByStatusAndStartedAtBefore(SessionStatus status, LocalDateTime before);
 }

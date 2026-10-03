@@ -52,28 +52,32 @@ public class GameTimers {
         Objects.requireNonNull(sessionId, "sessionId");
         Objects.requireNonNull(task, "task");
         Instant instant = at.atZone(clock.getZone()).toInstant();
-        Set<ScheduledFuture<?>> futures = futuresBySessionId.computeIfAbsent(sessionId,
-                id -> ConcurrentHashMap.newKeySet());
-        AtomicReference<ScheduledFuture<?>> self = new AtomicReference<>();
-        // 지난 시각이면 등록하자마자 실행될 수 있습니다. 목록에 넣기 전에 끝나 버리면 빼지 못하므로,
-        // 등록 · 추가를 목록 락 안에서 하고 실행이 끝날 때도 같은 락으로 뺍니다.
-        synchronized (futures) {
-            ScheduledFuture<?> future = scheduler.schedule(() -> run(sessionId, task, futures, self), instant);
-            self.set(future);
-            futures.add(future);
-        }
+        // 목록을 꺼낸 뒤 등록하기 전에 cancelAll 이 끼어들면, 맵에서 빠진 목록에 등록돼 다시는 취소할 수 없습니다.
+        // 그래서 같은 세션의 등록 · 취소를 compute 안에서 하나씩 차례로 처리합니다.
+        futuresBySessionId.compute(sessionId, (id, current) -> {
+            Set<ScheduledFuture<?>> futures = current != null ? current : ConcurrentHashMap.newKeySet();
+            AtomicReference<ScheduledFuture<?>> self = new AtomicReference<>();
+            // 지난 시각이면 등록하자마자 실행될 수 있습니다. 목록에 넣기 전에 끝나 버리면 빼지 못하므로,
+            // 등록 · 추가를 목록 락 안에서 하고 실행이 끝날 때도 같은 락으로 뺍니다.
+            synchronized (futures) {
+                ScheduledFuture<?> future = scheduler.schedule(() -> run(sessionId, task, futures, self), instant);
+                self.set(future);
+                futures.add(future);
+            }
+            return futures;
+        });
     }
 
     /** 세션의 남은 타이머를 모두 취소하고 목록을 지웁니다. 이미 실행 중인 작업은 멈추지 않습니다. */
     public void cancelAll(Long sessionId) {
-        Set<ScheduledFuture<?>> futures = futuresBySessionId.remove(sessionId);
-        if (futures == null) {
-            return;
-        }
-        synchronized (futures) {
-            futures.forEach(future -> future.cancel(false));
-            futures.clear();
-        }
+        // schedule 과 같은 이유로 compute 안에서 취소하고, null 을 돌려줘 맵에서 뺍니다.
+        futuresBySessionId.computeIfPresent(sessionId, (id, futures) -> {
+            synchronized (futures) {
+                futures.forEach(future -> future.cancel(false));
+                futures.clear();
+            }
+            return null;
+        });
     }
 
     /** 아직 실행되지 않은(또는 실행 중인) 타이머 수. 테스트 확인용입니다. */
