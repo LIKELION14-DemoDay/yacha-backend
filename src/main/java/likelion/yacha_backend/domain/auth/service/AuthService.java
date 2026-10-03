@@ -21,6 +21,7 @@ import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -272,7 +273,14 @@ public class AuthService {
 
         // 변경 감지로 UPDATE 되지만, UNIQUE 위반은 flush 시점에 드러남
         // 지금 내보내지 않으면 커밋 시점에 터져 500이 됨
-        flushOrThrowDuplicateEmail();
+        try {
+            flushOrThrowDuplicateEmail();
+        } catch (OptimisticLockingFailureException e) {
+            // 오래된 게스트 정리 작업이 이 행을 잠근 뒤 지워, UPDATE 할 행이 없음
+            // (로그아웃해 리프레시 토큰이 없는 게스트가 남은 액세스 토큰으로 승격하다 정리와 겹친 경우)
+            // 지워진 계정이라 500 대신 계정이 없다고 알려 줌. 이어 갈 데이터가 없어 다시 시작하면 됨
+            throw new BusinessException(AuthErrorCode.USER_NOT_FOUND, e);
+        }
 
         // 비회원 게임 결과는 전적에 넣지 않으므로, 게스트 때 끝난 경기는 이 계정과 연결을 끊음
         // 같은 계정을 그대로 쓰므로 끊지 않으면 승격 뒤 회원 전적에 섞임. 대기 · 진행 중인 경기는 그대로 둠

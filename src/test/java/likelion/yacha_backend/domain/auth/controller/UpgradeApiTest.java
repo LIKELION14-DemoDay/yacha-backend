@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.auth.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -9,6 +10,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import jakarta.servlet.http.Cookie;
 import java.time.LocalDateTime;
+import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
+import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
+import likelion.yacha_backend.domain.auth.service.AuthService;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
@@ -18,6 +22,7 @@ import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import likelion.yacha_backend.domain.topic.entity.Category;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
+import likelion.yacha_backend.global.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +31,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +53,12 @@ class UpgradeApiTest {
 
     @Autowired
     private DebateParticipantRepository participantRepository;
+
+    @Autowired
+    private AuthService authService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private String guestAccessToken;
     private Cookie guestRefreshCookie;
@@ -116,6 +128,22 @@ class UpgradeApiTest {
         // 진행 중인 경기는 승격한 회원이 계속 참가자
         assertThat(participantRepository.existsBySession_IdAndUser_Id(playing.getId(), guestUserId.longValue())).isTrue();
         assertThat(participantRepository.findById(playingParticipant)).isPresent();
+    }
+
+    @Test
+    @DisplayName("승격하는 사이 정리 작업이 계정을 지우면 500 이 아니라 USER_NOT_FOUND")
+    void accountDeletedDuringUpgrade() {
+        Long userId = guestUserId.longValue();
+        // 승격이 계정을 읽어 둔 상태 (같은 트랜잭션이라 이후 findById 는 이 객체를 그대로 씀)
+        userRepository.findById(userId).orElseThrow();
+        // 그 사이 정리 작업이 행을 지움. 읽어 둔 객체는 모르게 SQL 로 바로 지움
+        jdbcTemplate.update("delete from users where id = ?", userId);
+
+        assertThatThrownBy(() -> authService.upgrade(userId,
+                new UpgradeRequest("late@example.com", "password123", "늦은승격")))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(AuthErrorCode.USER_NOT_FOUND);
     }
 
     @Test
