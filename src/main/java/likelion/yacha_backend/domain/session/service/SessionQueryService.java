@@ -91,7 +91,7 @@ public class SessionQueryService {
 
     private Long myParticipantId(List<DebateParticipant> participants, Long userId) {
         return participants.stream()
-                .filter(p -> !p.isAi() && userId.equals(p.getUser().getId()))
+                .filter(p -> p.isUser(userId))
                 .map(DebateParticipant::getId)
                 .findFirst()
                 .orElse(null);

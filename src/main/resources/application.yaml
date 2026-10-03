@@ -33,6 +33,14 @@ auth:
     # 같은 이메일로 다시 보낼 수 있을 때까지의 간격. 남의 메일함에 계속 보내는 것을 막음 (팀 결정)
     send-interval: 1m
 
+  guest-cleanup:
+    # 만든 지 이만큼 지났고 리프레시 토큰도 없는 게스트를 지움 (10/2 회의). 리프레시 토큰 수명과 맞춤
+    inactive-after: 14d
+    # 한 트랜잭션에서 지우는 최대 수
+    batch-size: 500
+    # 매일 새벽 4시 (초 분 시 일 월 요일)
+    cron: "0 0 4 * * *"
+
   cookie:
     # 리프레시 토큰 쿠키 설정
     # local에서만 application-local.yaml이 secure를 false로

@@ -9,6 +9,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import jakarta.servlet.http.Cookie;
+import likelion.yacha_backend.domain.user.entity.Provider;
+import likelion.yacha_backend.domain.user.entity.User;
+import likelion.yacha_backend.domain.user.repository.UserRepository;
+import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,6 +37,12 @@ class PasswordChangeApiTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private JwtTokenProvider jwtTokenProvider;
 
     private String accessToken;
     private Cookie refreshCookie;
@@ -182,13 +192,29 @@ class PasswordChangeApiTest {
     }
 
     @Test
-    @DisplayName("비밀번호가 없는 계정(게스트)은 409")
+    @DisplayName("게스트는 회원 전용이라 403 GUEST_NOT_ALLOWED")
     void guestCannotChange() throws Exception {
         MvcResult guest = mockMvc.perform(post("/api/v1/auth/guest")).andReturn();
         String guestToken = JsonPath.read(guest.getResponse().getContentAsString(), "$.data.accessToken");
 
         mockMvc.perform(patch("/api/v1/users/me/password")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + guestToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"currentPassword": "whatever", "newPassword": "%s"}
+                                """.formatted(NEW_PASSWORD)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("GUEST_NOT_ALLOWED"));
+    }
+
+    @Test
+    @DisplayName("비밀번호가 없는 계정(소셜 전용)은 409")
+    void socialAccountCannotChange() throws Exception {
+        User social = userRepository.save(User.createSocial(Provider.KAKAO, "kakao-pw-test", "social@example.com", "소셜"));
+        String socialToken = jwtTokenProvider.createAccessToken(social.getId(), social.tokenRole());
+
+        mockMvc.perform(patch("/api/v1/users/me/password")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + socialToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"currentPassword": "whatever", "newPassword": "%s"}
