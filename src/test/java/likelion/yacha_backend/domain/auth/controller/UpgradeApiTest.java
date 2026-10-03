@@ -64,6 +64,9 @@ class UpgradeApiTest {
     private Cookie guestRefreshCookie;
     private Integer guestUserId;
 
+    /** 참가 기록에 쓰는 고정 시각. 실행할 때마다 달라지지 않게 하려는 것으로, 이 값 자체를 검증하지는 않습니다. */
+    private static final LocalDateTime GAME_TIME = LocalDateTime.of(2026, 10, 1, 12, 0);
+
     private static final String UPGRADE_BODY = """
             {"email": "Upgraded@Example.com", "password": "password123", "nickname": "멋사"}
             """;
@@ -99,7 +102,7 @@ class UpgradeApiTest {
     @Test
     @DisplayName("게스트 때 끝난 경기는 연결이 끊기고, 진행 중인 경기는 그대로 (비회원 결과는 전적 제외)")
     void detachesEndedGuestGamesOnUpgrade() throws Exception {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = GAME_TIME;
         User guest = userRepository.getReferenceById(guestUserId.longValue());
         User other = userRepository.save(User.createMember("other@example.com", "encoded", "상대"));
 
