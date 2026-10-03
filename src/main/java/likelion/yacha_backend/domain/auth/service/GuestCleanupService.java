@@ -3,7 +3,7 @@ package likelion.yacha_backend.domain.auth.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import likelion.yacha_backend.domain.auth.repository.RefreshTokenStore;
-import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
+import likelion.yacha_backend.domain.session.service.DebateParticipantService;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class GuestCleanupService {
 
     private final UserRepository userRepository;
-    private final DebateParticipantRepository participantRepository;
+    private final DebateParticipantService participantService;
     private final RefreshTokenStore refreshTokenStore;
     private final GuestCleanupProperties properties;
 
@@ -47,7 +47,7 @@ public class GuestCleanupService {
         List<Long> deletable = stale.isEmpty() ? List.of() : lockStillGuests(stale);
         if (!deletable.isEmpty()) {
             // 참가 기록이 users를 참조하므로 연결을 먼저 끊어야 지울 수 있음
-            participantRepository.detachUsers(deletable);
+            participantService.detachUsers(deletable);
             userRepository.deleteAllByIdInBatch(deletable);
         }
         return new Batch(candidates.size(), deletable.size(), candidates.get(candidates.size() - 1));
