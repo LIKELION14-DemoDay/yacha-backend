@@ -81,6 +81,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .setHeartbeatValue(new long[]{HEARTBEAT_MILLIS, HEARTBEAT_MILLIS})
                 .setTaskScheduler(messageBrokerTaskScheduler);
         registry.setUserDestinationPrefix("/user");
+        // 게임 락 안에서 seqNo 순서로 보내도, 그 순서는 브로커 채널에 넣는 데까지만 보장됩니다.
+        // clientOutboundChannel 은 스레드 풀이라 같은 구독자에게 나가는 순서가 뒤바뀔 수 있어서,
+        // 연결(세션)별로 보낸 순서를 지키게 합니다. 처리량이 조금 줄지만 2인 토론이라 영향이 없습니다.
+        registry.setPreservePublishOrder(true);
     }
 
     @Override

@@ -26,8 +26,8 @@ logging:
     org.hibernate.orm.jdbc.bind: trace
 
 springdoc:
-  # 로컬에서만 Swagger UI(/swagger-ui.html)를 켬
-  # 기본값은 application.yaml 에서 꺼짐
+  # 로컬에서는 개발 편의를 위해 Swagger UI를 활성화한다.
+  # 기본값은 application.yaml에서 비활성화하며, prod는 application-prod.yaml에서 별도로 활성화한다.
   api-docs:
     enabled: true
   swagger-ui:

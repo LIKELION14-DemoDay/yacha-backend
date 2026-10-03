@@ -26,4 +26,8 @@ ENV SPRING_PROFILES_ACTIVE=prod
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# 서버 · DB · JVM 시간대를 KST 로 통일합니다. 베이스 이미지의 기본값은 UTC 라, 지정하지 않으면
+# Clock · JPA Auditing 이 UTC 로 찍히고 응답 시각의 오프셋도 +00:00 이 됩니다.
+ENV TZ=Asia/Seoul
+
+ENTRYPOINT ["java", "-Duser.timezone=Asia/Seoul", "-jar", "app.jar"]
