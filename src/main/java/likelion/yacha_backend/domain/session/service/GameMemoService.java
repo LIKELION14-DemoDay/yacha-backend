@@ -27,10 +27,17 @@ public class GameMemoService {
     private final GameRegistry gameRegistry;
     private final Clock clock;
 
-    /** 현재 작성 구간의 내 주장을 덮어씁니다. */
+    /**
+     * 현재 작성 구간의 내 주장을 덮어씁니다.
+     *
+     * <p>시각은 게임 락을 잡은 뒤에 구합니다. 락 밖에서 구하면 기다리는 사이 다음 채팅 구간이 시작돼 주장이 공개됐는데도
+     * 이전 구간 시각으로 저장될 수 있습니다 ({@link GameMessageService} 와 같은 규칙).
+     */
     public MemoResponse saveMemo(Long sessionId, Long userId, String content) {
-        return MemoResponse.from(findGame(sessionId).saveMemo(userId, content, LocalDateTime.now(clock)),
-                clock.getZone());
+        Game game = findGame(sessionId);
+        synchronized (game) {
+            return MemoResponse.from(game.saveMemo(userId, content, LocalDateTime.now(clock)), clock.getZone());
+        }
     }
 
     /** 내가 작성한 주장 (작성 구간 순). 새로고침했을 때 작성하던 내용을 되살리는 용도입니다. */

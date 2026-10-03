@@ -136,12 +136,15 @@ public class Game {
      * 주장을 저장합니다. {@code PREP} · {@code REBUTTAL} 구간에서 참가자마다 구간당 하나이고, 저장할 때마다 덮어씁니다.
      * 구간이 끝나면 고칠 수 없습니다. 비우려면 빈 문자열을 보냅니다.
      *
+     * <p>이미 공개된 구간의 주장도 고칠 수 없습니다. 락을 기다리는 사이 다음 채팅 구간이 시작돼 공개됐는데
+     * 그보다 이른 {@code now} 로 저장하면, 공개된 {@code ARGUMENT} 와 본인이 보는 주장이 달라지기 때문입니다.
+     *
      * @param now 서버가 받은 시각. 구간은 이 시각으로 판단합니다
      */
     public synchronized GameMemo saveMemo(Long userId, String content, LocalDateTime now) {
         Long participantId = checkWritable(userId);
         DebatePhase phase = DebatePhase.at(startedAt, now).phase();
-        if (!phase.isMemoAllowed()) {
+        if (!phase.isMemoAllowed() || revealedPhases.contains(phase)) {
             throw new BusinessException(SessionErrorCode.INVALID_PHASE);
         }
         if (content == null) {
@@ -170,6 +173,9 @@ public class Game {
      *
      * <p>구간 스케줄러가 채팅 구간 시작 시각에 부르고, 채팅 · 최종변론을 기록할 때도 먼저 부릅니다.
      * 끝난 게임이면 아무것도 하지 않습니다. 참가자별 채팅 수 상한에는 세지 않습니다.
+     *
+     * <p><b>구간 스케줄러 전까지(#49)</b>는 채팅 · 최종변론을 기록할 때만 공개합니다. 아무도 보내지 않으면
+     * 주장이 공개되지 않아 {@code /messages} 와 판정 입력에서도 빠집니다.
      */
     public synchronized List<GameMessage> revealArguments(LocalDateTime now) {
         if (finished) {

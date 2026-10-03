@@ -382,6 +382,29 @@ class GameTest {
         }
 
         @Test
+        @DisplayName("공개된 구간의 주장은 그보다 이른 시각으로도 고칠 수 없다 (락을 기다리는 사이 공개된 경우)")
+        void cannotEditRevealedMemo() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "공개될 주장", PREP);
+            game.revealArguments(CHAT_1);
+
+            assertError(() -> game.saveMemo(ALICE, "몰래 고친 주장", PREP), SessionErrorCode.INVALID_PHASE);
+
+            assertThat(game.memosOf(ALICE)).extracting(GameMemo::content).containsExactly("공개될 주장");
+            assertThat(game.messagesAfter(0)).extracting(GameMessage::content).containsExactly("공개될 주장");
+        }
+
+        @Test
+        @DisplayName("PREP 이 공개돼도 REBUTTAL 주장은 REBUTTAL 구간에 쓸 수 있다")
+        void canWriteRebuttalAfterPrepRevealed() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "첫 주장", PREP);
+            game.revealArguments(CHAT_1);
+
+            assertThat(game.saveMemo(ALICE, "반박", REBUTTAL).phase()).isEqualTo(DebatePhase.REBUTTAL);
+        }
+
+        @Test
         @DisplayName("구간마다 한 번만 공개한다")
         void revealsOnce() {
             Game game = newGame();
