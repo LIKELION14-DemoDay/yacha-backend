@@ -6,10 +6,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
+import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
 import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
 import likelion.yacha_backend.global.security.jwt.Role;
 import org.junit.jupiter.api.AfterEach;
@@ -46,6 +48,9 @@ class SessionApiTest {
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @Autowired
+    private DebateParticipantRepository participantRepository;
 
     private Room room;
 
@@ -132,6 +137,19 @@ class SessionApiTest {
             getAs(fixture.newUser(), room.sessionId() + "/state")
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.error.code").value("NOT_PARTICIPANT"));
+        }
+
+        @Test
+        @DisplayName("상대 게스트 계정이 정리돼 참가 기록의 user 가 비어도 200 (내 참가자 id 도 정상)")
+        void detachedOpponent() throws Exception {
+            room = fixture.randomHuman(IN_CHAT_1);
+            // 방장(앞쪽 참가자)이 정리된 게스트라 연결이 끊긴 상황
+            participantRepository.detachUsers(List.of(room.hostUserId()));
+
+            getAs(room.opponentUserId(), room.sessionId() + "/state")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.myParticipantId").value(room.opponentParticipantId()))
+                    .andExpect(jsonPath("$.data.participants.length()").value(2));
         }
 
         @Test

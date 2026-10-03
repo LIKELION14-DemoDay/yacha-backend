@@ -148,4 +148,13 @@ public class DebateParticipant {
     public boolean isAi() {
         return participantType == ParticipantType.AI;
     }
+
+    /**
+     * 이 사용자의 참가 기록인가
+     * {@code user}가 없는 참가 기록도 있으므로 {@code getUser()} 대신 이것으로 비교합니다
+     * AI 참가자, 정리된 게스트 계정, 승격 전 게스트 때 끝난 경기는 {@code user}가 null입니다
+     */
+    public boolean isUser(Long userId) {
+        return user != null && user.getId().equals(userId);
+    }
 }
