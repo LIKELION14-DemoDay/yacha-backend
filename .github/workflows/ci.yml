@@ -72,7 +72,7 @@ jobs:
               "cd /home/ec2-user/yacha-backend",
               "df -h /",
               "docker system df",
-              "docker image prune -f",
+              "docker image prune -af",
               "docker builder prune -af",
               "df -h /",
               "docker compose -f docker-compose.prod.yml up -d --build --remove-orphans",
