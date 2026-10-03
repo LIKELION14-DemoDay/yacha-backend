@@ -7,7 +7,7 @@ import likelion.yacha_backend.domain.auth.dto.PasswordResetConfirmRequest;
 import likelion.yacha_backend.domain.auth.dto.PasswordResetRequest;
 import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
 import likelion.yacha_backend.domain.auth.mail.MailProperties;
-import likelion.yacha_backend.domain.auth.mail.MailSender;
+import likelion.yacha_backend.domain.auth.mail.PasswordResetMailer;
 import likelion.yacha_backend.domain.auth.repository.PasswordResetStore;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
@@ -37,7 +37,7 @@ public class PasswordResetService {
 
     private final UserRepository userRepository;
     private final PasswordResetStore passwordResetStore;
-    private final MailSender mailSender;
+    private final PasswordResetMailer passwordResetMailer;
     private final MailProperties mailProperties;
     private final PasswordEncoder passwordEncoder;
     private final TokenIssuer tokenIssuer;
@@ -51,6 +51,9 @@ public class PasswordResetService {
      *
      * 트랜잭션을 걸지 않음
      * 조회만 하고, 메일 발송이 트랜잭션 안에 들어가면 안 됨
+     *
+     * 메일은 {@link PasswordResetMailer}가 따로 보냄
+     * 가입된 이메일도 발송을 기다리지 않고 바로 돌아오고, 발송이 실패해도 응답은 같음
      */
     public void sendResetMail(PasswordResetRequest request) {
         String email = normalizeEmail(request.email());
@@ -65,14 +68,14 @@ public class PasswordResetService {
             if (user.getPassword() == null) {
                 // 소셜로만 가입한 계정
                 // 바꿀 비밀번호가 없으므로 링크 대신 안내를 보냄
-                mailSender.sendPasswordResetForSocialAccount(email, user.getProvider());
+                passwordResetMailer.sendSocialAccountNotice(user.getId(), email, user.getProvider());
                 return;
             }
 
             String token = generateToken();
             passwordResetStore.save(token, user.getId());
-            mailSender.sendPasswordReset(email, mailProperties.passwordResetUrl(token));
-            log.info("비밀번호 재설정 메일 발송: userId={}", user.getId());
+            passwordResetMailer.sendResetLink(user.getId(), email, mailProperties.passwordResetUrl(token));
+            log.info("비밀번호 재설정 메일 발송 요청: userId={}", user.getId());
         });
     }
 
