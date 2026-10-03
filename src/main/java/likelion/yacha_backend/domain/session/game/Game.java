@@ -2,6 +2,8 @@ package likelion.yacha_backend.domain.session.game;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -27,7 +29,12 @@ import lombok.Getter;
  * 정상 종료는 판정 LLM 이 대화 전체({@code messagesAfter(0)})를 읽어야 하므로, 채팅은 <b>판정이 끝난 뒤</b>
  * 버립니다. {@code FORFEIT} · {@code ABORTED} 는 판정이 없으니 종료 즉시 저장소에서 지웁니다 (명세 1-5).
  *
- * <p><b>채팅 본문을 로그 · 예외 메시지에 넣지 마세요</b> (명세 1-5).
+ * <p><b>주장</b> — {@code PREP} · {@code REBUTTAL} 에는 채팅 대신 주장을 작성합니다({@link #saveMemo}). 작성 중에는
+ * 본인만 보고, 다음 채팅 구간이 시작되면 {@link #revealArguments} 가 양쪽 주장을 {@link MessageType#ARGUMENT}
+ * 메시지로 기록합니다. 채팅 · 최종변론을 기록할 때도 먼저 공개하므로, 스케줄러보다 채팅이 먼저 와도
+ * 주장이 앞 {@code seqNo} 를 받습니다.
+ *
+ * <p><b>채팅 · 주장 본문을 로그 · 예외 메시지에 넣지 마세요</b> (명세 1-5).
  */
 public class Game {
 
@@ -55,28 +62,40 @@ public class Game {
      */
     private final int maxChatsPerParticipant;
 
+    /** 주장 한 건의 글자 수 상한. */
+    private final int memoMaxLength;
+
     /** seqNo 오름차순. seqNo 는 1 부터 빈틈없이 매기므로 인덱스 = seqNo - 1 입니다. */
     private final List<GameMessage> messages = new ArrayList<>();
     private final Map<Long, Integer> chatCountByParticipantId = new HashMap<>();
     private final Set<Long> finalSubmitted = new HashSet<>();
+    /** 참가자 id → 작성 구간 → 작성 중인 주장. 공개한 뒤에도 본인 조회용으로 남겨 둡니다. */
+    private final Map<Long, Map<DebatePhase, GameMemo>> memosByParticipantId = new HashMap<>();
+    /** 이미 공개한 작성 구간. 구간마다 한 번만 공개합니다. */
+    private final Set<DebatePhase> revealedPhases = EnumSet.noneOf(DebatePhase.class);
     private boolean finished;
 
     Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId,
-         int chatMaxLength, int maxChatsPerParticipant) {
+         int chatMaxLength, int maxChatsPerParticipant, int memoMaxLength) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
         this.participantIdByUserId = Map.copyOf(participantIdByUserId);
         this.chatMaxLength = chatMaxLength;
         this.maxChatsPerParticipant = maxChatsPerParticipant;
+        this.memoMaxLength = memoMaxLength;
     }
 
     /**
      * 채팅을 기록합니다. {@code CHAT_1} · {@code CHAT_2} 구간에서만 받습니다.
      *
+     * <p>기록하기 전에 아직 공개하지 않은 주장을 먼저 공개합니다. 공개된 주장은 반환값에 없으므로,
+     * 브로드캐스트하는 쪽은 같은 락 안에서 {@link #revealArguments} 를 먼저 불러 받아 갑니다.
+     *
      * @param now 서버가 받은 시각. 구간은 이 시각으로 판단합니다
      */
     public synchronized GameMessage appendChat(Long userId, String content, LocalDateTime now) {
         Long participantId = checkWritable(userId);
+        revealArguments(now);
         DebatePhase phase = DebatePhase.at(startedAt, now).phase();
         if (!phase.isChatAllowed()) {
             throw new BusinessException(SessionErrorCode.INVALID_PHASE);
@@ -93,11 +112,13 @@ public class Game {
 
     /**
      * 최종변론을 기록합니다. {@code FINAL} 구간에서 참가자당 1건, 100자 이내입니다.
+     * 채팅과 같이 기록하기 전에 아직 공개하지 않은 주장을 먼저 공개합니다.
      *
      * @param now 서버가 받은 시각. 구간은 이 시각으로 판단합니다
      */
     public synchronized GameMessage submitFinal(Long userId, String content, LocalDateTime now) {
         Long participantId = checkWritable(userId);
+        revealArguments(now);
         DebatePhase phase = DebatePhase.at(startedAt, now).phase();
         if (!phase.isFinalAllowed()) {
             throw new BusinessException(SessionErrorCode.INVALID_PHASE);
@@ -109,6 +130,74 @@ public class Game {
         GameMessage message = append(participantId, MessageType.FINAL, phase, content, now);
         finalSubmitted.add(participantId);
         return message;
+    }
+
+    /**
+     * 주장을 저장합니다. {@code PREP} · {@code REBUTTAL} 구간에서 참가자마다 구간당 하나이고, 저장할 때마다 덮어씁니다.
+     * 구간이 끝나면 고칠 수 없습니다. 비우려면 빈 문자열을 보냅니다.
+     *
+     * <p>이미 공개된 구간의 주장도 고칠 수 없습니다. 락을 기다리는 사이 다음 채팅 구간이 시작돼 공개됐는데
+     * 그보다 이른 {@code now} 로 저장하면, 공개된 {@code ARGUMENT} 와 본인이 보는 주장이 달라지기 때문입니다.
+     *
+     * @param now 서버가 받은 시각. 구간은 이 시각으로 판단합니다
+     */
+    public synchronized GameMemo saveMemo(Long userId, String content, LocalDateTime now) {
+        Long participantId = checkWritable(userId);
+        DebatePhase phase = DebatePhase.at(startedAt, now).phase();
+        if (!phase.isMemoAllowed() || revealedPhases.contains(phase)) {
+            throw new BusinessException(SessionErrorCode.INVALID_PHASE);
+        }
+        if (content == null) {
+            throw new BusinessException(GlobalErrorCode.VALIDATION_FAILED);
+        }
+        if (lengthOf(content) > memoMaxLength) {
+            throw new BusinessException(SessionErrorCode.CONTENT_TOO_LONG);
+        }
+        GameMemo memo = new GameMemo(phase, content, now);
+        memosByParticipantId.computeIfAbsent(participantId, id -> new EnumMap<>(DebatePhase.class)).put(phase, memo);
+        return memo;
+    }
+
+    /** 내가 작성한 주장을 작성 구간 순서대로. 참가자가 아니면 NOT_PARTICIPANT 이고, 남의 주장을 보는 방법은 없습니다. */
+    public synchronized List<GameMemo> memosOf(Long userId) {
+        Long participantId = checkWritable(userId);
+        return List.copyOf(memosByParticipantId.getOrDefault(participantId, Map.of()).values());
+    }
+
+    /**
+     * 공개할 때가 된 주장을 {@link MessageType#ARGUMENT} 메시지로 기록하고, 이번에 기록한 메시지를 {@code seqNo} 순으로 돌려줍니다.
+     *
+     * <p>{@code now} 의 구간이 {@code CHAT_1} 이상이면 {@code PREP} 주장, {@code CHAT_2} 이상이면 {@code REBUTTAL} 주장을
+     * 공개합니다. 구간마다 한 번만 공개하고, 늦게 불려도 공개하지 못한 앞 구간 주장부터 차례로 공개합니다.
+     * 주장의 구간({@code phase})은 공개된 채팅 구간입니다. 빈 주장은 공개하지 않습니다.
+     *
+     * <p>구간 스케줄러가 채팅 구간 시작 시각에 부르고, 채팅 · 최종변론을 기록할 때도 먼저 부릅니다.
+     * 끝난 게임이면 아무것도 하지 않습니다. 참가자별 채팅 수 상한에는 세지 않습니다.
+     *
+     * <p><b>구간 스케줄러 전까지(#49)</b>는 채팅 · 최종변론을 기록할 때만 공개합니다. 아무도 보내지 않으면
+     * 주장이 공개되지 않아 {@code /messages} 와 판정 입력에서도 빠집니다.
+     */
+    public synchronized List<GameMessage> revealArguments(LocalDateTime now) {
+        if (finished) {
+            return List.of();
+        }
+        DebatePhase current = DebatePhase.at(startedAt, now).phase();
+        List<GameMessage> revealed = new ArrayList<>();
+        for (DebatePhase chatPhase : DebatePhase.values()) {
+            DebatePhase memoPhase = chatPhase.argumentPhase();
+            if (memoPhase == null || chatPhase.compareTo(current) > 0 || !revealedPhases.add(memoPhase)) {
+                continue;
+            }
+            memosByParticipantId.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> {
+                        GameMemo memo = entry.getValue().get(memoPhase);
+                        if (memo != null && !memo.content().isBlank()) {
+                            revealed.add(append(entry.getKey(), MessageType.ARGUMENT, chatPhase, memo.content(), now));
+                        }
+                    });
+        }
+        return List.copyOf(revealed);
     }
 
     /** {@code seqNo > afterSeq} 인 메시지를 오름차순으로. 재접속 보충 · 늦게 들어온 관전자용입니다. */

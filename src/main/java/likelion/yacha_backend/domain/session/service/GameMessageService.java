@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.session.service;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.List;
 import likelion.yacha_backend.domain.session.dto.GameMessageResponse;
 import likelion.yacha_backend.domain.session.exception.SessionErrorCode;
 import likelion.yacha_backend.domain.session.game.Game;
@@ -20,6 +21,9 @@ import org.springframework.stereotype.Service;
  * <p><b>기록 → 전송을 게임 락 안에서</b> 합니다. 락 밖에서 보내면 먼저 채번한 메시지가 나중에 전송될 수 있어,
  * 받는 쪽의 순서가 {@code seqNo} 와 어긋납니다. 기록한 뒤에 보내므로 브로드캐스트한 메시지는 반드시 게임 객체에
  * 있고, 재접속 보충({@code /messages})에서 빠지지 않습니다.
+ *
+ * <p><b>주장 공개</b> — 채팅 · 최종변론을 기록하기 전에 아직 공개하지 않은 주장({@code ARGUMENT})을 먼저 공개하고
+ * 같은 락 안에서 먼저 보냅니다. 채팅이 거부돼도(구간 · 글자 수 등) 공개된 주장은 이미 기록됐으므로 보냅니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -32,14 +36,18 @@ public class GameMessageService {
     public void sendChat(Long sessionId, Long userId, String content) {
         Game game = findGame(sessionId);
         synchronized (game) {
-            broadcast(sessionId, game.appendChat(userId, content, LocalDateTime.now(clock)));
+            LocalDateTime now = LocalDateTime.now(clock);
+            broadcastAll(sessionId, game.revealArguments(now));
+            broadcast(sessionId, game.appendChat(userId, content, now));
         }
     }
 
     public void submitFinal(Long sessionId, Long userId, String content) {
         Game game = findGame(sessionId);
         synchronized (game) {
-            broadcast(sessionId, game.submitFinal(userId, content, LocalDateTime.now(clock)));
+            LocalDateTime now = LocalDateTime.now(clock);
+            broadcastAll(sessionId, game.revealArguments(now));
+            broadcast(sessionId, game.submitFinal(userId, content, now));
         }
     }
 
@@ -50,6 +58,10 @@ public class GameMessageService {
     private Game findGame(Long sessionId) {
         return gameRegistry.find(sessionId)
                 .orElseThrow(() -> new BusinessException(SessionErrorCode.SESSION_NOT_IN_PROGRESS));
+    }
+
+    private void broadcastAll(Long sessionId, List<GameMessage> messages) {
+        messages.forEach(message -> broadcast(sessionId, message));
     }
 
     private void broadcast(Long sessionId, GameMessage message) {
