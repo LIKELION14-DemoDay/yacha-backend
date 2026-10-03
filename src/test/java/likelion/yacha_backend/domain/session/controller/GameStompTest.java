@@ -242,6 +242,47 @@ class GameStompTest {
         }
     }
 
+    /** 비회원은 관전 · 게임만 할 수 있음 (10/2 회의). STOMP 는 역할을 보지 않으므로 GUEST 토큰으로도 그대로 동작해야 합니다. */
+    @Nested
+    @DisplayName("비회원(GUEST 토큰)")
+    class Guest {
+
+        @Test
+        @DisplayName("게스트 참가자가 연결 · 구독 · 채팅하고, 게스트 관전자도 받는다")
+        void guestCanPlayAndSpectate() throws Exception {
+            Room room = track(fixture.randomHuman(IN_CHAT_1));
+            Client host = connect(room.hostUserId(), Role.GUEST);
+            Client opponent = connect(room.opponentUserId(), Role.GUEST);
+            Client spectator = connect(fixture.newUser(), Role.GUEST);
+            BlockingQueue<Map<String, Object>> toOpponent = opponent.subscribeTopic(room.sessionId());
+            BlockingQueue<Map<String, Object>> toSpectator = spectator.subscribeTopic(room.sessionId());
+
+            host.send("/app/sessions/" + room.sessionId() + "/chat", Map.of("content", "게스트의 주장"));
+
+            for (BlockingQueue<Map<String, Object>> inbox : List.of(toOpponent, toSpectator)) {
+                Map<String, Object> event = next(inbox, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS));
+                assertThat(event).isNotNull();
+                assertThat(event).containsEntry("type", "CHAT").containsEntry("content", "게스트의 주장");
+            }
+            assertThat(host.errorFrame).isNotDone();
+            assertThat(spectator.errorFrame).isNotDone();
+        }
+
+        @Test
+        @DisplayName("게스트 참가자도 최종변론을 제출할 수 있다")
+        void guestCanSubmitFinal() throws Exception {
+            Room room = track(fixture.randomHuman(IN_FINAL));
+            Client host = connect(room.hostUserId(), Role.GUEST);
+            BlockingQueue<Map<String, Object>> topic = host.subscribeTopic(room.sessionId());
+
+            host.send("/app/sessions/" + room.sessionId() + "/final", Map.of("content", "게스트의 최종변론"));
+
+            Map<String, Object> event = next(topic, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS));
+            assertThat(event).isNotNull();
+            assertThat(event).containsEntry("type", "FINAL").containsEntry("content", "게스트의 최종변론");
+        }
+    }
+
     // ------------------------------------------------------------------
 
     /**
@@ -275,8 +316,12 @@ class GameStompTest {
     }
 
     private Client connect(Long userId) throws Exception {
+        return connect(userId, Role.USER);
+    }
+
+    private Client connect(Long userId, Role role) throws Exception {
         StompHeaders headers = new StompHeaders();
-        headers.add("Authorization", "Bearer " + jwtTokenProvider.createAccessToken(userId, Role.USER));
+        headers.add("Authorization", "Bearer " + jwtTokenProvider.createAccessToken(userId, role));
         ErrorFrameHandler handler = new ErrorFrameHandler();
         StompSession session = stompClient
                 .connectAsync("ws://localhost:" + port + "/ws", new WebSocketHttpHeaders(), headers, handler)
