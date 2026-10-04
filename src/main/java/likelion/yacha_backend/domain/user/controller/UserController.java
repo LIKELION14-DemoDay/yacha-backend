@@ -51,7 +51,13 @@ public class UserController {
         return ApiResponse.success(userService.getMyInfo(authUser.getUserId()));
     }
 
-    @Operation(summary = "닉네임 변경", description = "변경된 내 정보를 그대로 돌려줌")
+    @Operation(
+            summary = "닉네임 변경",
+            description = """
+                    변경된 내 정보를 그대로 돌려줌
+
+                    회원 전용. 게스트는 `GUEST_NOT_ALLOWED` (403)
+                    """)
     @PatchMapping("/me")
     public ApiResponse<MyInfoResponse> changeNickname(
             @AuthenticationPrincipal AuthUser authUser,
@@ -69,13 +75,14 @@ public class UserController {
                     교체하지 않으면 최대 10분 뒤 본인도 로그아웃됩니다
 
                     비밀번호가 없는 계정(소셜 전용 · 게스트)은 호출할 수 없음
-                    `GET /users/me`의 `provider`가 `LOCAL`일 때만 메뉴를 노출해 주세요
+                    `GET /users/me`의 `provider`가 `LOCAL`이고 `isGuest`가 `false`일 때만 메뉴를 노출해 주세요
 
                     에러
                     - `VALIDATION_FAILED` (400): 새 비밀번호가 8자 미만 또는 72자 초과
                     - `SAME_AS_CURRENT_PASSWORD` (400): 현재 비밀번호와 같음
                     - `CURRENT_PASSWORD_MISMATCH` (401): 현재 비밀번호가 틀림
-                    - `PASSWORD_NOT_SET` (409): 비밀번호로 로그인하는 계정이 아님
+                    - `GUEST_NOT_ALLOWED` (403): 게스트
+                    - `PASSWORD_NOT_SET` (409): 비밀번호로 로그인하는 계정이 아님 (소셜 전용)
                     """)
     @PatchMapping("/me/password")
     public ResponseEntity<ApiResponse<AuthResponse>> changePassword(

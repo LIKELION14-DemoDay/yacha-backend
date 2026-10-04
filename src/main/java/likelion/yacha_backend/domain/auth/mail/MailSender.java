@@ -11,6 +11,9 @@ import likelion.yacha_backend.domain.user.entity.Provider;
  * 발송은 메일 서버 응답을 기다리는 외부 호출임
  * 트랜잭션 안에서 부르지 안됨
  * 응답이 늦으면 DB 커넥션을 붙잡고 있게 됨
+ *
+ * 서비스는 이 인터페이스를 직접 부르지 않고 {@link PasswordResetMailer}를 거침
+ * 비동기 발송 · 실패 처리는 거기서 하므로, 구현은 발송만 하고 실패하면 예외를 던지면 됨
  */
 public interface MailSender {
 

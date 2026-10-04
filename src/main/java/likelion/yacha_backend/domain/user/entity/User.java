@@ -112,6 +112,17 @@ public class User extends BaseTimeEntity {
         this.isGuest = false;
     }
 
+    /**
+     * 액세스 토큰에 싣는 권한
+     *
+     * 게스트는 DB의 role과 관계없이 GUEST
+     * 게스트 여부는 is_guest 하나로만 판단해서, 기존 게스트 행의 role을 고치지 않아도 됨
+     * 승격하면 is_guest가 false가 되어 다음 발급부터 DB의 role이 그대로 실림
+     */
+    public Role tokenRole() {
+        return isGuest ? Role.GUEST : role;
+    }
+
     /** 비밀번호 변경. 현재 비밀번호 확인과 규칙 검증은 서비스에서 끝낸 뒤 호출 */
     public void changePassword(String encodedPassword) {
         if (password == null) {
