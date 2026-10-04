@@ -104,3 +104,7 @@ cors:
 liner:
   base-url: https://platform.liner.com
   api-key: ${LINER_API_KEY:}
+
+spectate:
+  # 관전 스위치. 관전은 사용하지 않아(10/5) 꺼 둔다. 켜면 진행 중인 랜덤 사람전을 참가자가 아니어도 볼 수 있다
+  enabled: false
