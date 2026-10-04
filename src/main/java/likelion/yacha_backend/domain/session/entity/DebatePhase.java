@@ -13,57 +13,48 @@ import lombok.Getter;
  * 스케줄러는 구간을 바꾸지 않고 "바뀌었다"고 알리기만 합니다.
  *
  * <p>각 구간의 <b>길이만</b> 적고 시작 시각은 선언 순서대로 누적해 구합니다. 길이 하나를 바꿔도
- * 뒤 구간의 시작 시각이 같이 맞춰집니다. 지금 시간표는 전체 6분입니다.
+ * 뒤 구간의 시작 시각이 같이 맞춰집니다. 지금 시간표는 전체 4분 20초입니다.
  *
- * <p>{@link #PREP} · {@link #REBUTTAL} 은 상대에게 보내지 않고 <b>주장을 작성</b>하는 구간입니다. 작성한 주장은
- * 다음 채팅 구간({@link #CHAT_1} · {@link #CHAT_2})이 시작될 때 양쪽 모두에게 공개됩니다 ({@link #argumentPhase()}).
+ * <p>{@link #PREP} 에는 주장, {@link #REBUTTAL} 에는 반론을 <b>작성 · 제출</b>합니다. 작성 구간이 끝난 뒤
+ * {@link #SUBMIT_GRACE} 동안은 시간 종료 순간의 자동 제출을 받고, 유예가 끝나면 양쪽 글을 공개합니다
+ * ({@link #revealAt}). 주장은 {@link #REVEAL} 화면에서, 반론은 {@link #CHAT} 화면 맨 위에서 보입니다.
  */
 @Getter
 public enum DebatePhase {
 
-    /** 주제 확인 · 근거 생성 · 주장 작성 */
-    PREP(Duration.ofSeconds(60), false, false, true),
-    /** 시작할 때 PREP 주장 공개 → 채팅 */
-    CHAT_1(Duration.ofSeconds(90), true, false, false),
-    /** 상대 요약 확인 · 반박 작성 */
-    REBUTTAL(Duration.ofSeconds(120), false, false, true),
-    /** 시작할 때 REBUTTAL 주장 공개 → 채팅 */
-    CHAT_2(Duration.ofSeconds(60), true, false, false),
-    /** 최종변론 1건 제출 */
-    FINAL(Duration.ofSeconds(30), false, true, false),
+    /** 주장 작성 · 제출 (힌트 보기) */
+    PREP(Duration.ofSeconds(60), false, true),
+    /** 양쪽 주장 공개 화면 */
+    REVEAL(Duration.ofSeconds(20), false, false),
+    /** 상대 주장을 보며 반론 작성 · 제출 */
+    REBUTTAL(Duration.ofSeconds(60), false, true),
+    /** 1:1 채팅. 반론이 공개된 뒤부터 받습니다. 마지막 30초는 "최종반론" 안내만 뜨고 똑같이 채팅입니다 */
+    CHAT(Duration.ofSeconds(120), true, false),
     /** 판정. 끝이 없는 마지막 구간입니다. */
-    JUDGING(null, false, false, false);
+    JUDGING(null, false, false);
+
+    /**
+     * 작성 구간이 끝난 뒤 그 구간의 제출을 더 받는 시간. 프론트가 타이머가 끝나는 순간 자동 제출하면
+     * 서버에는 구간이 끝난 뒤에 도착하므로, 이 유예 안의 제출은 받고 공개는 유예가 끝난 뒤에 합니다.
+     */
+    public static final Duration SUBMIT_GRACE = Duration.ofSeconds(3);
 
     /** 구간 길이. {@link #JUDGING} 은 끝이 없어 null 입니다. */
     private final Duration duration;
     private final boolean chatAllowed;
-    private final boolean finalAllowed;
-    /** 주장을 작성(덮어쓰기)할 수 있는 구간. 작성 중인 주장은 본인만 봅니다. */
+    /** 주장 · 반론을 작성 · 제출하는 구간. 제출한 글은 공개 전까지 본인만 봅니다. */
     private final boolean memoAllowed;
 
-    DebatePhase(Duration duration, boolean chatAllowed, boolean finalAllowed, boolean memoAllowed) {
+    DebatePhase(Duration duration, boolean chatAllowed, boolean memoAllowed) {
         this.duration = duration;
         this.chatAllowed = chatAllowed;
-        this.finalAllowed = finalAllowed;
         this.memoAllowed = memoAllowed;
-    }
-
-    /**
-     * 이 구간이 시작될 때 공개하는 주장을 작성한 구간. {@link #CHAT_1} 은 {@link #PREP},
-     * {@link #CHAT_2} 는 {@link #REBUTTAL} 이고, 나머지는 공개할 주장이 없어 null 입니다.
-     */
-    public DebatePhase argumentPhase() {
-        return switch (this) {
-            case CHAT_1 -> PREP;
-            case CHAT_2 -> REBUTTAL;
-            default -> null;
-        };
     }
 
     /**
      * {@code now} 가 속한 구간과 그 구간이 끝나는 시각.
      *
-     * <p>구간은 시작 시각을 포함하고 끝 시각은 포함하지 않습니다. 시작 후 정확히 60초는 {@link #CHAT_1} 입니다.
+     * <p>구간은 시작 시각을 포함하고 끝 시각은 포함하지 않습니다. 시작 후 정확히 60초는 {@link #REVEAL} 입니다.
      * 초 단위로 자르지 않고 {@link Duration} 그대로 비교합니다.
      *
      * <p>{@code now} 가 {@code startedAt} 보다 앞서면(서버 간 시계 오차 등) {@link #PREP} 으로 봅니다.
@@ -85,5 +76,47 @@ public enum DebatePhase {
         }
         // 마지막 JUDGING 의 duration 이 null 이라 위에서 반드시 끝납니다.
         throw new IllegalStateException("마지막 구간은 끝이 없어야 합니다.");
+    }
+
+    /**
+     * {@code now} 에 제출을 받는 작성 구간. 작성 구간 안이거나, 작성 구간이 끝난 뒤 {@link #SUBMIT_GRACE} 안이면
+     * 그 작성 구간이고, 아니면 null 입니다.
+     */
+    public static DebatePhase memoPhaseAt(LocalDateTime startedAt, LocalDateTime now) {
+        DebatePhase current = at(startedAt, now).phase();
+        if (current.memoAllowed) {
+            return current;
+        }
+        for (DebatePhase phase : values()) {
+            if (phase.memoAllowed && now.isBefore(phase.revealAt(startedAt)) && !now.isBefore(phase.endAt(startedAt))) {
+                return phase;
+            }
+        }
+        return null;
+    }
+
+    /** 이 작성 구간의 글을 공개하는 시각 — 구간이 끝나고 {@link #SUBMIT_GRACE} 가 지난 때. */
+    public LocalDateTime revealAt(LocalDateTime startedAt) {
+        if (!memoAllowed) {
+            throw new IllegalStateException("작성 구간이 아닙니다. phase=" + this);
+        }
+        return endAt(startedAt).plus(SUBMIT_GRACE);
+    }
+
+    /** 채팅을 받는가 — {@link #CHAT} 구간이고 반론이 공개된 뒤. 반론이 채팅보다 앞 {@code seqNo} 를 받게 합니다. */
+    public static boolean isChatOpen(LocalDateTime startedAt, LocalDateTime now) {
+        return at(startedAt, now).phase().chatAllowed && !now.isBefore(REBUTTAL.revealAt(startedAt));
+    }
+
+    /** 이 구간이 끝나는 시각. {@link #JUDGING} 은 끝이 없어 쓰지 않습니다. */
+    private LocalDateTime endAt(LocalDateTime startedAt) {
+        Duration end = Duration.ZERO;
+        for (DebatePhase phase : values()) {
+            end = end.plus(phase.duration);
+            if (phase == this) {
+                return startedAt.plus(end);
+            }
+        }
+        throw new IllegalStateException("끝이 없는 구간입니다. phase=" + this);
     }
 }
