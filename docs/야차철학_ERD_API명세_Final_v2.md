@@ -104,6 +104,7 @@ erDiagram
 | disagree_text | VARCHAR(100) | NN | 🟢 반대(아니오) 입장 문구 (예: "지구는 평평하지 않다!") |
 | is_active | BOOLEAN | NN | 🔷 랜덤 추첨 대상 여부. 내린 주제는 `false` |
 | created_at | DATETIME | NN |  |
+| updated_at | DATETIME | NN | 🟢 다른 테이블과 같은 생성 · 수정 시각 (`BaseTimeEntity`) |
 
 > 🔷 하루 한 주제(`topic_date`)가 아니라 **카테고리별 주제 풀**이다. 랜덤 야차 · 봇전 모두 여기서 뽑는다.
 > 🟢 찬성 / 반대 문구는 작성 화면의 "내 입장", 주장 공개 · 채팅 말풍선, 채팅 상단의 "찬성 문구 VS 반대 문구" 에 쓴다.
@@ -273,7 +274,7 @@ erDiagram
   | 게스트도 쓰는 경로 | 용도 |
   | --- | --- |
   | `/auth/logout` · `/auth/upgrade` | 로그아웃 · 회원 승격 |
-  | `/sessions/**` | 게임 · 관전 (방 · 상태 · 메시지 · 주장 등) |
+  | `/sessions/**` | 게임 (방 · 상태 · 메시지 · 주장 등). 🟢 관전은 사용하지 않는다 |
   | `GET /users/me` · `GET /topics/**` | 내 정보 · 주제 조회 |
 
 - **게임 · 관전용 경로를 `/sessions/**` 밖에 새로 만들면** `SecurityConfig` 의 게스트 경로 목록에 추가해야 한다.
@@ -304,10 +305,10 @@ erDiagram
 
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
-| GET | `/topics/random?category=&exclude=` | 🔷 카테고리 안에서 랜덤 주제 1개. **다시 뽑기**(🟢 "다음 주제로 넘어가기")는 방금 본 주제 id 를 `exclude` 로 넘긴다. 🟢 하위 카테고리를 먼저 랜덤으로 고른다 (1-2) | ✅ |
+| GET | `/topics/random?category=&exclude=` | 🔷 카테고리 안에서 랜덤 주제 1개. **다시 뽑기**(🟢 "다음 주제로 넘어가기")는 방금 본 주제 id 를 `exclude` 로 넘긴다. 🟢 하위 카테고리를 먼저 랜덤으로 고른다 (1-2). 뽑을 주제가 없으면 `TOPIC_NOT_FOUND`(404), 카테고리 값이 잘못되면 `BINDING_ERROR`(400) | ✅ (게스트 가능) |
 | GET | `/topics/today` | 오늘의 야차판 — 🔷 **유지 여부 결정 필요** (PART 5) | — |
-| GET | `/topics` | 주제 목록 (카테고리 · 페이징) | — |
-| GET | `/topics/{id}` | 주제 상세 | — |
+| GET | `/topics` | 주제 목록 (카테고리 · 페이징) — 🟢 **미구현** (필요해지면 만든다) | — |
+| GET | `/topics/{id}` | 주제 상세 — 🟢 **미구현** (필요해지면 만든다) | — |
 | GET | `/categories` | 카테고리 목록 — 🔷 **8개**, 🟢 하위 카테고리 포함 | — |
 
 🟢 **주제 응답**
@@ -315,6 +316,13 @@ erDiagram
 ```json
 { "id": 12, "category": "TRUTH_AND_BELIEF", "subcategory": "REALITY",
   "statement": "지구가 평평하다는 말, 진실인가?", "agreeText": "지구는 평평하다!", "disagreeText": "지구는 평평하지 않다!" }
+```
+
+🟢 **카테고리 목록 응답** (`GET /categories`) — 카테고리 8개를 자동 제안 순환 순서로, `code` 는 요청에 쓰는 값 · `name` 은 화면 이름
+
+```json
+[ { "code": "HUMAN", "name": "인간",
+    "subcategories": [ { "code": "HUMAN_NATURE", "name": "인간 본성" }, { "code": "DESIRE", "name": "욕망" } ] } ]
 ```
 
 ---
@@ -343,7 +351,7 @@ erDiagram
 | POST | `/sessions/{id}/ai` | 🔷 **AI 대결로 전환** — 방장만, `WAITING` 일 때만 | ✅ |
 | DELETE | `/sessions/{id}` | 대기 취소 — 방장만, `WAITING` 일 때만 | ✅ |
 | POST | `/sessions/{id}/leave` | 🟢 **게임 중 나가기** — 참가자만, `IN_PROGRESS` 일 때. 바로 몰수패 (2-11) | ✅ |
-| GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용). 세션 상세(방 정보 · 참가자 · 🟢 주제 찬성 / 반대 문구 · 참가자 철학자 유형)와 🟢 지금 작성 구간의 제출 여부(나 · 상대)도 여기서 준다. 승패 · 사용자 id 는 넣지 않는다 | ✅ |
+| GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용). 세션 상세(방 정보 · 참가자 · 🟢 주제 찬성 / 반대 문구 · 참가자 철학자 유형)와 🟢 지금 작성 구간의 제출 여부(`participants[].submitted` — 작성 구간이 아니면 없음)도 여기서 준다. 승패 · 사용자 id 는 넣지 않는다 | ✅ |
 | GET | ~~`/sessions/live?category=&page=`~~ | 🟣 관전 목록 — 🟢 **관전 미사용으로 구현하지 않는다** | — |
 | GET | `/sessions/me` | 전투 기록 — 🟣 주제 · 상대 · 날짜 · **승패**만 (대화 내용 없음) | ✅ (회원) |
 
@@ -480,7 +488,7 @@ flowchart TD
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
 | GET | `/sessions/{id}/messages?afterSeq=N` | 메시지 조회 — 재접속 · 누락 보충 (`seqNo > N`, 오름차순). 🟣 **게임 중에만** 조회된다 (메모리). 🟢 참가자만 | ✅ |
-| PUT | `/sessions/{id}/memo` | 🟢 **주장 · 반론 제출** — `PREP`(주장, **200자**) · `REBUTTAL`(반론, **250자**) 구간. 구간당 1건, 다시 제출하면 덮어쓴다. 참가자만 | ✅ |
+| PUT | `/sessions/{id}/memo` | 🟢 **주장 · 반론 제출** — `PREP`(주장, **200자**) · `REBUTTAL`(반론, **250자**) 구간. 구간당 1건, 다시 제출하면 덮어쓴다. 참가자만. 요청 `{ "content": "..." }`, 응답 `{ "phase", "content", "submittedAt" }` | ✅ |
 | GET | `/sessions/{id}/memo` | 🟢 **내가 제출한 주장 · 반론** (작성 구간 순). 새로고침 복구용. 참가자만, 게임 중에만 | ✅ |
 
 **WebSocket (STOMP)**
@@ -702,7 +710,7 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 | `SESSION_NOT_FOUND` | 404 |  |
 | `NOT_PARTICIPANT` | 403 | 내 세션이 아님 |
 | `INVALID_PHASE` | 409 | 🔶 (구 `INVALID_TURN`) 현재 구간에서 허용되지 않는 동작 |
-| `SESSION_FINISHED` | 409 | 이미 종료됨 |
+| `SESSION_NOT_IN_PROGRESS` | 409 | 이미 종료됐거나 진행 중이 아닌 토론 (🟢 구 `SESSION_FINISHED`. 끝난 게임에 채팅 · 제출을 보내거나 게임이 메모리에 없을 때). STOMP 이벤트 `SESSION_FINISHED` 와는 다르다 |
 | `ALREADY_IN_SESSION` | 409 | 🔶 이미 대기 중이거나 진행 중인 세션이 있음 |
 | `SESSION_NOT_WAITING` | 409 | 🔷 대기 중이 아닌 방에 입장 · 거절 · AI 전환 · 취소하려 함 (이미 매칭됨 포함) |
 | `NOT_ROOM_OWNER` | 403 | 🔷 방장만 할 수 있는 동작 (AI 전환 · 취소) |
