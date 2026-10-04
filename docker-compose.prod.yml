@@ -78,6 +78,9 @@ services:
 
       LINER_API_KEY: ${LINER_API_KEY:-}
 
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:?AWS_S3_BUCKET must be set}
+
     ports:
       - "127.0.0.1:8080:8080"
 

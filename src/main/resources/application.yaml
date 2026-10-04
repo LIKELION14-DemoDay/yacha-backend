@@ -3,6 +3,10 @@ spring:
     name: yacha-backend
   profiles:
     default: local
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   jpa:
     # 켜두면 요청 내내 DB 커넥션을 붙잡고 있어 커넥션 풀이 금방 마름
     open-in-view: false
@@ -104,3 +108,10 @@ cors:
 liner:
   base-url: https://platform.liner.com
   api-key: ${LINER_API_KEY:}
+
+storage:
+  s3:
+    bucket: ${AWS_S3_BUCKET:}
+    region: ${AWS_REGION:ap-northeast-2}
+    profile-prefix: profiles
+    presigned-url-validity: 1h
