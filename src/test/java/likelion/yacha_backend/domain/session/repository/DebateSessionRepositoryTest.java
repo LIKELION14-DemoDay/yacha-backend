@@ -185,15 +185,17 @@ class DebateSessionRepositoryTest {
     }
 
     @Test
-    @DisplayName("상태별로 세션을 찾는다 (재시작 정리용)")
-    void findsAllByStatus() {
+    @DisplayName("기준 시각보다 먼저 시작된 진행 중 세션만 찾는다 (재시작 정리용)")
+    void findsInProgressStartedBefore() {
         DebateSession waiting = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, 12L));
-        DebateSession aiMatch = sessionRepository.save(DebateSession.createAiMatch(Category.ETHICS, 13L, NOW));
+        DebateSession before = sessionRepository.save(
+                DebateSession.createAiMatch(Category.ETHICS, 13L, NOW.minusSeconds(1)));
+        DebateSession atBoot = sessionRepository.save(DebateSession.createAiMatch(Category.ETHICS, 14L, NOW));
 
-        assertThat(sessionRepository.findAllByStatus(SessionStatus.IN_PROGRESS))
+        assertThat(sessionRepository.findAllByStatusAndStartedAtBefore(SessionStatus.IN_PROGRESS, NOW))
                 .extracting(DebateSession::getId)
-                .containsExactly(aiMatch.getId())
-                .doesNotContain(waiting.getId());
+                .containsExactly(before.getId())
+                .doesNotContain(waiting.getId(), atBoot.getId());
     }
 
     @Test
