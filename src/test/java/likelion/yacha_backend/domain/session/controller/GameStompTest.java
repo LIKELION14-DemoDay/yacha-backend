@@ -3,6 +3,7 @@ package likelion.yacha_backend.domain.session.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Type;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
+import likelion.yacha_backend.domain.session.game.Game;
+import likelion.yacha_backend.domain.session.game.GameRegistry;
+import likelion.yacha_backend.domain.session.service.GameMemoService;
 import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
 import likelion.yacha_backend.global.security.jwt.Role;
 import org.junit.jupiter.api.AfterEach;
@@ -37,7 +41,7 @@ import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(SessionFixture.class)
-@DisplayName("토론방 STOMP — 채팅 · 최종변론 · 관전 구독")
+@DisplayName("토론방 STOMP — 채팅 · 주장 제출 알림 · 공개 · 관전 구독")
 class GameStompTest {
 
     private static final long TIMEOUT_SECONDS = 5;
@@ -45,8 +49,9 @@ class GameStompTest {
     private static final long SILENCE_MILLIS = 500;
 
     private static final long IN_PREP = 10;
-    private static final long IN_CHAT_1 = 90;
-    private static final long IN_FINAL = 460;
+    private static final long IN_REBUTTAL = 90;
+    /** 반론 공개(143초) 뒤 채팅 */
+    private static final long IN_CHAT = 150;
 
     @Value("${local.server.port}")
     private int port;
@@ -59,6 +64,12 @@ class GameStompTest {
 
     @Autowired
     private SessionFixture fixture;
+
+    @Autowired
+    private GameRegistry gameRegistry;
+
+    @Autowired
+    private GameMemoService gameMemoService;
 
     private WebSocketStompClient stompClient;
     private ThreadPoolTaskScheduler clientScheduler;
@@ -93,7 +104,7 @@ class GameStompTest {
         @Test
         @DisplayName("참가자가 보낸 채팅을 참가자 · 관전자 모두 seqNo · 참가자 id · +09:00 시각과 함께 받는다")
         void broadcastsToParticipantsAndSpectators() throws Exception {
-            Room room = track(fixture.randomHuman(IN_CHAT_1));
+            Room room = track(fixture.randomHuman(IN_CHAT));
             Client host = connect(room.hostUserId());
             Client opponent = connect(room.opponentUserId());
             Client spectator = connect(fixture.newUser());
@@ -106,7 +117,7 @@ class GameStompTest {
                 Map<String, Object> event = next(inbox, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS));
                 assertThat(event).isNotNull();
                 assertThat(event).containsEntry("type", "CHAT")
-                        .containsEntry("phase", "CHAT_1")
+                        .containsEntry("phase", "CHAT")
                         .containsEntry("content", "첫 주장");
                 assertThat(((Number) event.get("seqNo")).longValue()).isEqualTo(1);
                 assertThat(((Number) event.get("senderId")).longValue()).isEqualTo(room.hostParticipantId());
@@ -117,9 +128,41 @@ class GameStompTest {
         }
 
         @Test
+        @DisplayName("첫 채팅 전에 양쪽 반론이 ARGUMENT 로 공개돼 참가자 · 관전자 모두 seqNo 순서대로 받는다")
+        void revealsArgumentsBeforeFirstChat() throws Exception {
+            Room room = track(fixture.randomHuman(IN_CHAT));
+            Game game = gameRegistry.find(room.sessionId()).orElseThrow();
+            LocalDateTime inRebuttal = game.getStartedAt().plusSeconds(IN_REBUTTAL);
+            game.saveMemo(room.hostUserId(), "방장 주장", inRebuttal);
+            game.saveMemo(room.opponentUserId(), "상대 주장", inRebuttal);
+            Client host = connect(room.hostUserId());
+            Client opponent = connect(room.opponentUserId());
+            Client spectator = connect(fixture.newUser());
+            BlockingQueue<Map<String, Object>> toHost = host.subscribeTopic(room.sessionId());
+            BlockingQueue<Map<String, Object>> toSpectator = spectator.subscribeTopic(room.sessionId());
+
+            opponent.send("/app/sessions/" + room.sessionId() + "/chat", Map.of("content", "첫 채팅"));
+
+            for (BlockingQueue<Map<String, Object>> inbox : List.of(toHost, toSpectator)) {
+                long timeout = TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS);
+                Map<String, Object> first = next(inbox, timeout);
+                Map<String, Object> second = next(inbox, timeout);
+                Map<String, Object> third = next(inbox, timeout);
+                assertThat(first).containsEntry("type", "ARGUMENT").containsEntry("phase", "REBUTTAL")
+                        .containsEntry("content", "방장 주장");
+                assertThat(((Number) first.get("senderId")).longValue()).isEqualTo(room.hostParticipantId());
+                assertThat(second).containsEntry("type", "ARGUMENT").containsEntry("content", "상대 주장");
+                assertThat(third).containsEntry("type", "CHAT").containsEntry("content", "첫 채팅");
+                assertThat(List.of(first, second, third))
+                        .extracting(event -> ((Number) event.get("seqNo")).longValue())
+                        .containsExactly(1L, 2L, 3L);
+            }
+        }
+
+        @Test
         @DisplayName("관전자가 보내면 /user/queue/errors 로 NOT_PARTICIPANT 를 받고 연결은 유지된다")
         void spectatorCannotSend() throws Exception {
-            Room room = track(fixture.randomHuman(IN_CHAT_1));
+            Room room = track(fixture.randomHuman(IN_CHAT));
             Client spectator = connect(fixture.newUser());
             BlockingQueue<Map<String, Object>> topic = spectator.subscribeTopic(room.sessionId());
             BlockingQueue<Map<String, Object>> errors = spectator.subscribeErrors();
@@ -147,7 +190,7 @@ class GameStompTest {
         @Test
         @DisplayName("본문이 비어 있으면 VALIDATION_FAILED")
         void blankContent() throws Exception {
-            Room room = track(fixture.randomHuman(IN_CHAT_1));
+            Room room = track(fixture.randomHuman(IN_CHAT));
             Client host = connect(room.hostUserId());
             BlockingQueue<Map<String, Object>> errors = host.subscribeErrors();
 
@@ -169,26 +212,29 @@ class GameStompTest {
     }
 
     @Nested
-    @DisplayName("최종변론")
-    class Final {
+    @DisplayName("주장 제출 알림")
+    class Submitted {
 
         @Test
-        @DisplayName("FINAL 이벤트로 브로드캐스트하고, 두 번째 제출은 FINAL_ALREADY_SUBMITTED")
-        void onlyOnce() throws Exception {
-            Room room = track(fixture.randomHuman(IN_FINAL));
-            Client host = connect(room.hostUserId());
-            BlockingQueue<Map<String, Object>> topic = host.subscribeTopic(room.sessionId());
-            BlockingQueue<Map<String, Object>> errors = host.subscribeErrors();
+        @DisplayName("제출하면 참가자 · 관전자 모두 ARGUMENT_SUBMITTED 를 받고, 내용은 들어 있지 않다")
+        void broadcastsWithoutContent() throws Exception {
+            Room room = track(fixture.randomHuman(IN_PREP));
+            Client opponent = connect(room.opponentUserId());
+            Client spectator = connect(fixture.newUser());
+            BlockingQueue<Map<String, Object>> toOpponent = opponent.subscribeTopic(room.sessionId());
+            BlockingQueue<Map<String, Object>> toSpectator = spectator.subscribeTopic(room.sessionId());
 
-            host.send("/app/sessions/" + room.sessionId() + "/final", Map.of("content", "마지막 한마디"));
+            gameMemoService.saveMemo(room.sessionId(), room.hostUserId(), "비밀 주장");
 
-            Map<String, Object> event = next(topic, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS));
-            assertThat(event).isNotNull().containsEntry("type", "FINAL").containsEntry("phase", "FINAL");
-
-            host.send("/app/sessions/" + room.sessionId() + "/final", Map.of("content", "하나 더"));
-
-            assertErrorCode(errors, "FINAL_ALREADY_SUBMITTED");
-            assertThat(next(topic, SILENCE_MILLIS)).isNull();
+            for (BlockingQueue<Map<String, Object>> inbox : List.of(toOpponent, toSpectator)) {
+                Map<String, Object> event = next(inbox, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS));
+                assertThat(event).isNotNull()
+                        .containsEntry("type", "ARGUMENT_SUBMITTED")
+                        .containsEntry("phase", "PREP")
+                        .doesNotContainKey("content");
+                assertThat(((Number) event.get("senderId")).longValue()).isEqualTo(room.hostParticipantId());
+                assertThat(event.toString()).doesNotContain("비밀 주장");
+            }
         }
     }
 
@@ -199,7 +245,7 @@ class GameStompTest {
         @Test
         @DisplayName("친구 방은 참가자만 구독하고 관전자는 FORBIDDEN")
         void friendRoom() throws Exception {
-            Room room = track(fixture.friend(IN_CHAT_1));
+            Room room = track(fixture.friend(IN_CHAT));
 
             connect(room.opponentUserId()).subscribeTopic(room.sessionId());
             assertSubscribeForbidden(fixture.newUser(), room.sessionId());
@@ -208,7 +254,7 @@ class GameStompTest {
         @Test
         @DisplayName("대기 중 AI 로 바뀐 봇전은 RANDOM 방이어도 관전자가 FORBIDDEN")
         void convertedBot() throws Exception {
-            Room room = track(fixture.convertedBot(IN_CHAT_1));
+            Room room = track(fixture.convertedBot(IN_CHAT));
 
             connect(room.hostUserId()).subscribeTopic(room.sessionId());
             assertSubscribeForbidden(fixture.newUser(), room.sessionId());
@@ -217,7 +263,7 @@ class GameStompTest {
         @Test
         @DisplayName("자동 봇전은 RANDOM 방이어도 관전자가 FORBIDDEN")
         void autoBot() throws Exception {
-            Room room = track(fixture.autoBot(IN_CHAT_1));
+            Room room = track(fixture.autoBot(IN_CHAT));
 
             connect(room.hostUserId()).subscribeTopic(room.sessionId());
             assertSubscribeForbidden(fixture.newUser(), room.sessionId());
@@ -250,7 +296,7 @@ class GameStompTest {
         @Test
         @DisplayName("게스트 참가자가 연결 · 구독 · 채팅하고, 게스트 관전자도 받는다")
         void guestCanPlayAndSpectate() throws Exception {
-            Room room = track(fixture.randomHuman(IN_CHAT_1));
+            Room room = track(fixture.randomHuman(IN_CHAT));
             Client host = connect(room.hostUserId(), Role.GUEST);
             Client opponent = connect(room.opponentUserId(), Role.GUEST);
             Client spectator = connect(fixture.newUser(), Role.GUEST);
@@ -266,20 +312,6 @@ class GameStompTest {
             }
             assertThat(host.errorFrame).isNotDone();
             assertThat(spectator.errorFrame).isNotDone();
-        }
-
-        @Test
-        @DisplayName("게스트 참가자도 최종변론을 제출할 수 있다")
-        void guestCanSubmitFinal() throws Exception {
-            Room room = track(fixture.randomHuman(IN_FINAL));
-            Client host = connect(room.hostUserId(), Role.GUEST);
-            BlockingQueue<Map<String, Object>> topic = host.subscribeTopic(room.sessionId());
-
-            host.send("/app/sessions/" + room.sessionId() + "/final", Map.of("content", "게스트의 최종변론"));
-
-            Map<String, Object> event = next(topic, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS));
-            assertThat(event).isNotNull();
-            assertThat(event).containsEntry("type", "FINAL").containsEntry("content", "게스트의 최종변론");
         }
     }
 

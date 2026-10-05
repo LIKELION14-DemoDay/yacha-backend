@@ -11,7 +11,7 @@ import likelion.yacha_backend.domain.session.entity.DebatePhase;
  *
  * @param seqNo         게임 안의 순번. 1 부터 서버가 채번합니다
  * @param participantId 보낸 참가자 id. 사용자 id 가 아니라서 관전자에게 그대로 보여도 됩니다
- * @param type          채팅 / 최종변론
+ * @param type          채팅 / 공개된 주장 · 반론
  * @param phase         서버가 받은 시각의 구간
  * @param content       본문
  * @param receivedAt    서버가 받은 시각

@@ -19,7 +19,7 @@ import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
 
 /**
- * 토론 중 채팅 · 최종변론 (명세 2-4, STOMP).
+ * 토론 중 채팅 (명세 2-4, STOMP).
  *
  * <p>처리 중 에러는 연결을 끊지 않고 보낸 사람의 {@code /user/queue/errors} 로 REST 와 같은 형식을 보냅니다.
  * 이 연결(브라우저 탭)에만 보내고 같은 사용자의 다른 연결에는 보내지 않습니다.
@@ -35,16 +35,10 @@ public class GameMessageController {
 
     private final GameMessageService gameMessageService;
 
-    /** {@code SEND /app/sessions/{id}/chat} — {@code CHAT_1} · {@code CHAT_2} 구간, 참가자만. */
+    /** {@code SEND /app/sessions/{id}/chat} — {@code CHAT} 구간, 반론 공개(143초) 뒤부터, 참가자만. */
     @MessageMapping("/sessions/{sessionId}/chat")
     public void chat(@DestinationVariable Long sessionId, @Payload ChatSendRequest request, Principal principal) {
         gameMessageService.sendChat(sessionId, AuthUser.from(principal).getUserId(), request.content());
-    }
-
-    /** {@code SEND /app/sessions/{id}/final} — {@code FINAL} 구간, 참가자당 1건, 100자 이내. */
-    @MessageMapping("/sessions/{sessionId}/final")
-    public void submitFinal(@DestinationVariable Long sessionId, @Payload ChatSendRequest request, Principal principal) {
-        gameMessageService.submitFinal(sessionId, AuthUser.from(principal).getUserId(), request.content());
     }
 
     @MessageExceptionHandler(BusinessException.class)

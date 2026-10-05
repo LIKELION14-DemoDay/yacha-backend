@@ -25,10 +25,12 @@ class GameRegistryTest {
     private GameProperties properties;
 
     @Test
-    @DisplayName("application.yaml 의 game.* 이 바인딩된다 (채팅 300자 · 참가자당 채팅 500건)")
+    @DisplayName("application.yaml 의 game.* 이 바인딩된다 (채팅 100자 · 참가자당 채팅 200건 · 주장 200자 · 반론 250자)")
     void bindsProperties() {
-        assertThat(properties.chatMaxLength()).isEqualTo(300);
-        assertThat(properties.maxChatsPerParticipant()).isEqualTo(500);
+        assertThat(properties.chatMaxLength()).isEqualTo(100);
+        assertThat(properties.maxChatsPerParticipant()).isEqualTo(200);
+        assertThat(properties.argumentMaxLength()).isEqualTo(200);
+        assertThat(properties.rebuttalMaxLength()).isEqualTo(250);
     }
 
     @Test
@@ -46,12 +48,18 @@ class GameRegistryTest {
     }
 
     @Test
-    @DisplayName("설정값이 게임에 적용된다 (301자 채팅 거부)")
+    @DisplayName("설정값이 게임에 적용된다 (101자 채팅 · 201자 주장 · 251자 반론 거부)")
     void appliesProperties() {
         Game game = registry.create(1002L, STARTED_AT, Map.of(1L, 11L));
         try {
-            game.appendChat(1L, "가".repeat(300), STARTED_AT.plusSeconds(60));
-            assertThatThrownBy(() -> game.appendChat(1L, "가".repeat(301), STARTED_AT.plusSeconds(60)))
+            game.saveMemo(1L, "가".repeat(200), STARTED_AT);
+            assertThatThrownBy(() -> game.saveMemo(1L, "가".repeat(201), STARTED_AT))
+                    .hasMessage("글자 수를 초과했습니다.");
+            game.saveMemo(1L, "가".repeat(250), STARTED_AT.plusSeconds(80));
+            assertThatThrownBy(() -> game.saveMemo(1L, "가".repeat(251), STARTED_AT.plusSeconds(80)))
+                    .hasMessage("글자 수를 초과했습니다.");
+            game.appendChat(1L, "가".repeat(100), STARTED_AT.plusSeconds(150));
+            assertThatThrownBy(() -> game.appendChat(1L, "가".repeat(101), STARTED_AT.plusSeconds(150)))
                     .hasMessage("글자 수를 초과했습니다.");
         } finally {
             registry.remove(1002L);
@@ -72,7 +80,7 @@ class GameRegistryTest {
     }
 
     @Test
-    @DisplayName("지우기 전에 받아 둔 게임 참조로도 지운 뒤에는 채팅 · 최종변론을 기록할 수 없다")
+    @DisplayName("지우기 전에 받아 둔 게임 참조로도 지운 뒤에는 채팅 · 주장을 기록할 수 없다")
     void removeBlocksHeldReference() {
         Game held = registry.create(1004L, STARTED_AT, Map.of(1L, 11L));
 
@@ -80,9 +88,9 @@ class GameRegistryTest {
 
         assertThat(registry.find(1004L)).isEmpty();
         assertThat(held.isFinished()).isTrue();
-        assertThatThrownBy(() -> held.appendChat(1L, "지운 뒤 채팅", STARTED_AT.plusSeconds(60)))
+        assertThatThrownBy(() -> held.appendChat(1L, "지운 뒤 채팅", STARTED_AT.plusSeconds(150)))
                 .hasMessage("이미 종료되었거나 진행 중이 아닌 토론입니다.");
-        assertThatThrownBy(() -> held.submitFinal(1L, "지운 뒤 최종변론", STARTED_AT.plusSeconds(450)))
+        assertThatThrownBy(() -> held.saveMemo(1L, "지운 뒤 주장", STARTED_AT))
                 .hasMessage("이미 종료되었거나 진행 중이 아닌 토론입니다.");
         assertThat(held.messagesAfter(0)).isEmpty();
     }
@@ -97,7 +105,7 @@ class GameRegistryTest {
         // sendChat 처럼 게임 락 안에서 기록 → 전송하는 도중이라고 가정한다
         Thread writer = new Thread(() -> {
             synchronized (game) {
-                game.appendChat(1L, "락 안의 채팅", STARTED_AT.plusSeconds(60));
+                game.appendChat(1L, "락 안의 채팅", STARTED_AT.plusSeconds(150));
                 locked.countDown();
                 awaitQuietly(release);
             }
@@ -118,7 +126,7 @@ class GameRegistryTest {
 
         assertThat(registry.find(1005L)).isEmpty();
         assertThat(game.messagesAfter(0)).hasSize(1);
-        assertThatThrownBy(() -> game.appendChat(1L, "지운 뒤 채팅", STARTED_AT.plusSeconds(61)))
+        assertThatThrownBy(() -> game.appendChat(1L, "지운 뒤 채팅", STARTED_AT.plusSeconds(151)))
                 .hasMessage("이미 종료되었거나 진행 중이 아닌 토론입니다.");
     }
 
