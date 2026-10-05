@@ -10,11 +10,11 @@ import likelion.yacha_backend.domain.session.entity.DebatePhase;
  * <b>{@code content} 를 로그에 찍지 마세요.</b> {@code toString()} 에서도 본문을 뺍니다.
  *
  * @param seqNo         게임 안의 순번. 1 부터 서버가 채번합니다
- * @param participantId 보낸 참가자 id. 사용자 id 가 아니라서 관전자에게 그대로 보여도 됩니다
- * @param type          채팅 / 최종변론
- * @param phase         서버가 받은 시각의 구간
+ * @param participantId 보낸 참가자 id. 사용자 id 는 노출하지 않습니다
+ * @param type          채팅 / 공개된 주장 · 반론
+ * @param phase         {@code CHAT} 은 서버가 받은 시각의 구간, {@code ARGUMENT} 는 작성 구간 ({@code PREP} 주장 / {@code REBUTTAL} 반론)
  * @param content       본문
- * @param receivedAt    서버가 받은 시각
+ * @param receivedAt    서버가 받은 시각. {@code ARGUMENT} 는 공개한 시각
  */
 public record GameMessage(
         long seqNo,
