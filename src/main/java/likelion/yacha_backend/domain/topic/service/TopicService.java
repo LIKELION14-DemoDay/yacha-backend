@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 하위 카테고리만 자주 나오기 때문입니다. 주제가 없는 하위 카테고리는 후보에서 빠집니다.
  *
  * <p>DB 의 {@code ORDER BY RAND()} 대신 후보를 읽어 서버에서 고릅니다. MySQL 과 테스트용 H2 가 똑같이 동작하고,
- * 하위 카테고리당 주제가 수십 개 수준이라 id 목록을 읽어도 부담이 없습니다.
+ * 하위 카테고리당 주제가 수십 개 수준이라 후보를 모두 읽어도 부담이 없습니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -34,18 +34,20 @@ public class TopicService {
      * 뽑을 주제가 없으면 {@code TOPIC_NOT_FOUND} 입니다.
      */
     public TopicResponse pickRandom(Category category, Long excludeId) {
-        List<Subcategory> subcategories = topicRepository.findActiveSubcategories(category, excludeId);
-        if (subcategories.isEmpty()) {
-            throw new BusinessException(TopicErrorCode.TOPIC_NOT_FOUND);
-        }
-        Subcategory subcategory = pick(subcategories);
-        Long topicId = pick(topicRepository.findActiveIds(subcategory, excludeId));
-        return topicRepository.findById(topicId)
-                .map(TopicResponse::from)
-                .orElseThrow(() -> new BusinessException(TopicErrorCode.TOPIC_NOT_FOUND));
+        Subcategory subcategory = pick(topicRepository.findActiveSubcategories(category, excludeId));
+        return TopicResponse.from(pick(topicRepository.findActiveTopics(subcategory, excludeId)));
     }
 
+    /**
+     * 후보 중 하나를 고릅니다. 후보가 없으면 {@code TOPIC_NOT_FOUND} 입니다.
+     *
+     * <p>두 번째 조회(주제)가 빌 수도 있습니다. 하위 카테고리를 고른 뒤 그 안의 마지막 주제가 비활성화되면
+     * {@code READ COMMITTED}(H2) 에서는 두 조회가 다른 커밋을 봅니다.
+     */
     private <T> T pick(List<T> candidates) {
+        if (candidates.isEmpty()) {
+            throw new BusinessException(TopicErrorCode.TOPIC_NOT_FOUND);
+        }
         return candidates.get(random.nextInt(candidates.size()));
     }
 }

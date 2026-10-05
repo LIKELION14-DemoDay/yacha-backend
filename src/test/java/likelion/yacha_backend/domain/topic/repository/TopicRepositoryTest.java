@@ -61,15 +61,17 @@ class TopicRepositoryTest {
     }
 
     @Test
-    @DisplayName("하위 카테고리 안의 활성 주제 id 를 오름차순으로 주고, 빼는 주제는 뺀다")
-    void activeIds() {
+    @DisplayName("하위 카테고리 안의 활성 주제를 id 오름차순으로 주고, 빼는 주제는 뺀다")
+    void activeTopics() {
         Topic first = save(Subcategory.AI);
         Topic second = save(Subcategory.AI);
         Topic third = save(Subcategory.AI);
         third.deactivate();
         save(Subcategory.ROBOT);
 
-        assertThat(topicRepository.findActiveIds(Subcategory.AI, null)).containsExactly(first.getId(), second.getId());
-        assertThat(topicRepository.findActiveIds(Subcategory.AI, first.getId())).containsExactly(second.getId());
+        assertThat(topicRepository.findActiveTopics(Subcategory.AI, null)).extracting(Topic::getId)
+                .containsExactly(first.getId(), second.getId());
+        assertThat(topicRepository.findActiveTopics(Subcategory.AI, first.getId())).extracting(Topic::getId)
+                .containsExactly(second.getId());
     }
 }

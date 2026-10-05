@@ -23,13 +23,13 @@ public interface TopicRepository extends JpaRepository<Topic, Long> {
     List<Subcategory> findActiveSubcategories(@Param("category") Category category,
                                               @Param("excludeId") Long excludeId);
 
-    /** 하위 카테고리 안에서 뽑을 주제의 id (오름차순). {@code excludeId} 는 뺍니다(null 이면 빼지 않음). */
+    /** 하위 카테고리 안에서 뽑을 주제 (id 오름차순). {@code excludeId} 는 뺍니다(null 이면 빼지 않음). */
     @Query("""
-            select t.id from Topic t
+            select t from Topic t
             where t.subcategory = :subcategory and t.active = true
               and (:excludeId is null or t.id <> :excludeId)
             order by t.id
             """)
-    List<Long> findActiveIds(@Param("subcategory") Subcategory subcategory,
-                             @Param("excludeId") Long excludeId);
+    List<Topic> findActiveTopics(@Param("subcategory") Subcategory subcategory,
+                                 @Param("excludeId") Long excludeId);
 }

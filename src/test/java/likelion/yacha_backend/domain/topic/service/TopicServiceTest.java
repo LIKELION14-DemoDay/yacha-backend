@@ -2,6 +2,9 @@ package likelion.yacha_backend.domain.topic.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -126,6 +129,17 @@ class TopicServiceTest {
     void emptyCategory() {
         save(Subcategory.LOVE, "관계 주제");
         TopicService service = new TopicService(topicRepository, RandomGenerator.getDefault());
+
+        assertNotFound(() -> service.pickRandom(Category.TECH_AND_FUTURE, null));
+    }
+
+    @Test
+    @DisplayName("하위 카테고리를 고른 뒤 그 안의 주제가 비어 있으면 500 이 아니라 TOPIC_NOT_FOUND (동시에 비활성화된 경우)")
+    void topicsGoneAfterSubcategoryPicked() {
+        TopicRepository repository = mock(TopicRepository.class);
+        when(repository.findActiveSubcategories(any(), any())).thenReturn(List.of(Subcategory.AI));
+        when(repository.findActiveTopics(any(), any())).thenReturn(List.of());
+        TopicService service = new TopicService(repository, RandomGenerator.getDefault());
 
         assertNotFound(() -> service.pickRandom(Category.TECH_AND_FUTURE, null));
     }
