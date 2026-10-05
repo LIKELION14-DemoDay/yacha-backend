@@ -32,3 +32,7 @@ jwt:
   # main 의 application.yaml 은 secret 에 기본값을 두지 않습니다(배포 실수를 빨리 드러내려고).
   # 그래서 환경변수 없이 테스트를 돌리면 컨텍스트 로딩이 실패하므로 여기서 랜덤 키를 넣습니다.
   secret: ${random.uuid}${random.uuid}
+
+storage:
+  s3:
+    bucket: test-profile-images
