@@ -10,7 +10,7 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * OpenAI chat completions 호출 골격. 근거 · 요약 · 판정처럼 용도별 클라이언트가 상속해서
+ * OpenAI chat completions 호출 골격. 힌트 · 판정 · 봇 발언처럼 용도별 클라이언트가 상속해서
  * 프롬프트만 바꿔 씁니다.
  *
  * <p><b>재시도와 실패 상태 기록은 아직 없습니다.</b> 지금은 실패하면 {@code null} 을 돌려줄 뿐이라,

@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Set;
 import likelion.yacha_backend.domain.session.dto.GameMessageResponse;
 import likelion.yacha_backend.domain.session.dto.SessionStateResponse;
 import likelion.yacha_backend.domain.session.dto.SessionStateResponse.ParticipantResponse;
@@ -66,11 +67,16 @@ public class SessionQueryService {
 
         DebatePhase phase = null;
         LocalDateTime endsAt = null;
+        Set<Long> submitted = null;
         if (session.isInProgress() && session.getStartedAt() != null) {
             PhaseState state = DebatePhase.at(session.getStartedAt(), now);
             phase = state.phase();
             endsAt = state.endsAt();
+            submitted = gameRegistry.find(sessionId)
+                    .map(game -> game.submittedParticipantIds(now))
+                    .orElse(null);
         }
+        Set<Long> submittedIds = submitted;
 
         return new SessionStateResponse(
                 session.getId(),
@@ -85,7 +91,8 @@ public class SessionQueryService {
                 DateTimes.withOffset(now, zone),
                 myParticipantId(participants, userId),
                 participants.stream()
-                        .map(p -> new ParticipantResponse(p.getId(), p.getParticipantType(), p.getRole(), p.getStance()))
+                        .map(p -> new ParticipantResponse(p.getId(), p.getParticipantType(), p.getRole(), p.getStance(),
+                                submittedIds == null ? null : submittedIds.contains(p.getId())))
                         .toList());
     }
 
