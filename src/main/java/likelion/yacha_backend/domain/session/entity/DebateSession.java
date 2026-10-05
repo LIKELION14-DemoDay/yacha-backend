@@ -28,7 +28,7 @@ import org.hibernate.type.SqlTypes;
  * {@code DebateSessionRepository} 의 조건부 UPDATE({@code status = WAITING / IN_PROGRESS}) 로 합니다.
  * 1건이 갱신된 쪽만 성공하므로 두 사람이 동시에 들어와도 한 명만 들어가고, 게임도 한 번만 끝납니다.
  *
- * <p>채팅 · 근거 · 요약 · 판정 상세는 이 테이블에 없습니다. 게임 동안 서버 메모리에만 둡니다 (명세 1-5).
+ * <p>채팅 · 주장 · 힌트 · 판정 상세는 이 테이블에 없습니다. 게임 동안 서버 메모리에만 둡니다 (명세 1-5).
  */
 @Entity
 @Table(

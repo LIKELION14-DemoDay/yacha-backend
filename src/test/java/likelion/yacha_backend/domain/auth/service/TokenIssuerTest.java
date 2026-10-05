@@ -37,15 +37,38 @@ class TokenIssuerTest {
     }
 
     @Test
-    @DisplayName("액세스 토큰에 userId 와 role 이 담긴다")
-    void accessTokenCarriesUserIdAndRole() {
+    @DisplayName("게스트의 액세스 토큰에는 userId 와 GUEST 가 담긴다")
+    void guestTokenCarriesGuestRole() {
         User user = savedGuest();
 
         IssuedTokens tokens = tokenIssuer.issue(user);
 
         AuthUser authUser = jwtTokenProvider.parseAccessUser(tokens.accessToken()).orElseThrow();
         assertThat(authUser.getUserId()).isEqualTo(user.getId());
-        assertThat(authUser.role()).isEqualTo(Role.USER);
+        assertThat(authUser.role()).isEqualTo(Role.GUEST);
+    }
+
+    @Test
+    @DisplayName("회원의 액세스 토큰에는 USER 가 담긴다")
+    void memberTokenCarriesUserRole() {
+        User user = userRepository.save(User.createMember("member@example.com", "encoded", "회원"));
+
+        IssuedTokens tokens = tokenIssuer.issue(user);
+
+        assertThat(jwtTokenProvider.parseAccessUser(tokens.accessToken()).orElseThrow().role())
+                .isEqualTo(Role.USER);
+    }
+
+    @Test
+    @DisplayName("승격하면 다음 발급부터 USER 가 담긴다")
+    void upgradedGuestGetsUserRole() {
+        User user = savedGuest();
+        user.upgradeToMember("upgraded@example.com", "encoded", "승격");
+
+        IssuedTokens tokens = tokenIssuer.issue(user);
+
+        assertThat(jwtTokenProvider.parseAccessUser(tokens.accessToken()).orElseThrow().role())
+                .isEqualTo(Role.USER);
     }
 
     @Test

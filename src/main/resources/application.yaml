@@ -33,6 +33,14 @@ auth:
     # 같은 이메일로 다시 보낼 수 있을 때까지의 간격. 남의 메일함에 계속 보내는 것을 막음 (팀 결정)
     send-interval: 1m
 
+  guest-cleanup:
+    # 만든 지 이만큼 지났고 리프레시 토큰도 없는 게스트를 지움 (10/2 회의). 리프레시 토큰 수명과 맞춤
+    inactive-after: 14d
+    # 한 트랜잭션에서 지우는 최대 수
+    batch-size: 500
+    # 매일 새벽 4시 (초 분 시 일 월 요일)
+    cron: "0 0 4 * * *"
+
   cookie:
     # 리프레시 토큰 쿠키 설정
     # local에서만 application-local.yaml이 secure를 false로
@@ -74,12 +82,15 @@ mail:
   reset-path: /reset-password
 
 game:
-  # 토론 중 채팅 · 최종변론은 서버 메모리에만 둡니다 (명세 1-5)
-  # 아래 두 값은 명세 PART 5 에서 확정 전이라 설정으로 뺐습니다. 최종변론 100자는 코드(Game)에 있습니다.
+  # 토론 중 채팅 · 주장 · 반론은 서버 메모리에만 둡니다 (명세 1-5)
   # 채팅 한 건의 글자 수 상한 (이모지도 한 글자)
-  chat-max-length: 300
-  # 참가자 한 명이 한 게임에서 보낼 수 있는 채팅 수 (최종변론 제외). 도배 제한이 정해지기 전까지 메모리 안전장치
-  max-chats-per-participant: 500
+  chat-max-length: 100
+  # 참가자 한 명이 한 게임에서 보낼 수 있는 채팅 수 (공개된 주장 · 반론 제외)
+  max-chats-per-participant: 200
+  # PREP 에 제출하는 주장의 글자 수 상한
+  argument-max-length: 200
+  # REBUTTAL 에 제출하는 반론의 글자 수 상한
+  rebuttal-max-length: 250
 
 springdoc:
   # 기본값은 비활성화하고, local 및 데모 기간의 prod 프로필에서 필요한 경우 명시적으로 활성화한다.
@@ -92,3 +103,7 @@ springdoc:
 cors:
   # 배포 시 CORS_ALLOWED_ORIGINS로 덮어쓰세요!
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+
+liner:
+  base-url: https://platform.liner.com
+  api-key: ${LINER_API_KEY:}
