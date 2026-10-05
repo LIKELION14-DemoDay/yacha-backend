@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.session.game;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -30,16 +31,22 @@ class GameTest {
     private static final long ALICE_PARTICIPANT = 11L;
     private static final long BOB_PARTICIPANT = 12L;
 
-    private static final LocalDateTime CHAT_1 = STARTED_AT.plusSeconds(60);
-    private static final LocalDateTime FINAL = STARTED_AT.plusSeconds(450);
+    /** 시간표: PREP 0~60 · REVEAL 60~80 · REBUTTAL 80~140 · CHAT 140~260 · JUDGING 260~, 제출 유예 3초 */
+    private static final LocalDateTime PREP = STARTED_AT.plusSeconds(10);
+    private static final LocalDateTime PREP_GRACE = STARTED_AT.plusSeconds(61);
+    private static final LocalDateTime ARGUMENT_REVEAL = STARTED_AT.plusSeconds(63);
+    private static final LocalDateTime REBUTTAL = STARTED_AT.plusSeconds(90);
+    private static final LocalDateTime REBUTTAL_GRACE = STARTED_AT.plusSeconds(141);
+    private static final LocalDateTime REBUTTAL_REVEAL = STARTED_AT.plusSeconds(143);
+    private static final LocalDateTime CHAT = STARTED_AT.plusSeconds(150);
 
     private static Game newGame(int chatMaxLength, int maxChatsPerParticipant) {
         return new Game(1L, STARTED_AT, Map.of(ALICE, ALICE_PARTICIPANT, BOB, BOB_PARTICIPANT),
-                chatMaxLength, maxChatsPerParticipant);
+                chatMaxLength, maxChatsPerParticipant, 200, 250);
     }
 
     private static Game newGame() {
-        return newGame(300, 500);
+        return newGame(100, 200);
     }
 
     private static void assertError(Runnable action, SessionErrorCode expected) {
@@ -58,30 +65,30 @@ class GameTest {
         void appends() {
             Game game = newGame();
 
-            GameMessage first = game.appendChat(ALICE, "안녕", CHAT_1);
-            GameMessage second = game.appendChat(BOB, "반가워", CHAT_1.plusSeconds(1));
+            GameMessage first = game.appendChat(ALICE, "안녕", CHAT);
+            GameMessage second = game.appendChat(BOB, "반가워", CHAT.plusSeconds(1));
 
             assertThat(first.seqNo()).isEqualTo(1);
             assertThat(first.participantId()).isEqualTo(ALICE_PARTICIPANT);
             assertThat(first.type()).isEqualTo(MessageType.CHAT);
-            assertThat(first.phase()).isEqualTo(DebatePhase.CHAT_1);
-            assertThat(first.receivedAt()).isEqualTo(CHAT_1);
+            assertThat(first.phase()).isEqualTo(DebatePhase.CHAT);
+            assertThat(first.receivedAt()).isEqualTo(CHAT);
             assertThat(second.seqNo()).isEqualTo(2);
             assertThat(second.participantId()).isEqualTo(BOB_PARTICIPANT);
         }
 
         @ParameterizedTest(name = "시작 후 {0}초")
-        @ValueSource(longs = {60, 239, 270, 449})
-        @DisplayName("CHAT_1 · CHAT_2 구간에서 받는다")
+        @ValueSource(longs = {143, 200, 230, 259})
+        @DisplayName("반론이 공개된 143초부터 CHAT 이 끝날 때까지 받는다 (마지막 30초도 채팅)")
         void allowedPhases(long elapsedSeconds) {
             GameMessage message = newGame().appendChat(ALICE, "주장", STARTED_AT.plusSeconds(elapsedSeconds));
 
-            assertThat(message.phase().isChatAllowed()).isTrue();
+            assertThat(message.phase()).isEqualTo(DebatePhase.CHAT);
         }
 
         @ParameterizedTest(name = "시작 후 {0}초")
-        @ValueSource(longs = {0, 59, 240, 269, 450, 479, 480})
-        @DisplayName("PREP · REBUTTAL · FINAL · JUDGING 에서는 INVALID_PHASE")
+        @ValueSource(longs = {0, 59, 60, 79, 80, 139, 140, 142, 260, 3600})
+        @DisplayName("PREP · REVEAL · REBUTTAL · 반론 공개 전 CHAT(140~143초) · JUDGING 에서는 INVALID_PHASE")
         void rejectedPhases(long elapsedSeconds) {
             Game game = newGame();
 
@@ -90,12 +97,12 @@ class GameTest {
         }
 
         @Test
-        @DisplayName("마감 시각에 도착한 메시지는 거부한다 (240.000초는 REBUTTAL)")
+        @DisplayName("마감 시각에 도착한 메시지는 거부한다 (260.000초는 JUDGING)")
         void deadlineIsServerTime() {
             Game game = newGame();
 
-            game.appendChat(ALICE, "마감 직전", STARTED_AT.plusSeconds(240).minusNanos(1_000_000));
-            assertError(() -> game.appendChat(ALICE, "마감", STARTED_AT.plusSeconds(240)),
+            game.appendChat(ALICE, "마감 직전", STARTED_AT.plusSeconds(260).minusNanos(1_000_000));
+            assertError(() -> game.appendChat(ALICE, "마감", STARTED_AT.plusSeconds(260)),
                     SessionErrorCode.INVALID_PHASE);
         }
 
@@ -104,7 +111,7 @@ class GameTest {
         void spectatorCannotSend() {
             Game game = newGame();
 
-            assertError(() -> game.appendChat(SPECTATOR, "관전자", CHAT_1), SessionErrorCode.NOT_PARTICIPANT);
+            assertError(() -> game.appendChat(SPECTATOR, "관전자", CHAT), SessionErrorCode.NOT_PARTICIPANT);
             assertError(() -> game.appendChat(SPECTATOR, "관전자", STARTED_AT), SessionErrorCode.NOT_PARTICIPANT);
         }
 
@@ -113,8 +120,8 @@ class GameTest {
         void maxLength() {
             Game game = newGame();
 
-            game.appendChat(ALICE, "가".repeat(300), CHAT_1);
-            assertError(() -> game.appendChat(ALICE, "가".repeat(301), CHAT_1), SessionErrorCode.CONTENT_TOO_LONG);
+            game.appendChat(ALICE, "가".repeat(100), CHAT);
+            assertError(() -> game.appendChat(ALICE, "가".repeat(101), CHAT), SessionErrorCode.CONTENT_TOO_LONG);
         }
 
         @ParameterizedTest(name = "\"{0}\"")
@@ -123,11 +130,11 @@ class GameTest {
         void rejectsBlank(String blank) {
             Game game = newGame();
 
-            assertThatThrownBy(() -> game.appendChat(ALICE, blank, CHAT_1))
+            assertThatThrownBy(() -> game.appendChat(ALICE, blank, CHAT))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(GlobalErrorCode.VALIDATION_FAILED);
-            assertThat(game.appendChat(ALICE, "다음", CHAT_1).seqNo()).isEqualTo(1);
+            assertThat(game.appendChat(ALICE, "다음", CHAT).seqNo()).isEqualTo(1);
         }
 
         @Test
@@ -135,7 +142,7 @@ class GameTest {
         void rejectsNull() {
             Game game = newGame();
 
-            assertThatThrownBy(() -> game.appendChat(ALICE, null, CHAT_1))
+            assertThatThrownBy(() -> game.appendChat(ALICE, null, CHAT))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(GlobalErrorCode.VALIDATION_FAILED);
@@ -144,11 +151,11 @@ class GameTest {
         @Test
         @DisplayName("이모지는 두 칸(char)을 써도 한 글자로 센다")
         void countsEmojiAsOneCharacter() {
-            Game game = newGame(3, 500);
+            Game game = newGame(3, 200);
             String threeEmojis = "😀😀😀";   // String.length() 는 6
 
-            game.appendChat(ALICE, threeEmojis, CHAT_1);
-            assertError(() -> game.appendChat(ALICE, threeEmojis + "😀", CHAT_1), SessionErrorCode.CONTENT_TOO_LONG);
+            game.appendChat(ALICE, threeEmojis, CHAT);
+            assertError(() -> game.appendChat(ALICE, threeEmojis + "😀", CHAT), SessionErrorCode.CONTENT_TOO_LONG);
         }
 
         @Test
@@ -156,61 +163,10 @@ class GameTest {
         void rejectedDoesNotConsumeSeq() {
             Game game = newGame();
 
-            game.appendChat(ALICE, "1", CHAT_1);
-            assertError(() -> game.appendChat(ALICE, "가".repeat(301), CHAT_1), SessionErrorCode.CONTENT_TOO_LONG);
+            game.appendChat(ALICE, "1", CHAT);
+            assertError(() -> game.appendChat(ALICE, "가".repeat(101), CHAT), SessionErrorCode.CONTENT_TOO_LONG);
 
-            assertThat(game.appendChat(ALICE, "2", CHAT_1).seqNo()).isEqualTo(2);
-        }
-    }
-
-    @Nested
-    @DisplayName("최종변론")
-    class Final {
-
-        @Test
-        @DisplayName("FINAL 구간에서 참가자당 1건 받는다")
-        void submitsOncePerParticipant() {
-            Game game = newGame();
-
-            GameMessage alice = game.submitFinal(ALICE, "결론", FINAL);
-            GameMessage bob = game.submitFinal(BOB, "결론", FINAL.plusSeconds(1));
-
-            assertThat(alice.type()).isEqualTo(MessageType.FINAL);
-            assertThat(alice.phase()).isEqualTo(DebatePhase.FINAL);
-            assertThat(bob.seqNo()).isEqualTo(alice.seqNo() + 1);
-            assertError(() -> game.submitFinal(ALICE, "한 번 더", FINAL.plusSeconds(2)),
-                    SessionErrorCode.FINAL_ALREADY_SUBMITTED);
-        }
-
-        @ParameterizedTest(name = "시작 후 {0}초")
-        @ValueSource(longs = {60, 449, 480})
-        @DisplayName("FINAL 이 아닌 구간에서는 INVALID_PHASE")
-        void onlyInFinal(long elapsedSeconds) {
-            Game game = newGame();
-
-            assertError(() -> game.submitFinal(ALICE, "결론", STARTED_AT.plusSeconds(elapsedSeconds)),
-                    SessionErrorCode.INVALID_PHASE);
-        }
-
-        @Test
-        @DisplayName("FINAL 에는 채팅을 받지 않는다")
-        void noChatInFinal() {
-            assertError(() -> newGame().appendChat(ALICE, "채팅", FINAL), SessionErrorCode.INVALID_PHASE);
-        }
-
-        @Test
-        @DisplayName("100자까지 받고 넘으면 CONTENT_TOO_LONG. 거부되면 다시 낼 수 있다")
-        void maxLength() {
-            Game game = newGame();
-
-            assertError(() -> game.submitFinal(ALICE, "가".repeat(101), FINAL), SessionErrorCode.CONTENT_TOO_LONG);
-            game.submitFinal(ALICE, "가".repeat(100), FINAL);
-        }
-
-        @Test
-        @DisplayName("관전자는 NOT_PARTICIPANT")
-        void spectatorCannotSubmit() {
-            assertError(() -> newGame().submitFinal(SPECTATOR, "결론", FINAL), SessionErrorCode.NOT_PARTICIPANT);
+            assertThat(game.appendChat(ALICE, "2", CHAT).seqNo()).isEqualTo(2);
         }
     }
 
@@ -221,29 +177,16 @@ class GameTest {
         @Test
         @DisplayName("한 참가자가 상한에 닿으면 그 참가자만 MESSAGE_LIMIT_EXCEEDED")
         void perParticipant() {
-            Game game = newGame(300, 2);
+            Game game = newGame(100, 2);
 
-            game.appendChat(ALICE, "1", CHAT_1);
-            game.appendChat(ALICE, "2", CHAT_1);
+            game.appendChat(ALICE, "1", CHAT);
+            game.appendChat(ALICE, "2", CHAT);
 
-            assertError(() -> game.appendChat(ALICE, "3", CHAT_1), SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
+            assertError(() -> game.appendChat(ALICE, "3", CHAT), SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
             // 상대는 영향을 받지 않는다
-            game.appendChat(BOB, "반박", CHAT_1);
-            game.appendChat(BOB, "재반박", CHAT_1);
-            assertError(() -> game.appendChat(BOB, "또", CHAT_1), SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
-        }
-
-        @Test
-        @DisplayName("채팅 상한에 닿아도 최종변론은 낼 수 있다")
-        void finalNotCounted() {
-            Game game = newGame(300, 1);
-            game.appendChat(ALICE, "1", CHAT_1);
-            game.appendChat(BOB, "2", CHAT_1);
-
-            game.submitFinal(ALICE, "결론", FINAL);
-            game.submitFinal(BOB, "결론", FINAL);
-
-            assertThat(game.messagesAfter(0)).hasSize(4);
+            game.appendChat(BOB, "반박", CHAT);
+            game.appendChat(BOB, "재반박", CHAT);
+            assertError(() -> game.appendChat(BOB, "또", CHAT), SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
         }
 
         @Test
@@ -251,8 +194,328 @@ class GameTest {
         void rejectedNotCounted() {
             Game game = newGame(3, 1);
 
-            assertError(() -> game.appendChat(ALICE, "너무 길다", CHAT_1), SessionErrorCode.CONTENT_TOO_LONG);
-            game.appendChat(ALICE, "짧다", CHAT_1);
+            assertError(() -> game.appendChat(ALICE, "너무 길다", CHAT), SessionErrorCode.CONTENT_TOO_LONG);
+            game.appendChat(ALICE, "짧다", CHAT);
+        }
+    }
+
+    @Nested
+    @DisplayName("주장 · 반론 제출")
+    class Memo {
+
+        @Test
+        @DisplayName("PREP 주장 · REBUTTAL 반론을 구간마다 하나씩 받고, 다시 제출하면 덮어쓴다")
+        void savesAndOverwrites() {
+            Game game = newGame();
+
+            game.saveMemo(ALICE, "초안", PREP);
+            GameMemo saved = game.saveMemo(ALICE, "고친 주장", PREP.plusSeconds(5));
+            game.saveMemo(ALICE, "반론", REBUTTAL);
+
+            assertThat(saved.phase()).isEqualTo(DebatePhase.PREP);
+            assertThat(saved.submittedAt()).isEqualTo(PREP.plusSeconds(5));
+            assertThat(game.memosOf(ALICE))
+                    .extracting(GameMemo::phase, GameMemo::content)
+                    .containsExactly(
+                            tuple(DebatePhase.PREP, "고친 주장"),
+                            tuple(DebatePhase.REBUTTAL, "반론"));
+        }
+
+        @Test
+        @DisplayName("제출한 글은 공개 전에는 메시지에 남지 않고, 각자 자기 글만 본다")
+        void privateUntilReveal() {
+            Game game = newGame();
+
+            game.saveMemo(ALICE, "앨리스 주장", PREP);
+
+            assertThat(game.messagesAfter(0)).isEmpty();
+            assertThat(game.memosOf(BOB)).isEmpty();
+        }
+
+        @ParameterizedTest(name = "시작 후 {0}ms")
+        @ValueSource(longs = {60_000, 62_999, 140_000, 142_999})
+        @DisplayName("작성 구간이 끝난 뒤 3초 유예 안의 제출(시간 종료 순간의 자동 제출)은 받는다")
+        void acceptsWithinGrace(long elapsedMillis) {
+            Game game = newGame();
+
+            GameMemo memo = game.saveMemo(ALICE, "자동 제출", STARTED_AT.plusNanos(elapsedMillis * 1_000_000));
+
+            assertThat(memo.phase()).isEqualTo(elapsedMillis < 100_000 ? DebatePhase.PREP : DebatePhase.REBUTTAL);
+        }
+
+        @ParameterizedTest(name = "시작 후 {0}초")
+        @ValueSource(longs = {63, 79, 143, 200, 260})
+        @DisplayName("유예가 끝난 뒤 · REVEAL · CHAT · JUDGING 에서는 INVALID_PHASE")
+        void rejectsOutsideMemoPhases(long elapsedSeconds) {
+            Game game = newGame();
+
+            assertError(() -> game.saveMemo(ALICE, "주장", STARTED_AT.plusSeconds(elapsedSeconds)),
+                    SessionErrorCode.INVALID_PHASE);
+        }
+
+        @Test
+        @DisplayName("주장은 200자, 반론은 250자까지 받고 넘으면 CONTENT_TOO_LONG")
+        void maxLength() {
+            Game game = newGame();
+
+            game.saveMemo(ALICE, "가".repeat(200), PREP);
+            assertError(() -> game.saveMemo(ALICE, "가".repeat(201), PREP), SessionErrorCode.CONTENT_TOO_LONG);
+            game.saveMemo(ALICE, "나".repeat(250), REBUTTAL);
+            assertError(() -> game.saveMemo(ALICE, "나".repeat(251), REBUTTAL), SessionErrorCode.CONTENT_TOO_LONG);
+
+            assertThat(game.memosOf(ALICE)).extracting(GameMemo::content)
+                    .containsExactly("가".repeat(200), "나".repeat(250));
+        }
+
+        @Test
+        @DisplayName("빈 문자열도 제출로 받고, 본문이 없으면(null) VALIDATION_FAILED")
+        void blankAndNull() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "주장", PREP);
+
+            game.saveMemo(ALICE, "", PREP);
+
+            assertThat(game.memosOf(ALICE)).singleElement().extracting(GameMemo::content).isEqualTo("");
+            assertThatThrownBy(() -> game.saveMemo(ALICE, null, PREP))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(GlobalErrorCode.VALIDATION_FAILED);
+        }
+
+        @Test
+        @DisplayName("관전자는 제출 · 조회 모두 NOT_PARTICIPANT")
+        void spectatorCannotWriteOrRead() {
+            Game game = newGame();
+
+            assertError(() -> game.saveMemo(SPECTATOR, "주장", PREP), SessionErrorCode.NOT_PARTICIPANT);
+            assertError(() -> game.memosOf(SPECTATOR), SessionErrorCode.NOT_PARTICIPANT);
+        }
+
+        @Test
+        @DisplayName("끝난 게임은 SESSION_NOT_IN_PROGRESS")
+        void finished() {
+            Game game = newGame();
+            game.finish();
+
+            assertError(() -> game.saveMemo(ALICE, "주장", PREP), SessionErrorCode.SESSION_NOT_IN_PROGRESS);
+            assertError(() -> game.memosOf(ALICE), SessionErrorCode.SESSION_NOT_IN_PROGRESS);
+        }
+
+        @Test
+        @DisplayName("toString 에 본문을 넣지 않는다 (로그 유출 방지)")
+        void toStringHidesContent() {
+            GameMemo memo = newGame().saveMemo(ALICE, "비밀스러운 주장", PREP);
+
+            assertThat(memo.toString()).doesNotContain("비밀스러운 주장").contains("length=8");
+        }
+    }
+
+    @Nested
+    @DisplayName("제출 여부")
+    class Submitted {
+
+        @Test
+        @DisplayName("지금 작성 구간에 제출한 참가자 id 만 준다 (유예 포함)")
+        void submittedInCurrentPhase() {
+            Game game = newGame();
+
+            assertThat(game.submittedParticipantIds(PREP)).isEmpty();
+            game.saveMemo(ALICE, "주장", PREP);
+
+            assertThat(game.submittedParticipantIds(PREP)).containsExactly(ALICE_PARTICIPANT);
+            assertThat(game.submittedParticipantIds(PREP_GRACE)).containsExactly(ALICE_PARTICIPANT);
+            // 반론 구간은 새로 센다
+            assertThat(game.submittedParticipantIds(REBUTTAL)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("빈 글을 제출해도 제출한 것으로 본다")
+        void blankCounts() {
+            Game game = newGame();
+            game.saveMemo(BOB, "", PREP);
+
+            assertThat(game.submittedParticipantIds(PREP)).containsExactly(BOB_PARTICIPANT);
+        }
+
+        @ParameterizedTest(name = "시작 후 {0}초")
+        @ValueSource(longs = {63, 79, 143, 260})
+        @DisplayName("작성 구간(유예 포함)이 아니면 null")
+        void nullOutsideMemoPhases(long elapsedSeconds) {
+            assertThat(newGame().submittedParticipantIds(STARTED_AT.plusSeconds(elapsedSeconds))).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("주장 · 반론 공개")
+    class Argument {
+
+        @Test
+        @DisplayName("63초가 되면 양쪽 주장을 참가자 id 순서로 ARGUMENT(PREP) 로 공개한다")
+        void revealsArgumentsAfterGrace() {
+            Game game = newGame();
+            game.saveMemo(BOB, "밥 주장", PREP);
+            game.saveMemo(ALICE, "앨리스 주장", PREP);
+
+            List<GameMessage> revealed = game.revealArguments(ARGUMENT_REVEAL);
+
+            assertThat(revealed)
+                    .extracting(GameMessage::seqNo, GameMessage::participantId, GameMessage::type,
+                            GameMessage::phase, GameMessage::content)
+                    .containsExactly(
+                            tuple(1L, ALICE_PARTICIPANT, MessageType.ARGUMENT, DebatePhase.PREP, "앨리스 주장"),
+                            tuple(2L, BOB_PARTICIPANT, MessageType.ARGUMENT, DebatePhase.PREP, "밥 주장"));
+            assertThat(revealed).allSatisfy(message -> assertThat(message.receivedAt()).isEqualTo(ARGUMENT_REVEAL));
+            assertThat(game.messagesAfter(0)).isEqualTo(revealed);
+        }
+
+        @Test
+        @DisplayName("유예 안(60~63초)에는 공개하지 않고, 유예 안에 들어온 자동 제출이 공개된다")
+        void graceSubmissionIsRevealed() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "초안", PREP);
+
+            assertThat(game.revealArguments(PREP_GRACE)).isEmpty();
+            game.saveMemo(ALICE, "자동 제출본", PREP_GRACE);
+
+            assertThat(game.revealArguments(ARGUMENT_REVEAL)).extracting(GameMessage::content)
+                    .containsExactly("자동 제출본");
+        }
+
+        @Test
+        @DisplayName("공개된 구간의 글은 그보다 이른 시각으로도 고칠 수 없다 (락을 기다리는 사이 공개된 경우)")
+        void cannotEditRevealedMemo() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "공개될 주장", PREP);
+            game.revealArguments(ARGUMENT_REVEAL);
+
+            assertError(() -> game.saveMemo(ALICE, "몰래 고친 주장", PREP_GRACE), SessionErrorCode.INVALID_PHASE);
+
+            assertThat(game.memosOf(ALICE)).extracting(GameMemo::content).containsExactly("공개될 주장");
+            assertThat(game.messagesAfter(0)).extracting(GameMessage::content).containsExactly("공개될 주장");
+        }
+
+        @Test
+        @DisplayName("주장이 공개돼도 반론은 REBUTTAL 구간에 제출할 수 있다")
+        void canWriteRebuttalAfterArgumentRevealed() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "첫 주장", PREP);
+            game.revealArguments(ARGUMENT_REVEAL);
+
+            assertThat(game.saveMemo(ALICE, "반론", REBUTTAL).phase()).isEqualTo(DebatePhase.REBUTTAL);
+        }
+
+        @Test
+        @DisplayName("구간마다 한 번만 공개한다")
+        void revealsOnce() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "주장", PREP);
+
+            game.revealArguments(ARGUMENT_REVEAL);
+
+            assertThat(game.revealArguments(ARGUMENT_REVEAL.plusSeconds(10))).isEmpty();
+            assertThat(game.messagesAfter(0)).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("공개 시각 전에는 공개하지 않는다")
+        void notBeforeRevealTime() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "주장", PREP);
+            game.saveMemo(ALICE, "반론", REBUTTAL);
+
+            assertThat(game.revealArguments(PREP.plusSeconds(1))).isEmpty();
+            game.revealArguments(ARGUMENT_REVEAL);
+            assertThat(game.revealArguments(REBUTTAL_GRACE)).isEmpty();
+            assertThat(game.messagesAfter(0)).extracting(GameMessage::content).containsExactly("주장");
+        }
+
+        @Test
+        @DisplayName("143초가 되면 반론을 ARGUMENT(REBUTTAL) 로 공개한다")
+        void revealsRebuttalAfterGrace() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "반론", REBUTTAL);
+
+            assertThat(game.revealArguments(REBUTTAL_REVEAL))
+                    .singleElement()
+                    .satisfies(message -> {
+                        assertThat(message.phase()).isEqualTo(DebatePhase.REBUTTAL);
+                        assertThat(message.content()).isEqualTo("반론");
+                    });
+        }
+
+        @Test
+        @DisplayName("늦게 불려도 공개하지 못한 앞 구간 글부터 차례로 공개한다")
+        void catchesUpInOrder() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "주장", PREP);
+            game.saveMemo(ALICE, "반론", REBUTTAL);
+
+            List<GameMessage> revealed = game.revealArguments(CHAT);
+
+            assertThat(revealed).extracting(GameMessage::phase, GameMessage::content)
+                    .containsExactly(
+                            tuple(DebatePhase.PREP, "주장"),
+                            tuple(DebatePhase.REBUTTAL, "반론"));
+        }
+
+        @Test
+        @DisplayName("비었거나 공백뿐인 글, 제출하지 않은 참가자는 공개하지 않는다")
+        void skipsBlank() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "   ", PREP);
+
+            assertThat(game.revealArguments(ARGUMENT_REVEAL)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("첫 채팅이 공개보다 먼저 와도 반론이 앞 seqNo 를 받는다")
+        void revealedBeforeFirstChat() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "반론", REBUTTAL);
+            game.saveMemo(BOB, "반대 반론", REBUTTAL);
+
+            GameMessage chat = game.appendChat(BOB, "첫 채팅", REBUTTAL_REVEAL);
+
+            assertThat(chat.seqNo()).isEqualTo(3);
+            assertThat(game.messagesAfter(0)).extracting(GameMessage::type)
+                    .containsExactly(MessageType.ARGUMENT, MessageType.ARGUMENT, MessageType.CHAT);
+            assertThat(game.revealArguments(REBUTTAL_REVEAL)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("채팅이 거부돼도 공개는 남는다")
+        void revealedEvenIfChatRejected() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "반론", REBUTTAL);
+
+            assertError(() -> game.appendChat(SPECTATOR, "관전자", CHAT), SessionErrorCode.NOT_PARTICIPANT);
+            assertError(() -> game.appendChat(ALICE, "가".repeat(101), CHAT), SessionErrorCode.CONTENT_TOO_LONG);
+
+            assertThat(game.messagesAfter(0)).extracting(GameMessage::type).containsExactly(MessageType.ARGUMENT);
+        }
+
+        @Test
+        @DisplayName("공개된 글은 참가자별 채팅 수 상한에 세지 않는다")
+        void notCountedInChatLimit() {
+            Game game = newGame(100, 1);
+            game.saveMemo(ALICE, "주장", PREP);
+            game.saveMemo(ALICE, "반론", REBUTTAL);
+
+            game.appendChat(ALICE, "채팅", CHAT);
+
+            assertError(() -> game.appendChat(ALICE, "두 번째", CHAT), SessionErrorCode.MESSAGE_LIMIT_EXCEEDED);
+            assertThat(game.messagesAfter(0)).hasSize(3);
+        }
+
+        @Test
+        @DisplayName("끝난 게임은 공개하지 않는다")
+        void notAfterFinish() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "주장", PREP);
+            game.finish();
+
+            assertThat(game.revealArguments(ARGUMENT_REVEAL)).isEmpty();
+            assertThat(game.messagesAfter(0)).isEmpty();
         }
     }
 
@@ -260,13 +523,12 @@ class GameTest {
     @DisplayName("끝난 게임은 SESSION_NOT_IN_PROGRESS. 받은 메시지는 계속 조회된다")
     void finished() {
         Game game = newGame();
-        game.appendChat(ALICE, "1", CHAT_1);
+        game.appendChat(ALICE, "1", CHAT);
 
         game.finish();
 
         assertThat(game.isFinished()).isTrue();
-        assertError(() -> game.appendChat(ALICE, "2", CHAT_1), SessionErrorCode.SESSION_NOT_IN_PROGRESS);
-        assertError(() -> game.submitFinal(ALICE, "결론", FINAL), SessionErrorCode.SESSION_NOT_IN_PROGRESS);
+        assertError(() -> game.appendChat(ALICE, "2", CHAT), SessionErrorCode.SESSION_NOT_IN_PROGRESS);
         assertThat(game.messagesAfter(0)).hasSize(1);
     }
 
@@ -275,7 +537,7 @@ class GameTest {
     void messagesAfter() {
         Game game = newGame();
         for (int i = 0; i < 5; i++) {
-            game.appendChat(ALICE, "m" + i, CHAT_1);
+            game.appendChat(ALICE, "m" + i, CHAT);
         }
 
         assertThat(game.messagesAfter(0)).extracting(GameMessage::seqNo).containsExactly(1L, 2L, 3L, 4L, 5L);
@@ -289,10 +551,10 @@ class GameTest {
     @DisplayName("messagesAfter 결과는 복사본이라 이후 메시지가 추가돼도 바뀌지 않는다")
     void messagesAfterIsSnapshot() {
         Game game = newGame();
-        game.appendChat(ALICE, "1", CHAT_1);
+        game.appendChat(ALICE, "1", CHAT);
 
         List<GameMessage> snapshot = game.messagesAfter(0);
-        game.appendChat(ALICE, "2", CHAT_1);
+        game.appendChat(ALICE, "2", CHAT);
 
         assertThat(snapshot).hasSize(1);
     }
@@ -320,7 +582,7 @@ class GameTest {
                 pool.submit(() -> {
                     start.await();
                     for (int i = 0; i < perUser; i++) {
-                        game.appendChat(user, "m", CHAT_1);
+                        game.appendChat(user, "m", CHAT);
                     }
                     return null;
                 });
@@ -342,7 +604,7 @@ class GameTest {
     @Test
     @DisplayName("toString 에 채팅 본문을 넣지 않는다 (로그 유출 방지)")
     void toStringHidesContent() {
-        GameMessage message = newGame().appendChat(ALICE, "비밀스러운 주장", CHAT_1);
+        GameMessage message = newGame().appendChat(ALICE, "비밀스러운 주장", CHAT);
 
         assertThat(message.toString()).doesNotContain("비밀스러운 주장").contains("length=8");
     }

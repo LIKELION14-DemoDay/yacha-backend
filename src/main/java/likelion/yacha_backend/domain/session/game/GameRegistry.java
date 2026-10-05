@@ -35,7 +35,8 @@ public class GameRegistry {
      */
     public Game create(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId) {
         Game game = new Game(sessionId, startedAt, participantIdByUserId,
-                properties.chatMaxLength(), properties.maxChatsPerParticipant());
+                properties.chatMaxLength(), properties.maxChatsPerParticipant(),
+                properties.argumentMaxLength(), properties.rebuttalMaxLength());
         if (games.putIfAbsent(sessionId, game) != null) {
             throw new IllegalStateException("이미 게임이 있는 세션입니다. sessionId=" + sessionId);
         }

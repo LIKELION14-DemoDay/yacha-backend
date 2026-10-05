@@ -12,7 +12,7 @@ import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.topic.entity.Category;
 
 /**
- * {@code GET /sessions/{id}/state} — 세션 정보와 현재 구간 (재접속 · 새로고침 · 관전 입장용).
+ * {@code GET /sessions/{id}/state} — 세션 정보와 현재 구간 (재접속 · 새로고침용).
  *
  * <p>세션 상세({@code GET /sessions/{id}})도 이 응답으로 대신합니다. DB 에 남는 값이 주제 · 방 상태 · 참가자뿐이라
  * 따로 둘 이유가 없습니다.
@@ -45,12 +45,15 @@ public record SessionStateResponse(
      * @param type          {@code USER} / {@code AI}
      * @param role          방장 {@code INITIATOR} / 상대 {@code OPPONENT}
      * @param stance        동의 / 비동의. 친구 방은 친구가 들어오기 전까지 null
+     * @param submitted     지금 작성 구간(구간 종료 뒤 3초 유예 포함)에 주장 · 반론을 제출했는지.
+     *                      작성 구간이 아니면 null. 재접속해도 "상대방이 아직 작성중입니다" 화면을 맞추는 용도라 내용은 없습니다
      */
     public record ParticipantResponse(
             Long participantId,
             ParticipantType type,
             ParticipantRole role,
-            Stance stance
+            Stance stance,
+            Boolean submitted
     ) {
     }
 }
