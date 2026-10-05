@@ -13,7 +13,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
  *
  * <p>{@code @Scheduled} 가 아니라 코드에서 시각을 정해 등록하므로 {@code @EnableScheduling} 은 쓰지 않습니다.
  *
- * <p>타이머 작업은 짧게 끝나야 합니다. LLM 호출(요약 · 판정)처럼 오래 걸리는 일은 이 스레드에서 하지 않고
+ * <p>타이머 작업은 짧게 끝나야 합니다. LLM 호출(판정)처럼 오래 걸리는 일은 이 스레드에서 하지 않고
  * 별도 실행기로 넘깁니다. 그래서 스레드 수는 작게 둡니다.
  */
 @Configuration

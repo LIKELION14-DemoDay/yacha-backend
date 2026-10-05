@@ -17,7 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 서버가 뜰 때 진행 중이던 게임을 무효로 정리합니다 (명세 1-5 · 2-11).
  *
- * <p>채팅 · 주장 · 근거는 서버 메모리에만 있어 재시작하면 사라지므로 게임을 이어갈 수 없습니다.
+ * <p>채팅 · 주장은 서버 메모리에만 있어 재시작하면 사라지므로 게임을 이어갈 수 없습니다.
  * 그래서 {@code IN_PROGRESS} 세션을 모두 {@code FINISHED} + {@code finish_reason = ABORTED} 로 바꾸고,
  * 승패({@code result})는 NULL 로 둡니다.
  *
@@ -31,6 +31,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 한 세션이 실패해도 나머지 세션은 계속 정리합니다. 남은 세션은 다음 재시작 때 다시 정리됩니다.
  *
  * <p>서버 1대 전제입니다. 여러 대로 늘리면 다른 서버가 진행 중인 게임까지 끝내게 되므로 그때 다시 정합니다.
+ * 무중단 배포(새 컨테이너를 먼저 띄우고 기존 컨테이너를 내리는 방식)로 바꿀 때도 같습니다. 새 서버가 기존 서버에서
+ * 진행 중인 게임을 끝내게 되므로 정리 기준을 다시 정해야 합니다. 지금은 {@code docker-compose.prod.yml} 이
+ * 기존 컨테이너를 내린 뒤 새 컨테이너를 띄웁니다.
  */
 @Slf4j
 @Service
