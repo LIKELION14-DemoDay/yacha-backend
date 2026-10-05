@@ -39,7 +39,8 @@ import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "spectate.enabled=true")
 @Import(SessionFixture.class)
 @DisplayName("토론방 STOMP — 채팅 · 주장 제출 알림 · 공개 · 관전 구독")
 class GameStompTest {
