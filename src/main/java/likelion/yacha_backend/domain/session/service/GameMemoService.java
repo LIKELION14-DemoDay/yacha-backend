@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
  * {@code PREP} 주장 · {@code REBUTTAL} 반론 제출 (명세 2-4).
  *
  * <p>제출한 글은 공개 전까지 <b>본인만</b> 봅니다. 그래서 내용은 브로드캐스트하지 않고 REST 로 제출 · 조회하며,
- * 토론방에는 "제출했다"는 알림({@code ARGUMENT_SUBMITTED})만 보냅니다. 상대 · 관전자는 공개 시각에
+ * 토론방에는 "제출했다"는 알림({@code ARGUMENT_SUBMITTED})만 보냅니다. 상대는 공개 시각에
  * {@code ARGUMENT} 메시지로 내용을 봅니다.
  *
  * <p>채팅처럼 DB 를 거치지 않고 게임 메모리에만 둡니다. <b>본문을 로그에 남기지 않습니다.</b>

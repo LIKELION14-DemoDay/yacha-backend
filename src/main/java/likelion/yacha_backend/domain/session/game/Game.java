@@ -146,7 +146,7 @@ public class Game {
 
     /**
      * {@code now} 에 제출을 받는 작성 구간에서 이미 제출한 참가자 id. 작성 구간(유예 포함)이 아니면 null 입니다.
-     * 내용은 주지 않습니다 — "상대방이 아직 작성중입니다" 화면과 관전자 화면용입니다.
+     * 내용은 주지 않습니다 — "상대방이 아직 작성중입니다" 화면용입니다.
      */
     public synchronized Set<Long> submittedParticipantIds(LocalDateTime now) {
         DebatePhase phase = DebatePhase.memoPhaseAt(startedAt, now);
@@ -194,7 +194,7 @@ public class Game {
         return List.copyOf(revealed);
     }
 
-    /** {@code seqNo > afterSeq} 인 메시지를 오름차순으로. 재접속 보충 · 늦게 들어온 관전자용입니다. */
+    /** {@code seqNo > afterSeq} 인 메시지를 오름차순으로. 재접속 보충용입니다. */
     public synchronized List<GameMessage> messagesAfter(long afterSeq) {
         int from = (int) Math.min(Math.max(afterSeq, 0), messages.size());
         return List.copyOf(messages.subList(from, messages.size()));

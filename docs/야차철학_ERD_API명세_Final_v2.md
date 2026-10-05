@@ -351,7 +351,7 @@ erDiagram
 | POST | `/sessions/{id}/ai` | 🔷 **AI 대결로 전환** — 방장만, `WAITING` 일 때만 | ✅ |
 | DELETE | `/sessions/{id}` | 대기 취소 — 방장만, `WAITING` 일 때만 | ✅ |
 | POST | `/sessions/{id}/leave` | 🟢 **게임 중 나가기** — 참가자만, `IN_PROGRESS` 일 때. 바로 몰수패 (2-11) | ✅ |
-| GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용). 세션 상세(방 정보 · 참가자 · 🟢 주제 찬성 / 반대 문구 · 참가자 철학자 유형)와 🟢 지금 작성 구간의 제출 여부(`participants[].submitted` — 작성 구간이 아니면 없음)도 여기서 준다. 승패 · 사용자 id 는 넣지 않는다 | ✅ |
+| GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용). 세션 상세(방 정보 · 참가자 · 🟢 주제 찬성 / 반대 문구 · 참가자 철학자 유형)와 🟢 지금 작성 구간의 제출 여부(`participants[].submitted` — 작성 구간이 아니면 `null`)도 여기서 준다. 승패 · 사용자 id 는 넣지 않는다 | ✅ |
 | GET | ~~`/sessions/live?category=&page=`~~ | 🟣 관전 목록 — 🟢 **관전 미사용으로 구현하지 않는다** | — |
 | GET | `/sessions/me` | 전투 기록 — 🟣 주제 · 상대 · 날짜 · **승패**만 (대화 내용 없음) | ✅ (회원) |
 
