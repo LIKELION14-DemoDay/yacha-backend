@@ -33,11 +33,10 @@ public class SessionController {
     @Operation(
             summary = "현재 상태",
             description = """
-                    재접속 · 새로고침 · 관전 입장 때 구간과 남은 시간을 맞춤
+                    재접속 · 새로고침 때 구간과 남은 시간을 맞춤
                     남은 시간은 `endsAt - serverNow` 로 계산 (시각은 KST, `+09:00`)
 
-                    참가자, 또는 진행 중인 랜덤 사람전의 관전자만 조회 가능
-                    친구 방 · 봇전은 참가자만 (`NOT_PARTICIPANT`)
+                    참가자만 조회 가능 (`NOT_PARTICIPANT`)
                     """)
     @GetMapping("/{sessionId}/state")
     public ApiResponse<SessionStateResponse> getState(
@@ -49,10 +48,10 @@ public class SessionController {
     @Operation(
             summary = "메시지 조회",
             description = """
-                    `seqNo > afterSeq` 인 메시지를 오름차순으로 (재접속 보충 · 늦게 들어온 관전자는 `afterSeq=0`, 음수는 0 으로 봄)
+                    `seqNo > afterSeq` 인 메시지를 오름차순으로 (재접속 보충, 처음부터 받으려면 `afterSeq=0`, 음수는 0 으로 봄)
                     채팅은 서버 메모리에만 있어 게임 중에만 조회됨 (끝난 게임은 `SESSION_NOT_IN_PROGRESS`)
 
-                    볼 수 있는 사람은 현재 상태 조회와 같음
+                    참가자만 조회 가능 (`NOT_PARTICIPANT`)
                     """)
     @GetMapping("/{sessionId}/messages")
     public ApiResponse<List<GameMessageResponse>> getMessages(
@@ -85,7 +84,7 @@ public class SessionController {
             summary = "내 주장 · 반론 조회",
             description = """
                     내가 제출한 주장 · 반론을 작성 구간 순서대로 (새로고침 때 복구용)
-                    참가자만 (`NOT_PARTICIPANT`) — 상대 · 관전자가 공개 전 글을 보는 방법은 없음
+                    참가자만 (`NOT_PARTICIPANT`) — 상대가 공개 전 글을 보는 방법은 없음
                     게임 중에만 조회됨 (`SESSION_NOT_IN_PROGRESS`)
                     """)
     @GetMapping("/{sessionId}/memo")

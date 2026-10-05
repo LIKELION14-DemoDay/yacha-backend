@@ -12,7 +12,7 @@ import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.topic.entity.Category;
 
 /**
- * {@code GET /sessions/{id}/state} — 세션 정보와 현재 구간 (재접속 · 새로고침 · 관전 입장용).
+ * {@code GET /sessions/{id}/state} — 세션 정보와 현재 구간 (재접속 · 새로고침용).
  *
  * <p>세션 상세({@code GET /sessions/{id}})도 이 응답으로 대신합니다. DB 에 남는 값이 주제 · 방 상태 · 참가자뿐이라
  * 따로 둘 이유가 없습니다.
