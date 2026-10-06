@@ -37,6 +37,12 @@ auth:
     # 같은 이메일로 다시 보낼 수 있을 때까지의 간격. 남의 메일함에 계속 보내는 것을 막음 (팀 결정)
     send-interval: 1m
 
+  email-check:
+    # 회원가입 이메일 중복 확인을 한 IP가 window 안에 부를 수 있는 횟수
+    # 학교 · 행사장 와이파이처럼 여러 명이 같은 IP로 가입할 수 있어 넉넉하게 둠
+    max-requests: 30
+    window: 1m
+
   guest-cleanup:
     # 만든 지 이만큼 지났고 리프레시 토큰도 없는 게스트를 지움 (10/2 회의). 리프레시 토큰 수명과 맞춤
     inactive-after: 14d
