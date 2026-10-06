@@ -4,6 +4,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
+import likelion.yacha_backend.domain.session.entity.ParticipantRole;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -18,6 +19,9 @@ public interface DebateParticipantRepository extends JpaRepository<DebatePartici
     Optional<DebateParticipant> findBySession_IdAndUser_Id(Long sessionId, Long userId);
 
     List<DebateParticipant> findAllBySession_Id(Long sessionId);
+
+    /** 방장 · 상대 참가자. 방장은 세션마다 한 명입니다. */
+    Optional<DebateParticipant> findBySession_IdAndRole(Long sessionId, ParticipantRole role);
 
     /**
      * 이미 대기 중이거나 진행 중인 세션이 있는가 ({@code ALREADY_IN_SESSION}).
