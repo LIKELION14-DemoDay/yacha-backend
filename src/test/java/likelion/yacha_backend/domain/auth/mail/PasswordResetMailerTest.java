@@ -16,7 +16,7 @@ class PasswordResetMailerTest {
     /** 무엇을 보내든 실패하는 발송기 */
     private final PasswordResetMailer mailer = new PasswordResetMailer(new MailSender() {
         @Override
-        public void sendPasswordReset(String email, String resetUrl) {
+        public void sendPasswordResetCode(String email, String code) {
             throw new IllegalStateException("메일 서버 응답 없음");
         }
 
@@ -27,9 +27,9 @@ class PasswordResetMailerTest {
     });
 
     @Test
-    @DisplayName("재설정 링크 발송이 실패해도 예외가 밖으로 나가지 않는다")
-    void swallowsResetLinkFailure() {
-        assertThatCode(() -> mailer.sendResetLink(1L, "a@example.com", "https://yacha.com/reset-password?token=t"))
+    @DisplayName("인증번호 발송이 실패해도 예외가 밖으로 나가지 않는다")
+    void swallowsResetCodeFailure() {
+        assertThatCode(() -> mailer.sendResetCode(1L, "a@example.com", "012345"))
                 .doesNotThrowAnyException();
     }
 

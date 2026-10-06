@@ -83,6 +83,11 @@ public class InMemoryPasswordResetStore implements PasswordResetStore {
         return result.get();
     }
 
+    /** 재요청 제한(1분)을 기다리지 않고 다시 요청하는 테스트용 */
+    public void clearSendSlots() {
+        sendSlots.clear();
+    }
+
     private record Entry(Long userId, Instant expiresAt) {
     }
 

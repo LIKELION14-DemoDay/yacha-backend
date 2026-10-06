@@ -40,6 +40,7 @@ public class SecurityConfig {
             "/api/v1/auth/guest",
             "/api/v1/auth/social",
             "/api/v1/auth/password/reset-request",
+            "/api/v1/auth/password/verify",
             "/api/v1/auth/password/reset",
             "/api/v1/auth/social/kakao",
             "/api/v1/auth/social/google",

@@ -13,8 +13,8 @@ import org.springframework.stereotype.Repository;
  * Redis 구현
  * 두 값 모두 TTL 로 알아서 사라지므로 정리 작업이 필요 없음
  *
- *   password-reset:{토큰}        → userId   (30분)
- *   password-reset-user:{userId}  → 토큰     (30분)  사용자당 마지막 토큰
+ *   password-reset:{토큰}        → userId   (10분)
+ *   password-reset-user:{userId}  → 토큰     (10분)  사용자당 마지막 토큰
  *   password-reset-send:{이메일} → "1"      (1분)
  *   password-reset-code:{이메일} → { code, attempts }  (3분)  해시
  */
@@ -89,7 +89,7 @@ public class RedisPasswordResetStore implements PasswordResetStore {
     @Override
     public Optional<Long> consume(String token) {
         // GETDEL — 값을 읽으면서 같은 동작으로 삭제
-        // 조회와 삭제를 나누면 같은 링크를 동시에 두 번 눌렀을 때 둘 다 통과
+        // 조회와 삭제를 나누면 같은 토큰으로 동시에 두 번 보냈을 때 둘 다 통과
         String userId = redisTemplate.opsForValue().getAndDelete(TOKEN_PREFIX + token);
         return Optional.ofNullable(userId).map(Long::valueOf);
     }

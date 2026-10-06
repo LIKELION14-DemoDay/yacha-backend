@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
  * 이 구현이 없으면 운영에서 빈을 찾지 못해 비밀번호 재설정뿐 아니라 애플리케이션 전체가 기동하지 못함
  *
  * LoggingMailSender와 프로필이 겹치지 않아 빈이 둘이 되는 일은 없음
- * 링크에는 재설정 토큰이 들어 있어 운영 로그에 남기지 않음
+ * 인증번호는 운영 로그에 남기지 않음
  * 메일 주소도 남기지 않음
  *
  * 실제 발송 구현(SES 등)을 붙이면 이 구현은 지움
@@ -25,8 +25,8 @@ import org.springframework.stereotype.Component;
 public class NoOpMailSender implements MailSender {
 
     @Override
-    public void sendPasswordReset(String email, String resetUrl) {
-        log.warn("메일 발송 구현이 없어 비밀번호 재설정 메일을 보내지 못했습니다.");
+    public void sendPasswordResetCode(String email, String code) {
+        log.warn("메일 발송 구현이 없어 비밀번호 재설정 인증번호 메일을 보내지 못했습니다.");
     }
 
     @Override

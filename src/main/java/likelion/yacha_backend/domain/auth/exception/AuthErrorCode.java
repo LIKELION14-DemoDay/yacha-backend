@@ -23,8 +23,12 @@ public enum AuthErrorCode implements BaseErrorCode {
     INVALID_SOCIAL_CODE(HttpStatus.UNAUTHORIZED, "소셜 로그인에 실패했습니다. 다시 시도해 주세요."),
     SOCIAL_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "소셜 로그인 서버와 통신하지 못했습니다. 잠시 후 다시 시도해 주세요."),
     ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 회원으로 전환된 계정입니다."),
-    /** 재설정 링크가 없거나 만료(30분)됐거나 이미 사용됨. 원인은 구분하지 않는다 */
-    INVALID_RESET_TOKEN(HttpStatus.UNAUTHORIZED, "링크가 만료됐거나 이미 사용됐습니다. 다시 요청해 주세요."),
+    /** 재설정 토큰이 없거나 만료(10분)됐거나 이미 사용됨. 원인은 구분하지 않는다 */
+    INVALID_RESET_TOKEN(HttpStatus.UNAUTHORIZED, "인증이 만료됐거나 이미 사용됐습니다. 처음부터 다시 진행해 주세요."),
+    /** 인증번호가 틀림. 남은 횟수 안에서 다시 입력할 수 있다 */
+    INVALID_RESET_CODE(HttpStatus.BAD_REQUEST, "인증번호가 올바르지 않습니다."),
+    /** 인증번호가 없음. 만료(3분) · 5번 틀림 · 요청한 적 없음 · 이미 사용함. 원인은 구분하지 않는다 */
+    RESET_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "인증번호가 만료됐습니다. 다시 요청해 주세요."),
     /** 비밀번호 변경에서 현재 비밀번호가 틀림. 이미 인증된 본인이라 원인을 알려줘도 된다 */
     CURRENT_PASSWORD_MISMATCH(HttpStatus.UNAUTHORIZED, "현재 비밀번호가 올바르지 않습니다."),
     /** 비밀번호가 없는 계정(소셜 전용 · 게스트)이라 변경할 대상이 없음 */
