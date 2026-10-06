@@ -51,11 +51,8 @@ public class SecurityConfig {
             "/actuator/health",
     };
 
-    /** 인증 없이 GET만 허용할 경로. 주제 · 카테고리 */
+    /** 인증 없이 GET만 허용할 경로. 카테고리 목록 */
     private static final String[] PUBLIC_GET_ENDPOINTS = {
-            "/api/v1/topics/today",
-            "/api/v1/topics",
-            "/api/v1/topics/{topicId:[0-9]+}",
             "/api/v1/categories",
     };
 
