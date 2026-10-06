@@ -138,7 +138,7 @@ public class GlobalExceptionHandler {
         return errorResponse(
                 HttpStatus.BAD_REQUEST,
                 "FILE_TOO_LARGE",
-                "프로필 이미지는 5MB 이하여야 합니다."
+                "프로필 이미지는 5MB 이하, 전체 요청 크기는 6MB 이하여야 합니다."
         );
     }
 
