@@ -50,6 +50,7 @@ class GuestApiTest {
                 .andExpect(jsonPath("$.data.userId").isNumber())
                 .andExpect(jsonPath("$.data.nickname").isNotEmpty())
                 .andExpect(jsonPath("$.data.isGuest").value(true))
+                .andExpect(jsonPath("$.data.isNewUser").value(true))
                 .andExpect(jsonPath("$.data.refreshToken").doesNotExist());
     }
 
