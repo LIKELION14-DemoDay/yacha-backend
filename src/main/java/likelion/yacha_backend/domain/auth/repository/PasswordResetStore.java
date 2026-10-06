@@ -5,7 +5,8 @@ import java.util.Optional;
 /**
  * 비밀번호 재설정에 필요한 짧은 수명 상태를 보관
  *
- * 두 가지를 담음
+ * 세 가지를 담음
+ *   인증번호 — 메일로 보내는 6자리. 이메일당 하나, 3분 뒤 사라지고 정해진 횟수만 틀릴 수 있음
  *   재설정 토큰 — 메일 링크에 실리는 값. 30분 뒤 사라지고, 한 번 쓰면 없어짐
  *   재요청 제한 — 같은 이메일로 메일을 연속 보내지 못하게 막음
  *
@@ -31,4 +32,27 @@ public interface PasswordResetStore {
      * 제한이 없으면 남의 메일함에 재설정 메일을 계속 보낼 수 있음
      */
     boolean tryAcquireSendSlot(String email);
+
+    /**
+     * 이메일에 인증번호를 저장. 이메일당 하나라 이전 인증번호와 틀린 횟수는 버림
+     * 유효시간({@link PasswordResetProperties#codeTtl()})이 지나면 사라짐
+     */
+    void saveCode(String email, String code);
+
+    /**
+     * 인증번호를 확인하고 시도 횟수를 하나 늘림
+     *
+     * 확인 · 횟수 증가 · 삭제가 하나의 동작이어야 함
+     * 나눠서 하면 동시에 여러 번 보내 횟수 제한을 넘기거나, 같은 번호로 두 번 통과할 수 있음
+     */
+    CodeCheck checkCode(String email, String code);
+
+    enum CodeCheck {
+        /** 맞음. 인증번호는 지워져 다시 쓸 수 없음 */
+        MATCHED,
+        /** 틀림. 남은 횟수 안에서 다시 시도할 수 있음 */
+        MISMATCHED,
+        /** 인증번호가 없음. 요청한 적 없음 · 유효시간 지남 · 틀린 횟수 초과 · 이미 사용함 */
+        EXPIRED
+    }
 }

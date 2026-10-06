@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
@@ -20,6 +21,7 @@ public class InMemoryPasswordResetStore implements PasswordResetStore {
     private final Map<String, Entry> tokens = new ConcurrentHashMap<>();
     private final Map<Long, String> latestByUser = new ConcurrentHashMap<>();
     private final Map<String, Instant> sendSlots = new ConcurrentHashMap<>();
+    private final Map<String, CodeEntry> codes = new ConcurrentHashMap<>();
 
     private final PasswordResetProperties properties;
 
@@ -54,6 +56,36 @@ public class InMemoryPasswordResetStore implements PasswordResetStore {
         return true;
     }
 
+    @Override
+    public void saveCode(String email, String code) {
+        codes.put(email, new CodeEntry(code, 0, Instant.now().plus(properties.codeTtl())));
+    }
+
+    /** computeIfPresent는 키 하나에 대해 원자적이라 Lua 스크립트와 같은 동작 */
+    @Override
+    public CodeCheck checkCode(String email, String code) {
+        AtomicReference<CodeCheck> result = new AtomicReference<>(CodeCheck.EXPIRED);
+        codes.computeIfPresent(email, (key, entry) -> {
+            if (entry.expiresAt().isBefore(Instant.now())) {
+                return null;
+            }
+            int attempts = entry.attempts() + 1;
+            if (attempts > properties.maxCodeAttempts()) {
+                return null;
+            }
+            if (entry.code().equals(code)) {
+                result.set(CodeCheck.MATCHED);
+                return null;
+            }
+            result.set(CodeCheck.MISMATCHED);
+            return new CodeEntry(entry.code(), attempts, entry.expiresAt());
+        });
+        return result.get();
+    }
+
     private record Entry(Long userId, Instant expiresAt) {
+    }
+
+    private record CodeEntry(String code, int attempts, Instant expiresAt) {
     }
 }
