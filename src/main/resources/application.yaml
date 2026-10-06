@@ -3,6 +3,10 @@ spring:
     name: yacha-backend
   profiles:
     default: local
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   jpa:
     # 켜두면 요청 내내 DB 커넥션을 붙잡고 있어 커넥션 풀이 금방 마름
     open-in-view: false
@@ -119,3 +123,10 @@ liner:
 spectate:
   # 관전 스위치. 관전은 사용하지 않아(10/5) 꺼 둔다. 켜면 진행 중인 랜덤 사람전을 참가자가 아니어도 볼 수 있다
   enabled: false
+
+storage:
+  s3:
+    bucket: ${AWS_S3_BUCKET:}
+    region: ${AWS_REGION:ap-northeast-2}
+    profile-prefix: profiles
+    presigned-url-validity: 1h
