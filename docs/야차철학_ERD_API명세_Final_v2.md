@@ -249,9 +249,22 @@ erDiagram
 | POST | `/auth/token/refresh` | 토큰 재발급. 쿠키의 리프레시 토큰으로 인증 | 쿠키 |
 | POST | `/auth/logout` | 로그아웃 (서버의 리프레시 토큰 삭제 + 쿠키 만료) | ✅ |
 | POST | `/auth/guest` | 게스트 생성 + 토큰 발급 | — |
+| POST | `/auth/social/kakao` | 카카오 로그인 (인가 코드, 웹) | — |
+| POST | `/auth/social/google` | 구글 로그인 (인가 코드, 웹) | — |
+| POST | `/auth/social` | 소셜 로그인 (카카오 · 구글 id_token) | — |
 | POST | `/auth/upgrade` | 게스트 → 회원 승격 (같은 계정 유지, 토큰 재발급) | ✅ |
 | GET | `/users/me` | 내 정보 · 누적 통계 | ✅ |
 | PATCH | `/users/me` | 닉네임 변경 — 🟠 회원 전용 | ✅ (회원) |
+
+🟢 **로그인 응답 (10/5)** — 토큰을 주는 API(가입 · 로그인 · 소셜 · 게스트 · 재발급 · 승격)는 모두 같은 형태다. 리프레시 토큰은 body 가 아니라 쿠키로 간다.
+
+```json
+{ "accessToken": "eyJ...", "userId": 7, "nickname": "카카오수민", "isGuest": false, "isNewUser": true }
+```
+
+- `isNewUser`: 이번 요청으로 계정이 **새로 만들어졌으면** true (게스트 생성 · 회원가입 · 소셜 첫 로그인), 나머지는 false.
+- **소셜 첫 로그인**(`isNewUser` true)이면 닉네임 화면을 보여 준다. 소셜 닉네임을 기본값으로 두고 `PATCH /users/me` 로 바꾼다. 닉네임은 중복을 허용한다.
+- 게스트 생성 · 회원가입도 true 지만 닉네임 화면은 필요 없다 (비회원은 닉네임을 못 바꾸고, 회원가입은 폼에서 받았다).
 
 **로그인 정책 (MVP)**
 
