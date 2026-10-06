@@ -21,6 +21,14 @@ spring:
       # 비밀번호를 걸지 않은 Redis면 비워둠
       password: ${REDIS_PASSWORD:}
 
+server:
+  # 운영은 서버의 프록시가 HTTPS 를 받아 앱(127.0.0.1:8080)으로 넘겨서, 앱이 보는 접속 IP 는 모두 프록시 주소임
+  # 프록시가 붙인 X-Forwarded-For · X-Forwarded-Proto 로 실제 클라이언트 IP · https 여부를 읽음 (이메일 중복 확인의 IP 제한)
+  # native 는 Tomcat 이 처리하고, 내부 주소(127.x · 10.x · 172.16~31.x · 192.168.x)에서 온 헤더만 믿음
+  # 그래서 외부에서 헤더를 꾸며 보내도, 프록시가 마지막에 붙인 실제 IP를 씀
+  # 프록시 없이 직접 띄우는 로컬에서는 헤더가 없어 아무 영향 없음
+  forward-headers-strategy: native
+
 jwt:
   # 기본값을 두지 않음
   secret: ${JWT_SECRET}
