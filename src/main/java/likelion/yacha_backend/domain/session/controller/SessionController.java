@@ -75,16 +75,16 @@ public class SessionController {
     @Operation(
             summary = "대기 취소",
             description = """
-                    방장이 기다리던 방을 취소 (`CANCELLED`). 응답 `data` 는 null
+                    방장이 기다리던 방을 취소 (`CANCELLED`). 응답은 생성 · 입장과 같은 `{ sessionId }`
 
                     방장만 (`NOT_ROOM_OWNER`), 이미 누가 들어왔거나 취소된 방이면 `SESSION_NOT_WAITING`
                     """)
     @DeleteMapping("/{sessionId}")
-    public ApiResponse<Void> cancel(
+    public ApiResponse<SessionIdResponse> cancel(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long sessionId) {
         sessionMatchFacade.cancel(authUser.getUserId(), sessionId);
-        return ApiResponse.success(null);
+        return ApiResponse.success(new SessionIdResponse(sessionId));
     }
 
     @Operation(

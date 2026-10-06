@@ -278,7 +278,7 @@ class SessionMatchApiTest {
 
             cancelAs(room.hostUserId(), room.sessionId())
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data").doesNotExist());
+                    .andExpect(jsonPath("$.data.sessionId").value(room.sessionId()));
 
             DebateSession session = session(room.sessionId());
             assertThat(session.getStatus()).isEqualTo(SessionStatus.CANCELLED);
