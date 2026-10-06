@@ -2,33 +2,90 @@ package likelion.yacha_backend.domain.session.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import java.util.List;
 import likelion.yacha_backend.domain.session.dto.GameMessageResponse;
 import likelion.yacha_backend.domain.session.dto.MemoResponse;
 import likelion.yacha_backend.domain.session.dto.MemoSaveRequest;
+import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
+import likelion.yacha_backend.domain.session.dto.SessionIdResponse;
 import likelion.yacha_backend.domain.session.dto.SessionStateResponse;
 import likelion.yacha_backend.domain.session.service.GameMemoService;
+import likelion.yacha_backend.domain.session.service.SessionMatchFacade;
 import likelion.yacha_backend.domain.session.service.SessionQueryService;
 import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "토론 세션", description = "토론방 조회 — 현재 상태 · 놓친 메시지 · 내 주장 작성")
+@Tag(name = "토론 세션", description = "방 생성 · 입장 · 취소, 토론방 조회 — 현재 상태 · 놓친 메시지 · 내 주장 작성")
 @RestController
 @RequestMapping("/api/v1/sessions")
 @RequiredArgsConstructor
 public class SessionController {
 
+    private final SessionMatchFacade sessionMatchFacade;
     private final SessionQueryService sessionQueryService;
     private final GameMemoService gameMemoService;
+
+    @Operation(
+            summary = "방 생성",
+            description = """
+                    랜덤 방을 만들고 상대를 기다림 (`WAITING`). 친구 방(`FRIEND`)은 구현 보류라 400
+                    `topicId` 는 주제 화면에서 받은 주제, `stance` 는 방장의 입장 (들어오는 사람은 반대)
+                    방의 카테고리는 주제의 카테고리
+
+                    상대가 들어오면 `/user/queue/match` 로 `MATCHED` 가 옴 (방장은 승낙 없이 자동 수락)
+                    로그인 필요 (게스트 가능)
+                    이미 대기 · 진행 중인 토론이 있으면 `ALREADY_IN_SESSION`, 없거나 내린 주제면 `TOPIC_NOT_FOUND`
+                    """)
+    @PostMapping
+    public ApiResponse<SessionIdResponse> create(
+            @AuthenticationPrincipal AuthUser authUser,
+            @Valid @RequestBody SessionCreateRequest request) {
+        return ApiResponse.success(new SessionIdResponse(sessionMatchFacade.create(authUser.getUserId(), request)));
+    }
+
+    @Operation(
+            summary = "입장",
+            description = """
+                    대기 중인 랜덤 방에 방장의 반대 입장으로 들어가 바로 시작 (`IN_PROGRESS`)
+                    자동 제안 승낙 · 방 찾기 입장 공통. 응답을 받으면 토론방을 구독하고 `/state` 로 구간을 맞춤
+
+                    동시에 들어오면 먼저 들어온 사람만 성공하고, 늦은 사람은 `SESSION_NOT_WAITING` (다시 제안을 요청)
+                    로그인 필요 (게스트 가능)
+                    내 방이면 `CANNOT_JOIN_OWN_ROOM`, 이미 대기 · 진행 중인 토론이 있으면 `ALREADY_IN_SESSION`
+                    """)
+    @PostMapping("/{sessionId}/join")
+    public ApiResponse<SessionIdResponse> join(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long sessionId) {
+        return ApiResponse.success(new SessionIdResponse(sessionMatchFacade.join(authUser.getUserId(), sessionId)));
+    }
+
+    @Operation(
+            summary = "대기 취소",
+            description = """
+                    방장이 기다리던 방을 취소 (`CANCELLED`). 응답 `data` 는 null
+
+                    방장만 (`NOT_ROOM_OWNER`), 이미 누가 들어왔거나 취소된 방이면 `SESSION_NOT_WAITING`
+                    """)
+    @DeleteMapping("/{sessionId}")
+    public ApiResponse<Void> cancel(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long sessionId) {
+        sessionMatchFacade.cancel(authUser.getUserId(), sessionId);
+        return ApiResponse.success(null);
+    }
 
     @Operation(
             summary = "현재 상태",

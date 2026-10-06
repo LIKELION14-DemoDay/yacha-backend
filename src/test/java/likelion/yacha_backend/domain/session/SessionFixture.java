@@ -26,8 +26,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 토론방 테스트 데이터. 방 종류별로 세션 · 참가자를 만들고, 진행 중인 방은 게임 메모리도 만듭니다.
  *
- * <p>{@code @Import(SessionFixture.class)} 로 씁니다. 매칭 API 가 생기기 전이라 매칭 성사 처리(시작 UPDATE →
- * 게임 생성)를 여기서 흉내 냅니다. 게임은 테스트가 끝날 때 {@link #removeGame} 으로 지웁니다.
+ * <p>{@code @Import(SessionFixture.class)} 로 씁니다. 시작한 지 몇 초 지난 방처럼 매칭 API 로는 만들 수 없는 상태가
+ * 필요해서, 매칭 성사 처리(시작 UPDATE → 게임 생성)를 여기서 흉내 냅니다. 게임은 테스트가 끝날 때 {@link #removeGame} 으로 지웁니다.
  */
 @TestComponent
 public class SessionFixture {
