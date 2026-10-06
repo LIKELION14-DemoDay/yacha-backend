@@ -81,7 +81,7 @@ class SessionApiTest {
     class State {
 
         @Test
-        @DisplayName("참가자는 현재 구간 · 끝나는 시각 · 서버 시각(+09:00) · 내 참가자 id 를 받는다")
+        @DisplayName("참가자는 주제 문구 · 현재 구간 · 끝나는 시각 · 서버 시각(+09:00) · 내 참가자 id 를 받는다")
         void participant() throws Exception {
             room = fixture.randomHuman(IN_CHAT);
 
@@ -91,6 +91,9 @@ class SessionApiTest {
                     .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
                     .andExpect(jsonPath("$.data.roomType").value("RANDOM"))
                     .andExpect(jsonPath("$.data.mode").value("HUMAN"))
+                    .andExpect(jsonPath("$.data.topic.statement").value("거짓말은 언제나 나쁜가?"))
+                    .andExpect(jsonPath("$.data.topic.agreeText").value("언제나 나쁘다"))
+                    .andExpect(jsonPath("$.data.topic.disagreeText").value("그렇지 않다"))
                     .andExpect(jsonPath("$.data.phase").value("CHAT"))
                     .andExpect(jsonPath("$.data.endsAt", endsWith("+09:00")))
                     .andExpect(jsonPath("$.data.serverNow", endsWith("+09:00")))

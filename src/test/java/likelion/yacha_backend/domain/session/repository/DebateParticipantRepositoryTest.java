@@ -10,7 +10,9 @@ import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.session.entity.Stance;
-import likelion.yacha_backend.domain.topic.entity.Category;
+import likelion.yacha_backend.domain.topic.entity.Subcategory;
+import likelion.yacha_backend.domain.topic.entity.Topic;
+import likelion.yacha_backend.domain.topic.repository.TopicRepository;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.config.JpaAuditingConfig;
@@ -37,6 +39,9 @@ class DebateParticipantRepositoryTest {
     private DebateSessionRepository sessionRepository;
 
     @Autowired
+    private TopicRepository topicRepository;
+
+    @Autowired
     private UserRepository userRepository;
 
     private User host;
@@ -47,7 +52,7 @@ class DebateParticipantRepositoryTest {
     void setUp() {
         host = userRepository.save(User.createGuest("방장"));
         guest = userRepository.save(User.createGuest("상대"));
-        session = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, 12L));
+        session = sessionRepository.save(DebateSession.createRandom(newTopic()));
     }
 
     @Test
@@ -92,11 +97,15 @@ class DebateParticipantRepositoryTest {
     @Test
     @DisplayName("끝난 세션만 있으면 참여 중이 아니다")
     void finishedSessionIsNotActive() {
-        Long finishedId = sessionRepository.save(DebateSession.createAiMatch(Category.ETHICS, 13L, NOW)).getId();
+        Long finishedId = sessionRepository.save(DebateSession.createAiMatch(newTopic(), NOW)).getId();
         sessionRepository.finishIfInProgress(finishedId, FinishReason.COMPLETED, NOW.plusMinutes(9));
         DebateSession finished = sessionRepository.getReferenceById(finishedId);
         participantRepository.saveAndFlush(DebateParticipant.initiator(finished, guest, Stance.AGREE, NOW));
 
         assertThat(participantRepository.existsByUser_IdAndSession_StatusIn(guest.getId(), ACTIVE)).isFalse();
+    }
+
+    private Topic newTopic() {
+        return topicRepository.save(Topic.create(Subcategory.GOOD_AND_EVIL, "질문", "찬성", "반대"));
     }
 }

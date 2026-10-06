@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDateTime;
 import likelion.yacha_backend.domain.topic.entity.Category;
+import likelion.yacha_backend.domain.topic.entity.Subcategory;
+import likelion.yacha_backend.domain.topic.entity.Topic;
 import likelion.yacha_backend.domain.user.entity.User;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,16 +15,18 @@ import org.junit.jupiter.api.Test;
 class DebateSessionTest {
 
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 10, 31, 12, 0, 0);
+    private static final Topic TOPIC = Topic.create(Subcategory.GOOD_AND_EVIL, "질문", "찬성", "반대");
 
     @Test
     @DisplayName("랜덤 방은 주제를 가진 채 사람 대 사람 대기 상태로 만들어진다")
     void createsRandomRoom() {
-        DebateSession session = DebateSession.createRandom(Category.ETHICS, 12L);
+        DebateSession session = DebateSession.createRandom(TOPIC);
 
         assertThat(session.getRoomType()).isEqualTo(RoomType.RANDOM);
         assertThat(session.getMode()).isEqualTo(SessionMode.HUMAN);
         assertThat(session.getStatus()).isEqualTo(SessionStatus.WAITING);
-        assertThat(session.getTopicId()).isEqualTo(12L);
+        assertThat(session.getTopic()).isSameAs(TOPIC);
+        assertThat(session.getCategory()).isEqualTo(Category.ETHICS);
         assertThat(session.getInviteCode()).isNull();
         assertThat(session.getStartedAt()).isNull();
     }
@@ -33,7 +37,7 @@ class DebateSessionTest {
         DebateSession session = DebateSession.createFriend(Category.RELATIONSHIP, "k3Xp9aQ2");
 
         assertThat(session.getRoomType()).isEqualTo(RoomType.FRIEND);
-        assertThat(session.getTopicId()).isNull();
+        assertThat(session.getTopic()).isNull();
         assertThat(session.getInviteCode()).isEqualTo("k3Xp9aQ2");
         assertThat(session.isWaiting()).isTrue();
     }
@@ -41,7 +45,7 @@ class DebateSessionTest {
     @Test
     @DisplayName("자동 봇전은 대기 없이 바로 시작한다")
     void aiMatchStartsImmediately() {
-        DebateSession session = DebateSession.createAiMatch(Category.ETHICS, 12L, NOW);
+        DebateSession session = DebateSession.createAiMatch(TOPIC, NOW);
 
         assertThat(session.getMode()).isEqualTo(SessionMode.AI);
         assertThat(session.isInProgress()).isTrue();
@@ -71,7 +75,7 @@ class DebateSessionTest {
     @DisplayName("승패는 한 번만 기록할 수 있다")
     void recordsResultOnce() {
         DebateParticipant participant = DebateParticipant.initiator(
-                DebateSession.createRandom(Category.ETHICS, 12L), User.createGuest("방장"), Stance.AGREE, NOW);
+                DebateSession.createRandom(TOPIC), User.createGuest("방장"), Stance.AGREE, NOW);
 
         participant.recordResult(DebateResult.WIN);
 
@@ -84,7 +88,7 @@ class DebateSessionTest {
     @DisplayName("끊기면 시각을 기록하고, 재접속하면 지운다")
     void tracksDisconnection() {
         DebateParticipant participant = DebateParticipant.initiator(
-                DebateSession.createRandom(Category.ETHICS, 12L), User.createGuest("방장"), Stance.AGREE, NOW);
+                DebateSession.createRandom(TOPIC), User.createGuest("방장"), Stance.AGREE, NOW);
 
         participant.markDisconnected(NOW);
         assertThat(participant.getDisconnectedAt()).isEqualTo(NOW);
@@ -96,7 +100,7 @@ class DebateSessionTest {
     @Test
     @DisplayName("AI 참가자는 사용자가 없고 상대 역할이다")
     void aiParticipant() {
-        DebateParticipant ai = DebateParticipant.ai(DebateSession.createAiMatch(Category.ETHICS, 12L, NOW), Stance.AGREE, NOW);
+        DebateParticipant ai = DebateParticipant.ai(DebateSession.createAiMatch(TOPIC, NOW), Stance.AGREE, NOW);
 
         assertThat(ai.isAi()).isTrue();
         assertThat(ai.getUser()).isNull();

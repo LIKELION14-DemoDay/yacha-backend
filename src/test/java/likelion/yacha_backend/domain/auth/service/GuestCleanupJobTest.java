@@ -10,7 +10,9 @@ import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
-import likelion.yacha_backend.domain.topic.entity.Category;
+import likelion.yacha_backend.domain.topic.entity.Subcategory;
+import likelion.yacha_backend.domain.topic.entity.Topic;
+import likelion.yacha_backend.domain.topic.repository.TopicRepository;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -43,6 +45,9 @@ class GuestCleanupJobTest {
 
     @Autowired
     private DebateSessionRepository sessionRepository;
+
+    @Autowired
+    private TopicRepository topicRepository;
 
     @Autowired
     private DebateParticipantRepository participantRepository;
@@ -78,7 +83,7 @@ class GuestCleanupJobTest {
     void detachesParticipantsBeforeDelete() {
         Long guestId = oldGuest();
         User member = userRepository.save(User.createMember("host@example.com", "encoded", "방장"));
-        DebateSession session = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, 1L));
+        DebateSession session = sessionRepository.save(DebateSession.createRandom(newTopic()));
         LocalDateTime now = LocalDateTime.now();
         participantRepository.save(DebateParticipant.initiator(session, member, Stance.AGREE, now));
         Long guestParticipantId = participantRepository.save(DebateParticipant.opponent(
@@ -158,5 +163,9 @@ class GuestCleanupJobTest {
         assertThat(userRepository.findAllById(List.of(first, third, fourth, fifth))).isEmpty();
         assertThat(userRepository.existsById(kept)).isTrue();
         refreshTokenStore.delete(kept);
+    }
+
+    private Topic newTopic() {
+        return topicRepository.save(Topic.create(Subcategory.GOOD_AND_EVIL, "질문", "찬성", "반대"));
     }
 }

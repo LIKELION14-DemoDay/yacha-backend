@@ -15,6 +15,7 @@ import likelion.yacha_backend.domain.session.entity.PhaseState;
 import likelion.yacha_backend.domain.session.exception.SessionErrorCode;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
+import likelion.yacha_backend.domain.topic.dto.TopicResponse;
 import likelion.yacha_backend.global.exception.BusinessException;
 import likelion.yacha_backend.global.util.DateTimes;
 import lombok.RequiredArgsConstructor;
@@ -84,7 +85,7 @@ public class SessionQueryService {
                 session.getRoomType(),
                 session.getMode(),
                 session.getCategory(),
-                session.getTopicId(),
+                session.getTopic() == null ? null : TopicResponse.from(session.getTopic()),
                 phase,
                 DateTimes.withOffset(session.getStartedAt(), zone),
                 DateTimes.withOffset(endsAt, zone),

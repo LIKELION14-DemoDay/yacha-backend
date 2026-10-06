@@ -19,7 +19,9 @@ import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
-import likelion.yacha_backend.domain.topic.entity.Category;
+import likelion.yacha_backend.domain.topic.entity.Subcategory;
+import likelion.yacha_backend.domain.topic.entity.Topic;
+import likelion.yacha_backend.domain.topic.repository.TopicRepository;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.exception.BusinessException;
@@ -50,6 +52,9 @@ class UpgradeApiTest {
 
     @Autowired
     private DebateSessionRepository sessionRepository;
+
+    @Autowired
+    private TopicRepository topicRepository;
 
     @Autowired
     private DebateParticipantRepository participantRepository;
@@ -106,14 +111,14 @@ class UpgradeApiTest {
         User guest = userRepository.getReferenceById(guestUserId.longValue());
         User other = userRepository.save(User.createMember("other@example.com", "encoded", "상대"));
 
-        DebateSession ended = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, 1L));
+        DebateSession ended = sessionRepository.save(DebateSession.createRandom(newTopic()));
         Long endedParticipant = participantRepository.save(
                 DebateParticipant.initiator(ended, guest, Stance.AGREE, now)).getId();
         participantRepository.save(DebateParticipant.opponent(ended, other, Stance.DISAGREE, now));
         sessionRepository.startIfWaiting(ended.getId(), now);
         sessionRepository.finishIfInProgress(ended.getId(), FinishReason.COMPLETED, now);
 
-        DebateSession playing = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, 1L));
+        DebateSession playing = sessionRepository.save(DebateSession.createRandom(newTopic()));
         Long playingParticipant = participantRepository.save(
                 DebateParticipant.initiator(playing, guest, Stance.AGREE, now)).getId();
         sessionRepository.startIfWaiting(playing.getId(), now);
@@ -247,5 +252,9 @@ class UpgradeApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(UPGRADE_BODY))
                 .andExpect(status().isUnauthorized());
+    }
+
+    private Topic newTopic() {
+        return topicRepository.save(Topic.create(Subcategory.GOOD_AND_EVIL, "질문", "찬성", "반대"));
     }
 }
