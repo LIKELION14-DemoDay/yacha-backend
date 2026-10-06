@@ -7,7 +7,6 @@ import likelion.yacha_backend.domain.auth.dto.PasswordResetConfirmRequest;
 import likelion.yacha_backend.domain.auth.dto.PasswordResetRequest;
 import likelion.yacha_backend.domain.auth.dto.PasswordResetVerifyRequest;
 import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
-import likelion.yacha_backend.domain.auth.mail.MailProperties;
 import likelion.yacha_backend.domain.auth.repository.PasswordResetProperties;
 import likelion.yacha_backend.domain.auth.mail.PasswordResetMailer;
 import likelion.yacha_backend.domain.auth.repository.PasswordResetStore;
@@ -39,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@EnableConfigurationProperties({MailProperties.class, PasswordResetProperties.class})
+@EnableConfigurationProperties(PasswordResetProperties.class)
 public class PasswordResetService {
 
     private static final int TOKEN_BYTES = 32;

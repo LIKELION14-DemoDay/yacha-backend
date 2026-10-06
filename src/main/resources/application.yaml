@@ -90,13 +90,6 @@ oauth:
     client-secret: ${GOOGLE_CLIENT_SECRET:}
     token-uri: https://oauth2.googleapis.com/token
 
-mail:
-  # 비밀번호 재설정 메일에 넣을 링크. 재설정 페이지는 프론트가 그리고, 서버는 주소만 만들어 보냄
-  # 배포에서는 FRONTEND_BASE_URL 로 실제 도메인을 넘김
-  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
-  # 프론트와 맞춰야 하는 값. 경로가 정해지면 여기만 바꾸면 됨
-  reset-path: /reset-password
-
 game:
   # 토론 중 채팅 · 주장 · 반론은 서버 메모리에만 둡니다 (명세 1-5)
   # 채팅 한 건의 글자 수 상한 (이모지도 한 글자)
