@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.session.service;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
@@ -100,7 +101,9 @@ public class SessionCommandService {
         // UPDATE 가 영속성 컨텍스트를 비우므로 필요한 값은 미리 꺼내 둡니다 (DebateSessionRepository 주의 참고).
         Long hostUserId = host.getUser().getId();
         Long hostParticipantId = host.getId();
-        LocalDateTime now = LocalDateTime.now(clock);
+        // 게임의 시작 시각과 DB 의 started_at 이 같아야 구간 계산이 어긋나지 않습니다.
+        // DB 는 마이크로초(timestamp(6))까지만 저장하므로 같은 정밀도로 맞춥니다 (Linux 는 나노초까지 나옴).
+        LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS);
         if (sessionRepository.startIfWaiting(sessionId, now) == 0) {
             throw new BusinessException(SessionErrorCode.SESSION_NOT_WAITING);
         }
