@@ -151,7 +151,17 @@ public class AuthService {
 
         // 액세스 토큰만이 아니라 리프레시 토큰도 새로 발급해 저장소 값을 바꿈
         // role을 여기서 DB로부터 다시 읽으므로, 권한 변경도 이 시점에 반영
-        return tokenIssuer.issue(user);
+        //
+        // 위에서 확인한 뒤 지금까지 저장소가 바뀌지 않았을 때만 바꿈 (compare-and-set)
+        // 그 사이 로그아웃 · 비밀번호 변경 · 같은 토큰의 다른 재발급이 끼어들었으면 실패
+        return tokenIssuer.rotate(user, refreshToken)
+                .orElseThrow(() -> {
+                    // 같은 토큰을 거의 동시에 두 번 쓴 경우도 여기로 옴. 위의 재사용 탐지와 같게 폐기
+                    // 비밀번호 변경이 끼어든 경우엔 사용자의 새 토큰도 지워지지만, 다시 로그인하면 되고 세션이 남는 쪽보다 안전함
+                    log.warn("재발급 중 리프레시 토큰이 바뀌었습니다. 저장된 토큰을 폐기합니다. userId={}", userId);
+                    tokenIssuer.revoke(userId);
+                    return new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+                });
     }
 
     /**
