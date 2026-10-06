@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import likelion.yacha_backend.domain.auth.dto.AuthResponse;
+import likelion.yacha_backend.domain.auth.dto.GoogleCodeLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.KakaoCodeLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
@@ -15,6 +16,7 @@ import likelion.yacha_backend.domain.auth.dto.SignupRequest;
 import likelion.yacha_backend.domain.auth.dto.SocialLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.service.AuthService;
+import likelion.yacha_backend.domain.auth.service.GoogleLoginService;
 import likelion.yacha_backend.domain.auth.service.PasswordResetService;
 import likelion.yacha_backend.domain.auth.service.KakaoLoginService;
 import likelion.yacha_backend.global.response.ApiResponse;
@@ -37,6 +39,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final KakaoLoginService kakaoLoginService;
+    private final GoogleLoginService googleLoginService;
     private final CookieProvider cookieProvider;
     private final AuthResponseFactory authResponseFactory;
     private final PasswordResetService passwordResetService;
@@ -164,6 +167,37 @@ public class AuthController {
     public ResponseEntity<ApiResponse<AuthResponse>> kakaoCodeLogin(
             @Valid @RequestBody KakaoCodeLoginRequest request) {
         return withRefreshCookie(kakaoLoginService.login(request));
+    }
+
+    @Operation(
+            summary = "구글 로그인 (웹, 인가 코드)",
+            description = """
+                    프론트가 만든 버튼으로 구글 인가 주소에 보내면, redirect URI로 **인가 코드**가 돌아옵니다.
+                    그 코드를 보내면 서버가 구글에 id_token으로 바꿔 받은 뒤 `/auth/social`과 같은 절차로 로그인합니다.
+                    응답 · 가입 규칙 · 409는 `/auth/social`과 같습니다.
+
+                    ```json
+                    { "code": "인가 코드", "redirectUri": "http://localhost:5173/oauth/google" }
+                    ```
+
+                    - 인가 요청에 `response_type=code`, `scope=openid email profile`을 넣어 주세요. `openid`가 빠지면 id_token이 오지 않아 502입니다.
+                    - `redirectUri`는 인가 요청에 넣은 값과 똑같아야 합니다.
+                    - `code`는 URL에서 꺼낸 값을 **디코딩해서** 보내 주세요 (`URLSearchParams`가 알아서 디코딩합니다). `4%2F...`처럼 인코딩된 채로 보내면 401입니다.
+                    - 코드는 한 번만 쓸 수 있습니다. 새로고침 등으로 두 번 보내면 두 번째는 401입니다.
+                    - `state`로 로그인 CSRF를 막는 것은 프론트 몫입니다. 콜백에서 확인한 뒤에 이 API를 호출하세요.
+
+                    에러
+                    - `UNSUPPORTED_PROVIDER` (400): 서버에 구글 클라이언트 ID · 시크릿이 설정되지 않음
+                    - `INVALID_SOCIAL_CODE` (401): 코드 만료 · 이미 사용됨 · redirectUri 불일치
+                    - `INVALID_SOCIAL_TOKEN` (401): 받은 id_token 검증 실패
+                    - `SOCIAL_EMAIL_CONFLICT` (409): 같은 이메일로 가입된 계정이 이미 있음
+                    - `SOCIAL_PROVIDER_ERROR` (502): 구글 서버 오류 · 타임아웃, 서버의 시크릿 설정 오류, 또는 scope에 openid 누락
+                    """)
+    @SecurityRequirements
+    @PostMapping("/social/google")
+    public ResponseEntity<ApiResponse<AuthResponse>> googleCodeLogin(
+            @Valid @RequestBody GoogleCodeLoginRequest request) {
+        return withRefreshCookie(googleLoginService.login(request));
     }
 
     @Operation(
