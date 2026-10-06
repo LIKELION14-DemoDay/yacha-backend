@@ -48,6 +48,31 @@ class RefreshTokenStoreTest {
     }
 
     @Test
+    @DisplayName("저장된 값이 기대한 값이면 새 값으로 바꾸고 true")
+    void replaceWhenMatches() {
+        store.save(4L, "old-token");
+
+        assertThat(store.replace(4L, "old-token", "new-token")).isTrue();
+        assertThat(store.find(4L)).contains("new-token");
+    }
+
+    @Test
+    @DisplayName("저장된 값이 다르면 바꾸지 않고 false (그 사이 다른 요청이 저장함)")
+    void replaceFailsWhenChanged() {
+        store.save(5L, "someone-elses-token");
+
+        assertThat(store.replace(5L, "old-token", "new-token")).isFalse();
+        assertThat(store.find(5L)).contains("someone-elses-token");
+    }
+
+    @Test
+    @DisplayName("저장된 값이 없으면 새로 만들지 않고 false (그 사이 로그아웃함)")
+    void replaceFailsWhenDeleted() {
+        assertThat(store.replace(6L, "old-token", "new-token")).isFalse();
+        assertThat(store.find(6L)).isEmpty();
+    }
+
+    @Test
     @DisplayName("저장한 적 없는 사용자는 빈 값이다")
     void findReturnsEmptyWhenAbsent() {
         assertThat(store.find(999L)).isEmpty();
