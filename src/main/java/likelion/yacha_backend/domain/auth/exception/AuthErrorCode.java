@@ -29,6 +29,8 @@ public enum AuthErrorCode implements BaseErrorCode {
     INVALID_RESET_CODE(HttpStatus.BAD_REQUEST, "인증번호가 올바르지 않습니다."),
     /** 인증번호가 없음. 만료(3분) · 5번 틀림 · 요청한 적 없음 · 이미 사용함. 원인은 구분하지 않는다 */
     RESET_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "인증번호가 만료됐습니다. 다시 요청해 주세요."),
+    /** 이메일 하나가 24시간 동안 인증번호를 10번 틀림. 가입 여부와 관계없이 같게 적용한다 */
+    RESET_ATTEMPTS_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "인증번호를 너무 많이 틀렸습니다. 24시간 뒤에 다시 시도해 주세요."),
     /** 비밀번호 변경에서 현재 비밀번호가 틀림. 이미 인증된 본인이라 원인을 알려줘도 된다 */
     CURRENT_PASSWORD_MISMATCH(HttpStatus.UNAUTHORIZED, "현재 비밀번호가 올바르지 않습니다."),
     /** 비밀번호가 없는 계정(소셜 전용 · 게스트)이라 변경할 대상이 없음 */

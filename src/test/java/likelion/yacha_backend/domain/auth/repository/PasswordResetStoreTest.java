@@ -136,4 +136,46 @@ class PasswordResetStoreTest {
     void unknownEmailIsExpired() {
         assertThat(store.checkCode("never@example.com", "123456")).isEqualTo(CodeCheck.EXPIRED);
     }
+
+    /** 인증번호를 새로 받으며 틀리기를 반복해 하루 실패 횟수를 count 만큼 채움 */
+    private void failTimes(String email, int count) {
+        for (int i = 0; i < count; i++) {
+            if (i % 5 == 0) {
+                store.saveCode(email, "123456");   // 5번마다 새로 받아 인증번호당 횟수를 되돌림
+            }
+            assertThat(store.checkCode(email, "000000")).isEqualTo(CodeCheck.MISMATCHED);
+        }
+    }
+
+    @Test
+    @DisplayName("인증번호를 새로 받아도 하루 10번 틀리면 맞는 번호도 LOCKED")
+    void locksAfterDailyFailureLimit() {
+        failTimes("lock1@example.com", 10);
+
+        store.saveCode("lock1@example.com", "654321");
+        assertThat(store.checkCode("lock1@example.com", "654321")).isEqualTo(CodeCheck.LOCKED);
+    }
+
+    @Test
+    @DisplayName("9번 틀린 뒤에는 맞는 번호로 통과하고, 통과하면 틀린 횟수도 지운다")
+    void matchClearsFailures() {
+        failTimes("lock2@example.com", 9);
+
+        store.saveCode("lock2@example.com", "654321");
+        assertThat(store.checkCode("lock2@example.com", "654321")).isEqualTo(CodeCheck.MATCHED);
+
+        // 지워졌으므로 다시 9번까지 틀려도 잠기지 않음
+        failTimes("lock2@example.com", 9);
+        store.saveCode("lock2@example.com", "111222");
+        assertThat(store.checkCode("lock2@example.com", "111222")).isEqualTo(CodeCheck.MATCHED);
+    }
+
+    @Test
+    @DisplayName("하루 실패 횟수는 이메일마다 따로 센다")
+    void failuresArePerEmail() {
+        failTimes("lock3@example.com", 10);
+
+        store.saveCode("lock4@example.com", "123456");
+        assertThat(store.checkCode("lock4@example.com", "123456")).isEqualTo(CodeCheck.MATCHED);
+    }
 }

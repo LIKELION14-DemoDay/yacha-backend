@@ -99,7 +99,8 @@ public class PasswordResetService {
      * 인증번호를 확인하고 재설정 토큰을 발급
      *
      * 틀리면 INVALID_RESET_CODE, 인증번호가 없으면(만료 · 5번 틀림 · 요청 안 함) RESET_CODE_EXPIRED
-     * 가입 안 된 이메일도 ①에서 인증번호를 저장해 두므로 같은 응답이 나옴
+     * 이메일이 하루 10번을 틀렸으면 RESET_ATTEMPTS_EXCEEDED (인증번호를 새로 받아 횟수를 되돌리는 대입을 막음)
+     * 가입 안 된 이메일도 ①에서 인증번호를 저장해 두고 틀린 횟수도 똑같이 세므로 같은 응답이 나옴
      *
      * 트랜잭션을 걸지 않음. 조회만 함
      */
@@ -107,6 +108,9 @@ public class PasswordResetService {
         String email = normalizeEmail(request.email());
 
         CodeCheck result = passwordResetStore.checkCode(email, request.code());
+        if (result == CodeCheck.LOCKED) {
+            throw new BusinessException(AuthErrorCode.RESET_ATTEMPTS_EXCEEDED);
+        }
         if (result == CodeCheck.EXPIRED) {
             throw new BusinessException(AuthErrorCode.RESET_CODE_EXPIRED);
         }

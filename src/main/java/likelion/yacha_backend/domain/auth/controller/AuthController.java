@@ -237,6 +237,7 @@ public class AuthController {
 
                     - `resetToken` 은 10분 동안 유효하고 한 번만 쓸 수 있음. ③ `/auth/password/reset` 의 `token` 에 넣음
                     - 5번까지 틀릴 수 있음. 그다음은 맞는 번호여도 `RESET_CODE_EXPIRED` 라 다시 요청해야 함
+                    - 이메일 하나당 24시간 동안 10번까지 틀릴 수 있음 (인증번호를 새로 받아도 이어서 셈). 넘으면 `RESET_ATTEMPTS_EXCEEDED`
                     - 가입되지 않은 이메일도 가입된 이메일과 같은 응답 (가입 여부를 드러내지 않음)
                     - `code` 는 숫자 6자리 문자열. 앞자리 0 이 있으니 숫자로 바꾸지 말고 그대로 보내 주세요
 
@@ -244,6 +245,7 @@ public class AuthController {
                     - `VALIDATION_FAILED` (400): 이메일 형식 · 인증번호가 숫자 6자리가 아님 (시도 횟수에 들어가지 않음)
                     - `INVALID_RESET_CODE` (400): 인증번호가 틀림. 다시 입력
                     - `RESET_CODE_EXPIRED` (400): 만료(3분) · 5번 틀림 · 요청한 적 없음 · 이미 사용함. 다시 요청
+                    - `RESET_ATTEMPTS_EXCEEDED` (429): 24시간 동안 10번 틀림. 처음 틀린 때부터 24시간 뒤에 다시 시도
                     """)
     @SecurityRequirements
     @PostMapping("/password/verify")

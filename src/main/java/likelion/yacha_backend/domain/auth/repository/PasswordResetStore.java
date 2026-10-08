@@ -43,6 +43,9 @@ public interface PasswordResetStore {
     /**
      * 인증번호를 확인하고 시도 횟수를 하나 늘림
      *
+     * 틀리면 이메일의 하루 실패 횟수도 늘림. 이건 인증번호를 새로 받아도 이어서 셈
+     * 하루 한도({@link PasswordResetProperties#failureLimit()})를 넘긴 이메일은 맞는 번호여도 {@code LOCKED}
+     *
      * 확인 · 횟수 증가 · 삭제가 하나의 동작이어야 함
      * 나눠서 하면 동시에 여러 번 보내 횟수 제한을 넘기거나, 같은 번호로 두 번 통과할 수 있음
      */
@@ -54,6 +57,8 @@ public interface PasswordResetStore {
         /** 틀림. 남은 횟수 안에서 다시 시도할 수 있음 */
         MISMATCHED,
         /** 인증번호가 없음. 요청한 적 없음 · 유효시간 지남 · 틀린 횟수 초과 · 이미 사용함 */
-        EXPIRED
+        EXPIRED,
+        /** 이 이메일은 하루 실패 한도를 넘김. 기간이 지날 때까지 인증번호를 확인하지 않음 */
+        LOCKED
     }
 }

@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
@@ -22,6 +21,7 @@ public class InMemoryPasswordResetStore implements PasswordResetStore {
     private final Map<Long, String> latestByUser = new ConcurrentHashMap<>();
     private final Map<String, Instant> sendSlots = new ConcurrentHashMap<>();
     private final Map<String, CodeEntry> codes = new ConcurrentHashMap<>();
+    private final Map<String, FailureCount> failures = new ConcurrentHashMap<>();
 
     private final PasswordResetProperties properties;
 
@@ -61,26 +61,42 @@ public class InMemoryPasswordResetStore implements PasswordResetStore {
         codes.put(email, new CodeEntry(code, 0, Instant.now().plus(properties.codeTtl())));
     }
 
-    /** computeIfPresent는 키 하나에 대해 원자적이라 Lua 스크립트와 같은 동작 */
+    /**
+     * 인증번호 · 하루 실패 횟수 두 맵을 함께 바꾸므로 메서드 전체를 잠가 Lua 스크립트처럼 한 번에 처리함
+     * (테스트 전용이라 단순하게 둠)
+     */
     @Override
-    public CodeCheck checkCode(String email, String code) {
-        AtomicReference<CodeCheck> result = new AtomicReference<>(CodeCheck.EXPIRED);
-        codes.computeIfPresent(email, (key, entry) -> {
-            if (entry.expiresAt().isBefore(Instant.now())) {
-                return null;
-            }
-            int attempts = entry.attempts() + 1;
-            if (attempts > properties.maxCodeAttempts()) {
-                return null;
-            }
-            if (entry.code().equals(code)) {
-                result.set(CodeCheck.MATCHED);
-                return null;
-            }
-            result.set(CodeCheck.MISMATCHED);
-            return new CodeEntry(entry.code(), attempts, entry.expiresAt());
-        });
-        return result.get();
+    public synchronized CodeCheck checkCode(String email, String code) {
+        Instant now = Instant.now();
+        FailureCount failure = failures.get(email);
+        if (failure != null && failure.resetsAt().isBefore(now)) {
+            failures.remove(email);
+            failure = null;
+        }
+        if (failure != null && failure.count() >= properties.failureLimit()) {
+            return CodeCheck.LOCKED;
+        }
+
+        CodeEntry entry = codes.get(email);
+        if (entry == null || entry.expiresAt().isBefore(now)) {
+            codes.remove(email);
+            return CodeCheck.EXPIRED;
+        }
+        int attempts = entry.attempts() + 1;
+        if (attempts > properties.maxCodeAttempts()) {
+            codes.remove(email);
+            return CodeCheck.EXPIRED;
+        }
+        if (entry.code().equals(code)) {
+            codes.remove(email);
+            failures.remove(email);
+            return CodeCheck.MATCHED;
+        }
+        codes.put(email, new CodeEntry(entry.code(), attempts, entry.expiresAt()));
+        failures.put(email, failure == null
+                ? new FailureCount(1, now.plus(properties.failureWindow()))
+                : new FailureCount(failure.count() + 1, failure.resetsAt()));
+        return CodeCheck.MISMATCHED;
     }
 
     /** 재요청 제한(1분)을 기다리지 않고 다시 요청하는 테스트용 */
@@ -92,5 +108,8 @@ public class InMemoryPasswordResetStore implements PasswordResetStore {
     }
 
     private record CodeEntry(String code, int attempts, Instant expiresAt) {
+    }
+
+    private record FailureCount(int count, Instant resetsAt) {
     }
 }

@@ -22,6 +22,9 @@ import org.springframework.validation.annotation.Validated;
  * @param sendInterval     같은 이메일로 다시 보낼 수 있을 때까지의 간격 (1분)
  * @param codeTtl          메일로 보낸 인증번호의 유효시간. 화면 타이머와 같음 (3분)
  * @param maxCodeAttempts  인증번호를 틀릴 수 있는 횟수. 넘기면 인증번호를 버려 다시 요청해야 함 (5번)
+ * @param failureLimit     이메일 하나가 {@code failureWindow} 동안 틀릴 수 있는 횟수. 인증번호를 새로 받아도 이어서 셈 (10번)
+ *                         maxCodeAttempts만 있으면 1분마다 새로 요청해 하루 수천 번 대입할 수 있어서 둠
+ * @param failureWindow    틀린 횟수를 세는 기간. 처음 틀린 때부터 (24시간)
  */
 @Validated
 @ConfigurationProperties(prefix = "auth.password-reset")
@@ -29,13 +32,15 @@ public record PasswordResetProperties(
         @NotNull Duration tokenTtl,
         @NotNull Duration sendInterval,
         @NotNull Duration codeTtl,
-        @Positive int maxCodeAttempts
+        @Positive int maxCodeAttempts,
+        @Positive int failureLimit,
+        @NotNull Duration failureWindow
 ) {
 
     /** null은 위의 @NotNull이 검사함 */
     @AssertTrue(message = "auth.password-reset 의 기간 값은 0보다 커야 합니다.")
     public boolean isDurationsPositive() {
-        return Stream.of(tokenTtl, sendInterval, codeTtl)
+        return Stream.of(tokenTtl, sendInterval, codeTtl, failureWindow)
                 .allMatch(duration -> duration == null || (!duration.isZero() && !duration.isNegative()));
     }
 }

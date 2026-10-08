@@ -386,6 +386,39 @@ class PasswordResetApiTest {
         verify(email, lastCode()).andExpect(status().isOk());
     }
 
+    /** 인증번호를 새로 받으며 틀리기를 반복해 하루 실패 횟수를 10번 채움 (1분 재요청 제한은 건너뜀) */
+    private void failTenTimes(String email) throws Exception {
+        for (int i = 0; i < 10; i++) {
+            if (i % 5 == 0) {
+                passwordResetStore.clearSendSlots();
+                requestReset(email);
+            }
+            verify(email, "000000").andExpect(jsonPath("$.error.code").value("INVALID_RESET_CODE"));
+        }
+    }
+
+    @Test
+    @DisplayName("인증번호를 새로 받아도 하루 10번 틀리면 맞는 번호도 429 RESET_ATTEMPTS_EXCEEDED")
+    void locksAfterTenFailures() throws Exception {
+        failTenTimes(email);
+
+        passwordResetStore.clearSendSlots();
+        requestReset(email);
+        verify(email, lastCode())
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error.code").value("RESET_ATTEMPTS_EXCEEDED"));
+    }
+
+    @Test
+    @DisplayName("가입되지 않은 이메일도 하루 10번 틀리면 같은 429 (가입 여부가 드러나지 않음)")
+    void locksUnknownEmailTheSame() throws Exception {
+        failTenTimes("nobody-lock@example.com");
+
+        verify("nobody-lock@example.com", "123456")
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error.code").value("RESET_ATTEMPTS_EXCEEDED"));
+    }
+
     // --- ③ 재설정 -----------------------------------------------------
 
     @Test
