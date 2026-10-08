@@ -29,6 +29,9 @@ import lombok.Getter;
  * 정상 종료는 판정 LLM 이 대화 전체({@code messagesAfter(0)})를 읽어야 하므로, 채팅은 <b>판정이 끝난 뒤</b>
  * 버립니다. {@code FORFEIT} · {@code ABORTED} 는 판정이 없으니 종료 즉시 저장소에서 지웁니다 (명세 1-5).
  *
+ * <p><b>판정</b> — 정상 종료 뒤 판정 상태({@link JudgeStatus})와 결과({@link Verdict})도 여기에 둡니다.
+ * 판정이 끝나면(성공 · 실패) 결과 화면 보관 시간 뒤에 게임째 저장소에서 지웁니다 ({@code JudgeService}).
+ *
  * <p><b>주장 · 반론</b> — {@code PREP} 에는 주장, {@code REBUTTAL} 에는 반론을 제출합니다({@link #saveMemo}).
  * 공개 전에는 본인만 보고, 작성 구간이 끝나고 {@link DebatePhase#SUBMIT_GRACE} 가 지나면 {@link #revealArguments} 가
  * 양쪽 글을 {@link MessageType#ARGUMENT} 메시지로 기록합니다 (주장 63초, 반론 143초). 채팅은 반론이 공개된 뒤에만
@@ -77,6 +80,10 @@ public class Game {
     /** 이미 공개한 작성 구간. 구간마다 한 번만 공개합니다. */
     private final Set<DebatePhase> revealedPhases = EnumSet.noneOf(DebatePhase.class);
     private boolean finished;
+    /** 판정 상태. 판정을 시작하기 전에는 null 입니다. */
+    private JudgeStatus judgeStatus;
+    /** 판정이 끝나면({@code READY}) 들어갑니다. */
+    private Verdict verdict;
 
     Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId, Long aiParticipantId,
          int chatMaxLength, int maxChatsPerParticipant, int argumentMaxLength, int rebuttalMaxLength) {
@@ -224,6 +231,42 @@ public class Game {
 
     public synchronized boolean isFinished() {
         return finished;
+    }
+
+    /**
+     * 판정을 시작합니다. 처음이거나 실패({@code FAILED})한 뒤에만 {@code PENDING} 으로 바꾸고 true 를 돌려줍니다.
+     * 이미 판정 중이거나 끝났으면 false 라, 260초 종료와 결과 재요청이 겹쳐도 판정은 한 번만 돕니다.
+     *
+     * @throws IllegalStateException 아직 끝나지 않은 게임. 판정은 대화가 더 늘지 않을 때만 합니다
+     */
+    public synchronized boolean startJudging() {
+        if (!finished) {
+            throw new IllegalStateException("끝나지 않은 게임은 판정할 수 없습니다. sessionId=" + sessionId);
+        }
+        if (judgeStatus == JudgeStatus.PENDING || judgeStatus == JudgeStatus.READY) {
+            return false;
+        }
+        judgeStatus = JudgeStatus.PENDING;
+        return true;
+    }
+
+    public synchronized void completeJudging(Verdict verdict) {
+        this.verdict = Objects.requireNonNull(verdict, "verdict");
+        this.judgeStatus = JudgeStatus.READY;
+    }
+
+    public synchronized void failJudging() {
+        this.judgeStatus = JudgeStatus.FAILED;
+    }
+
+    /** 판정 상태. 판정을 시작하기 전이면 null 입니다. */
+    public synchronized JudgeStatus judgeStatus() {
+        return judgeStatus;
+    }
+
+    /** 판정 결과. {@code READY} 가 아니면 null 입니다. */
+    public synchronized Verdict verdict() {
+        return verdict;
     }
 
     /** 글자 수. 이모지처럼 두 칸(char)을 쓰는 문자도 한 글자로 셉니다. */
