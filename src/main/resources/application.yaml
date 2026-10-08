@@ -3,6 +3,10 @@ spring:
     name: yacha-backend
   profiles:
     default: local
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   jpa:
     # 켜두면 요청 내내 DB 커넥션을 붙잡고 있어 커넥션 풀이 금방 마름
     open-in-view: false
@@ -73,6 +77,14 @@ oauth:
     # 콘솔에서 Client Secret 을 켰을 때만 넣습니다. 비밀 값이라 저장소에 적지 마세요.
     client-secret: ${KAKAO_CLIENT_SECRET:}
     token-uri: https://kauth.kakao.com/oauth/token
+  google-code:
+    # 웹 구글 로그인(/auth/social/google)에서 인가 코드를 id_token 으로 바꿀 때 씁니다.
+    # 웹 클라이언트 ID 하나만 넣습니다. 따로 넣지 않으면 GOOGLE_CLIENT_IDS 를 씁니다.
+    # (iOS · Android 클라이언트 ID 가 GOOGLE_CLIENT_IDS 에 추가되면 GOOGLE_CLIENT_ID 를 따로 넣어야 합니다)
+    client-id: ${GOOGLE_CLIENT_ID:${GOOGLE_CLIENT_IDS:}}
+    # 비밀 값이라 저장소에 적지 마세요. 없으면 /auth/social/google 은 UNSUPPORTED_PROVIDER 입니다.
+    client-secret: ${GOOGLE_CLIENT_SECRET:}
+    token-uri: https://oauth2.googleapis.com/token
 
 mail:
   # 비밀번호 재설정 메일에 넣을 링크. 재설정 페이지는 프론트가 그리고, 서버는 주소만 만들어 보냄
@@ -111,3 +123,10 @@ liner:
 spectate:
   # 관전 스위치. 관전은 사용하지 않아(10/5) 꺼 둔다. 켜면 진행 중인 랜덤 사람전을 참가자가 아니어도 볼 수 있다
   enabled: false
+
+storage:
+  s3:
+    bucket: ${AWS_S3_BUCKET:}
+    region: ${AWS_REGION:ap-northeast-2}
+    profile-prefix: profiles
+    presigned-url-validity: 1h
