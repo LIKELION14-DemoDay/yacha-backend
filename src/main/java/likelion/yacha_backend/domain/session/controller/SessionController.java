@@ -11,10 +11,12 @@ import likelion.yacha_backend.domain.session.dto.MemoResponse;
 import likelion.yacha_backend.domain.session.dto.MemoSaveRequest;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
 import likelion.yacha_backend.domain.session.dto.SessionIdResponse;
+import likelion.yacha_backend.domain.session.dto.SessionResultResponse;
 import likelion.yacha_backend.domain.session.dto.SessionStateResponse;
 import likelion.yacha_backend.domain.session.service.GameMemoService;
 import likelion.yacha_backend.domain.session.service.SessionMatchFacade;
 import likelion.yacha_backend.domain.session.service.SessionQueryService;
+import likelion.yacha_backend.domain.session.service.SessionResultService;
 import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +31,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "토론 세션", description = "방 생성 · 입장 · 취소 · 봇전, 토론방 조회 — 현재 상태 · 놓친 메시지 · 내 주장 작성")
+@Tag(name = "토론 세션", description = "방 생성 · 입장 · 취소 · 봇전, 토론방 조회 — 현재 상태 · 놓친 메시지 · 내 주장 작성 · 결과")
 @RestController
 @RequestMapping("/api/v1/sessions")
 @RequiredArgsConstructor
@@ -38,6 +40,7 @@ public class SessionController {
     private final SessionMatchFacade sessionMatchFacade;
     private final SessionQueryService sessionQueryService;
     private final GameMemoService gameMemoService;
+    private final SessionResultService sessionResultService;
 
     @Operation(
             summary = "방 생성",
@@ -197,5 +200,26 @@ public class SessionController {
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long sessionId) {
         return ApiResponse.success(gameMemoService.getMyMemos(sessionId, authUser.getUserId()));
+    }
+
+    @Operation(
+            summary = "결과 조회",
+            description = """
+                    260초에 채팅이 끝나면(`SESSION_FINISHED`) 판정 화면에서 1.5초마다 부름
+                    판정 중이면 `{ "status": "PENDING" }`, 끝나면 `READY` + 승패 · 기준 4개(논리 · 근거 · 반박 · 일관성) 점수 · 기준별 한 줄 요약
+                    총점이 높은 쪽이 승리, 같으면 둘 다 `DRAW` (`winnerParticipantId` null)
+
+                    판정이 실패하면 다시 부를 때 판정을 다시 시작하고 `PENDING`
+                    점수 · 요약은 10분 동안만 있고, 그 뒤에는 승패만 (`criteria` · `scores` · `total` null, 게스트는 승패도 없음)
+                    결과를 낼 수 없으면 `FAILED` (판정 중 서버 재시작 · 무효 게임 `ABORTED`)
+                    `philosopherType` 은 아직 null, 봇은 `nickname` 도 null
+
+                    참가자만 (`NOT_PARTICIPANT`), 아직 끝나지 않은 토론이면 `SESSION_NOT_FINISHED`
+                    """)
+    @GetMapping("/{sessionId}/result")
+    public ApiResponse<SessionResultResponse> getResult(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long sessionId) {
+        return ApiResponse.success(sessionResultService.getResult(sessionId, authUser.getUserId()));
     }
 }
