@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
+import likelion.yacha_backend.domain.session.dto.CurrentSessionResponse;
 import likelion.yacha_backend.domain.session.dto.GameMessageResponse;
 import likelion.yacha_backend.domain.session.dto.MemoResponse;
 import likelion.yacha_backend.domain.session.dto.MemoSaveRequest;
@@ -85,6 +86,20 @@ public class SessionController {
             @PathVariable Long sessionId) {
         sessionMatchFacade.cancel(authUser.getUserId(), sessionId);
         return ApiResponse.success(new SessionIdResponse(sessionId));
+    }
+
+    @Operation(
+            summary = "내가 참여 중인 세션",
+            description = """
+                    새로고침 · 재접속으로 sessionId 를 잃었을 때 되찾음. 앱 진입 · 새로고침 때 한 번 부르면 됨
+                    `WAITING` 이면 대기 화면으로 돌아가거나 `DELETE /sessions/{id}` 로 취소, `IN_PROGRESS` 면 토론방 구독 후 `/state`
+                    대기 · 진행 중인 세션이 없으면 `data: null`
+
+                    로그인 필요 (게스트 가능)
+                    """)
+    @GetMapping("/current")
+    public ApiResponse<CurrentSessionResponse> getCurrent(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.success(sessionQueryService.getCurrent(authUser.getUserId()));
     }
 
     @Operation(

@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.session.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -42,7 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 @Import(SessionFixture.class)
-@DisplayName("방 생성 · 입장 · 취소 API")
+@DisplayName("방 생성 · 입장 · 취소 · 참여 중인 세션 API")
 class SessionMatchApiTest {
 
     @Autowired
@@ -95,6 +96,11 @@ class SessionMatchApiTest {
     private ResultActions cancelAs(Long userId, Long sessionId) throws Exception {
         return mockMvc.perform(delete("/api/v1/sessions/" + sessionId)
                 .header(HttpHeaders.AUTHORIZATION, bearer(userId, Role.USER)));
+    }
+
+    private ResultActions currentAs(Long userId, Role role) throws Exception {
+        return mockMvc.perform(get("/api/v1/sessions/current")
+                .header(HttpHeaders.AUTHORIZATION, bearer(userId, role)));
     }
 
     private String bearer(Long userId, Role role) {
@@ -314,6 +320,77 @@ class SessionMatchApiTest {
             cancelAs(fixture.newUser(), 999_999L)
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.error.code").value("SESSION_NOT_FOUND"));
+        }
+    }
+
+    @Nested
+    @DisplayName("GET /sessions/current — 내가 참여 중인 세션")
+    class Current {
+
+        @Test
+        @DisplayName("방을 만든 뒤 sessionId 를 잃어도 되찾아 취소하고, 새 방을 만들 수 있다")
+        void recoversWaitingRoom() throws Exception {
+            Long userId = fixture.newUser();
+            Long topicId = fixture.topic().getId();
+            String body = createAs(userId, topicId).andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            Long sessionId = ((Number) JsonPath.read(body, "$.data.sessionId")).longValue();
+            createAs(userId, topicId).andExpect(jsonPath("$.error.code").value("ALREADY_IN_SESSION"));
+
+            currentAs(userId, Role.USER)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.sessionId").value(sessionId))
+                    .andExpect(jsonPath("$.data.status").value("WAITING"));
+
+            cancelAs(userId, sessionId).andExpect(status().isOk());
+            currentAs(userId, Role.USER)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data").doesNotExist());
+            createAs(userId, topicId).andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("게임 중이면 방장 · 입장한 사람 모두 IN_PROGRESS 세션을 받는다")
+        void inProgress() throws Exception {
+            Room room = track(fixture.randomHuman(10));
+
+            for (Long userId : List.of(room.hostUserId(), room.opponentUserId())) {
+                currentAs(userId, Role.USER)
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.sessionId").value(room.sessionId()))
+                        .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
+            }
+        }
+
+        @Test
+        @DisplayName("게스트도 조회할 수 있다")
+        void guest() throws Exception {
+            Room room = fixture.waitingRandom();
+
+            currentAs(room.hostUserId(), Role.GUEST)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.sessionId").value(room.sessionId()));
+        }
+
+        @Test
+        @DisplayName("참여한 적이 없거나 게임이 끝났으면 data 가 null")
+        void none() throws Exception {
+            Room finished = track(fixture.randomHuman(10));
+            fixture.finish(finished);
+
+            for (Long userId : List.of(fixture.newUser(), finished.hostUserId())) {
+                currentAs(userId, Role.USER)
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.success").value(true))
+                        .andExpect(jsonPath("$.data").doesNotExist());
+            }
+        }
+
+        @Test
+        @DisplayName("토큰이 없으면 401")
+        void unauthorized() throws Exception {
+            mockMvc.perform(get("/api/v1/sessions/current"))
+                    .andExpect(status().isUnauthorized());
         }
     }
 }

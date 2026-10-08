@@ -30,6 +30,13 @@ public interface DebateParticipantRepository extends JpaRepository<DebatePartici
     boolean existsByUser_IdAndSession_StatusIn(Long userId, Collection<SessionStatus> statuses);
 
     /**
+     * 내가 참여 중인 세션 ({@code GET /sessions/current}). 호출할 때 {@code WAITING}, {@code IN_PROGRESS} 를 넘깁니다.
+     * 생성 · 입장이 {@code ALREADY_IN_SESSION} 으로 막으므로 보통 하나뿐이고, 혹시 둘이면 최근 것을 줍니다.
+     */
+    Optional<DebateParticipant> findFirstByUser_IdAndSession_StatusInOrderByIdDesc(
+            Long userId, Collection<SessionStatus> statuses);
+
+    /**
      * 참가 기록에서 사용자 연결을 끊습니다. 오래된 게스트 계정을 지우기 전에 부릅니다 (users FK).
      * 참가 기록은 남고, AI 참가자처럼 {@code user_id} 가 비게 됩니다.
      */
