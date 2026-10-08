@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @Slf4j
 @RestControllerAdvice
@@ -126,6 +127,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleWrongMediaType(Exception e) {
         log.info("[NOT_SUPPORTED_MEDIA] {}", e.getMessage());
         return errorResponse(HttpStatus.BAD_REQUEST, "NOT_SUPPORTED_MEDIA", "허용하지 않는 미디어타입입니다.");
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceeded(
+            MaxUploadSizeExceededException e) {
+
+        log.info("[FILE_TOO_LARGE] {}", e.getMessage());
+
+        return errorResponse(
+                HttpStatus.BAD_REQUEST,
+                "FILE_TOO_LARGE",
+                "프로필 이미지는 5MB 이하, 전체 요청 크기는 6MB 이하여야 합니다."
+        );
     }
 
     @ExceptionHandler(Exception.class)
