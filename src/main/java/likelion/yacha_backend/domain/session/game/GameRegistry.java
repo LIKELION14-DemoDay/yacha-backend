@@ -28,13 +28,20 @@ public class GameRegistry {
         this.properties = properties;
     }
 
+    /** 사람전 게임을 만듭니다. */
+    public Game create(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId) {
+        return create(sessionId, startedAt, participantIdByUserId, null);
+    }
+
     /**
      * 게임을 만듭니다. 같은 세션의 게임이 이미 있으면 예외입니다 (매칭이 두 번 성사된 버그).
      *
      * @param participantIdByUserId 사람 참가자의 userId → participantId. 봇전이면 사용자 한 명만 들어 있습니다
+     * @param aiParticipantId       봇전의 AI 참가자 id. 사람전이면 null
      */
-    public Game create(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId) {
-        Game game = new Game(sessionId, startedAt, participantIdByUserId,
+    public Game create(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId,
+                       Long aiParticipantId) {
+        Game game = new Game(sessionId, startedAt, participantIdByUserId, aiParticipantId,
                 properties.chatMaxLength(), properties.maxChatsPerParticipant(),
                 properties.argumentMaxLength(), properties.rebuttalMaxLength());
         if (games.putIfAbsent(sessionId, game) != null) {
