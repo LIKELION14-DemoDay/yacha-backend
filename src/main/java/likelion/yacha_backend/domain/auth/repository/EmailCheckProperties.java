@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.auth.repository;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.Duration;
@@ -20,4 +21,13 @@ public record EmailCheckProperties(
         @Positive int maxRequests,
         @NotNull Duration window
 ) {
+
+    /**
+     * 0이나 음수면 Redis가 PEXPIRE에서 키를 바로 지워 횟수가 매번 1부터 시작함 = 제한이 꺼짐
+     * 잘못된 설정으로 제한이 조용히 꺼지지 않게 서버가 뜰 때 막음 (null 은 위의 @NotNull 이 검사)
+     */
+    @AssertTrue(message = "auth.email-check.window 는 0보다 커야 합니다.")
+    public boolean isWindowPositive() {
+        return window == null || (!window.isZero() && !window.isNegative());
+    }
 }
