@@ -8,6 +8,7 @@ import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.entity.SessionMode;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
+import likelion.yacha_backend.domain.topic.entity.Topic;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -53,14 +54,14 @@ public interface DebateSessionRepository extends JpaRepository<DebateSession, Lo
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update DebateSession s
-               set s.status = :inProgress, s.topicId = :topicId, s.startedAt = :now, s.updatedAt = :now
+               set s.status = :inProgress, s.topic = :topic, s.startedAt = :now, s.updatedAt = :now
              where s.id = :id and s.status = :waiting
             """)
-    int startFriendIfWaiting(@Param("id") Long id, @Param("topicId") Long topicId, @Param("now") LocalDateTime now,
+    int startFriendIfWaiting(@Param("id") Long id, @Param("topic") Topic topic, @Param("now") LocalDateTime now,
                              @Param("waiting") SessionStatus waiting, @Param("inProgress") SessionStatus inProgress);
 
-    default int startFriendIfWaiting(Long id, Long topicId, LocalDateTime now) {
-        return startFriendIfWaiting(id, topicId, now, SessionStatus.WAITING, SessionStatus.IN_PROGRESS);
+    default int startFriendIfWaiting(Long id, Topic topic, LocalDateTime now) {
+        return startFriendIfWaiting(id, topic, now, SessionStatus.WAITING, SessionStatus.IN_PROGRESS);
     }
 
     /** 방장이 대기 중에 "AI와 대결" 을 골랐습니다. 대기열에서 바로 빠지고 봇전으로 시작합니다. */

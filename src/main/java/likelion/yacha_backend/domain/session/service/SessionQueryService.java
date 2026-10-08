@@ -3,8 +3,10 @@ package likelion.yacha_backend.domain.session.service;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import likelion.yacha_backend.domain.session.dto.CurrentSessionResponse;
 import likelion.yacha_backend.domain.session.dto.GameMessageResponse;
 import likelion.yacha_backend.domain.session.dto.SessionStateResponse;
 import likelion.yacha_backend.domain.session.dto.SessionStateResponse.ParticipantResponse;
@@ -12,9 +14,11 @@ import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.PhaseState;
+import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.session.exception.SessionErrorCode;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
+import likelion.yacha_backend.domain.topic.dto.TopicResponse;
 import likelion.yacha_backend.global.exception.BusinessException;
 import likelion.yacha_backend.global.util.DateTimes;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class SessionQueryService {
+
+    /** 이 상태의 세션에 참가 중이면 "참여 중" 입니다 (생성 · 입장의 {@code ALREADY_IN_SESSION} 과 같은 기준). */
+    private static final Set<SessionStatus> ACTIVE_STATUSES = EnumSet.of(SessionStatus.WAITING, SessionStatus.IN_PROGRESS);
 
     private final SessionAccessService sessionAccessService;
     private final DebateParticipantRepository participantRepository;
@@ -57,6 +64,14 @@ public class SessionQueryService {
                 .toList();
     }
 
+    /** 내가 대기 · 진행 중인 세션. 없으면 null 입니다. */
+    public CurrentSessionResponse getCurrent(Long userId) {
+        return participantRepository.findFirstByUser_IdAndSession_StatusInOrderByIdDesc(userId, ACTIVE_STATUSES)
+                .map(DebateParticipant::getSession)
+                .map(session -> new CurrentSessionResponse(session.getId(), session.getStatus()))
+                .orElse(null);
+    }
+
     public SessionStateResponse getState(Long sessionId, Long userId) {
         DebateSession session = sessionAccessService.getSession(sessionId);
         sessionAccessService.checkViewer(session, userId);
@@ -84,7 +99,7 @@ public class SessionQueryService {
                 session.getRoomType(),
                 session.getMode(),
                 session.getCategory(),
-                session.getTopicId(),
+                session.getTopic() == null ? null : TopicResponse.from(session.getTopic()),
                 phase,
                 DateTimes.withOffset(session.getStartedAt(), zone),
                 DateTimes.withOffset(endsAt, zone),

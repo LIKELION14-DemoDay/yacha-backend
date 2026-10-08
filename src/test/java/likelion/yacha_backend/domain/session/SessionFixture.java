@@ -14,6 +14,9 @@ import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import likelion.yacha_backend.domain.topic.entity.Category;
+import likelion.yacha_backend.domain.topic.entity.Subcategory;
+import likelion.yacha_backend.domain.topic.entity.Topic;
+import likelion.yacha_backend.domain.topic.repository.TopicRepository;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import org.springframework.boot.test.context.TestComponent;
@@ -23,25 +26,26 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 토론방 테스트 데이터. 방 종류별로 세션 · 참가자를 만들고, 진행 중인 방은 게임 메모리도 만듭니다.
  *
- * <p>{@code @Import(SessionFixture.class)} 로 씁니다. 매칭 API 가 생기기 전이라 매칭 성사 처리(시작 UPDATE →
- * 게임 생성)를 여기서 흉내 냅니다. 게임은 테스트가 끝날 때 {@link #removeGame} 으로 지웁니다.
+ * <p>{@code @Import(SessionFixture.class)} 로 씁니다. 시작한 지 몇 초 지난 방처럼 매칭 API 로는 만들 수 없는 상태가
+ * 필요해서, 매칭 성사 처리(시작 UPDATE → 게임 생성)를 여기서 흉내 냅니다. 게임은 테스트가 끝날 때 {@link #removeGame} 으로 지웁니다.
  */
 @TestComponent
 public class SessionFixture {
 
-    private static final long TOPIC_ID = 12L;
-
     private final UserRepository userRepository;
+    private final TopicRepository topicRepository;
     private final DebateSessionRepository sessionRepository;
     private final DebateParticipantRepository participantRepository;
     private final GameRegistry gameRegistry;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
-    public SessionFixture(UserRepository userRepository, DebateSessionRepository sessionRepository,
+    public SessionFixture(UserRepository userRepository, TopicRepository topicRepository,
+                          DebateSessionRepository sessionRepository,
                           DebateParticipantRepository participantRepository, GameRegistry gameRegistry,
                           PlatformTransactionManager transactionManager, Clock clock) {
         this.userRepository = userRepository;
+        this.topicRepository = topicRepository;
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
         this.gameRegistry = gameRegistry;
@@ -58,6 +62,12 @@ public class SessionFixture {
                        Long opponentUserId, Long opponentParticipantId) {
     }
 
+    /** 윤리 카테고리의 주제. 방마다 새로 만듭니다. */
+    public Topic topic() {
+        return topicRepository.save(Topic.create(Subcategory.GOOD_AND_EVIL, "거짓말은 언제나 나쁜가?",
+                "언제나 나쁘다", "그렇지 않다"));
+    }
+
     public Long newUser() {
         return userRepository.save(User.createGuest("u" + UUID.randomUUID().toString().substring(0, 8))).getId();
     }
@@ -66,7 +76,7 @@ public class SessionFixture {
     public Room randomHuman(long elapsedSeconds) {
         LocalDateTime startedAt = startedAt(elapsedSeconds);
         Room room = inTransaction(() -> {
-            DebateSession session = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, TOPIC_ID));
+            DebateSession session = sessionRepository.save(DebateSession.createRandom(topic()));
             User host = user();
             User opponent = user();
             Long hostParticipant = participantRepository.save(
@@ -92,7 +102,7 @@ public class SessionFixture {
                     DebateParticipant.initiator(session, host, Stance.DISAGREE, startedAt)).getId();
             Long friendParticipant = participantRepository.save(
                     DebateParticipant.opponent(session, friend, Stance.AGREE, startedAt)).getId();
-            sessionRepository.startFriendIfWaiting(session.getId(), TOPIC_ID, startedAt);
+            sessionRepository.startFriendIfWaiting(session.getId(), topic(), startedAt);
             return new Room(session.getId(), host.getId(), hostParticipant, friend.getId(), friendParticipant);
         });
         createGame(room, startedAt);
@@ -103,7 +113,7 @@ public class SessionFixture {
     public Room convertedBot(long elapsedSeconds) {
         LocalDateTime startedAt = startedAt(elapsedSeconds);
         Room room = inTransaction(() -> {
-            DebateSession session = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, TOPIC_ID));
+            DebateSession session = sessionRepository.save(DebateSession.createRandom(topic()));
             User host = user();
             Long hostParticipant = participantRepository.save(
                     DebateParticipant.initiator(session, host, Stance.AGREE, startedAt)).getId();
@@ -120,7 +130,7 @@ public class SessionFixture {
         LocalDateTime startedAt = startedAt(elapsedSeconds);
         Room room = inTransaction(() -> {
             DebateSession session = sessionRepository.save(
-                    DebateSession.createAiMatch(Category.ETHICS, TOPIC_ID, startedAt));
+                    DebateSession.createAiMatch(topic(), startedAt));
             User host = user();
             Long hostParticipant = participantRepository.save(
                     DebateParticipant.initiator(session, host, Stance.AGREE, startedAt)).getId();
@@ -134,7 +144,7 @@ public class SessionFixture {
     /** 상대를 기다리는 랜덤 방. 게임이 아직 없습니다. */
     public Room waitingRandom() {
         return inTransaction(() -> {
-            DebateSession session = sessionRepository.save(DebateSession.createRandom(Category.ETHICS, TOPIC_ID));
+            DebateSession session = sessionRepository.save(DebateSession.createRandom(topic()));
             User host = user();
             Long hostParticipant = participantRepository.save(
                     DebateParticipant.initiator(session, host, Stance.AGREE, LocalDateTime.now(clock))).getId();

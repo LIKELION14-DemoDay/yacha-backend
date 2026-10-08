@@ -4,15 +4,19 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import likelion.yacha_backend.domain.topic.entity.Category;
+import likelion.yacha_backend.domain.topic.entity.Topic;
 import likelion.yacha_backend.global.entity.BaseTimeEntity;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -48,14 +52,12 @@ public class DebateSession extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
-     * → topic. 랜덤 방은 생성할 때 채우고, 친구 방은 친구가 들어올 때까지 NULL 입니다.
-     * topic 엔티티가 생기면 연관관계로 바꿉니다.
-     */
-    @Column(name = "topic_id")
-    private Long topicId;
+    /** 토론 주제. 랜덤 방은 생성할 때 채우고, 친구 방은 친구가 들어올 때까지 NULL 입니다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "topic_id")
+    private Topic topic;
 
-    /** 방을 만들 때 고른 카테고리. */
+    /** 방의 카테고리. 랜덤 방 · 봇전은 주제의 카테고리이고, 친구 방은 방장이 고른 카테고리입니다. */
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 20)
@@ -101,10 +103,10 @@ public class DebateSession extends BaseTimeEntity {
     @Column(name = "ended_at")
     private LocalDateTime endedAt;
 
-    /** 랜덤 야차 방. 방장이 받은 주제로 만들고 상대를 기다립니다. */
-    public static DebateSession createRandom(Category category, Long topicId) {
-        DebateSession session = waiting(category, RoomType.RANDOM);
-        session.topicId = Objects.requireNonNull(topicId, "topicId");
+    /** 랜덤 야차 방. 방장이 받은 주제로 만들고 상대를 기다립니다. 카테고리는 주제의 카테고리입니다. */
+    public static DebateSession createRandom(Topic topic) {
+        DebateSession session = waiting(Objects.requireNonNull(topic, "topic").getCategory(), RoomType.RANDOM);
+        session.topic = topic;
         return session;
     }
 
@@ -119,9 +121,9 @@ public class DebateSession extends BaseTimeEntity {
      * 자동 봇전. 제안을 모두 거절한 사용자에게 서버가 바로 만들어 주므로 대기 없이 시작합니다.
      * 대기열에 올라가지 않는 방이라 조건부 UPDATE 없이 여기서 시작 상태로 만듭니다.
      */
-    public static DebateSession createAiMatch(Category category, Long topicId, LocalDateTime now) {
-        DebateSession session = waiting(category, RoomType.RANDOM);
-        session.topicId = Objects.requireNonNull(topicId, "topicId");
+    public static DebateSession createAiMatch(Topic topic, LocalDateTime now) {
+        DebateSession session = waiting(Objects.requireNonNull(topic, "topic").getCategory(), RoomType.RANDOM);
+        session.topic = topic;
         session.mode = SessionMode.AI;
         session.status = SessionStatus.IN_PROGRESS;
         session.startedAt = Objects.requireNonNull(now, "now");
