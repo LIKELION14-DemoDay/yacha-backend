@@ -26,7 +26,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *  60초  PHASE_CHANGED(REVEAL)       63초  주장 공개 (ARGUMENT)
  *  80초  PHASE_CHANGED(REBUTTAL)    140초  PHASE_CHANGED(CHAT)
  * 143초  반론 공개 (ARGUMENT)        230초  FINAL_NOTICE
- * 260초  세션 종료(COMPLETED) → PHASE_CHANGED(JUDGING) · SESSION_FINISHED
+ * 260초  세션 종료(COMPLETED) → PHASE_CHANGED(JUDGING) · SESSION_FINISHED → 판정 시작
  * </pre>
  *
  * <p><b>공개 · 전송은 게임 락 안에서</b> 합니다 ({@link GameMessageService} 와 같은 규칙). 채팅 · 제출 처리도
@@ -36,7 +36,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 종료는 {@code finishIfInProgress} 조건부 UPDATE 라 나가기 · 끊김 처리와 겹쳐도 한쪽만 끝냅니다.
  *
  * <p>정상 종료된 게임은 판정이 대화 전체를 읽어야 하므로 메모리에서 지우지 않고 쓰기만 막습니다 ({@link Game#finish()}).
- * 판정 시작 · 결과 보관 뒤 정리는 판정 · 결과 작업에서 붙입니다.
+ * 판정과 결과 보관 뒤 정리는 {@link JudgeService} 가 맡습니다.
  */
 @Service
 public class PhaseScheduler {
@@ -44,16 +44,18 @@ public class PhaseScheduler {
     private final GameTimers gameTimers;
     private final GameRegistry gameRegistry;
     private final GameMessageService gameMessageService;
+    private final JudgeService judgeService;
     private final DebateSessionRepository sessionRepository;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
     public PhaseScheduler(GameTimers gameTimers, GameRegistry gameRegistry, GameMessageService gameMessageService,
-                          DebateSessionRepository sessionRepository, PlatformTransactionManager transactionManager,
-                          Clock clock) {
+                          JudgeService judgeService, DebateSessionRepository sessionRepository,
+                          PlatformTransactionManager transactionManager, Clock clock) {
         this.gameTimers = gameTimers;
         this.gameRegistry = gameRegistry;
         this.gameMessageService = gameMessageService;
+        this.judgeService = judgeService;
         this.sessionRepository = sessionRepository;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
@@ -108,7 +110,10 @@ public class PhaseScheduler {
         });
     }
 
-    /** 260초 — 세션을 끝내고 판정 화면으로 넘깁니다. 이미 다른 이유로 끝났으면 아무것도 하지 않습니다. */
+    /**
+     * 260초 — 세션을 끝내고 판정 화면으로 넘긴 뒤 판정을 시작합니다. 이미 다른 이유로 끝났으면 아무것도 하지 않습니다.
+     * 판정은 판정 실행기에서 돌므로 이 타이머 스레드는 기다리지 않습니다.
+     */
     private void finish(Long sessionId) {
         LocalDateTime now = LocalDateTime.now(clock);
         Integer finished = transactionTemplate.execute(
@@ -128,6 +133,7 @@ public class PhaseScheduler {
                 gameMessageService.broadcastEvent(sessionId, SessionFinishedEvent.of(FinishReason.COMPLETED));
             }
         });
+        judgeService.start(sessionId);
     }
 
     /** 메모리에 있고 아직 끝나지 않은 게임. 없으면 시작 전 · 종료 · 서버 재시작입니다. */

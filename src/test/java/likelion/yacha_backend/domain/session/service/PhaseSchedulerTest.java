@@ -28,6 +28,7 @@ import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameMessage;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
+import likelion.yacha_backend.domain.session.game.JudgeStatus;
 import likelion.yacha_backend.domain.session.game.MessageType;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -123,7 +124,7 @@ class PhaseSchedulerTest extends TimerTestSupport {
     }
 
     @Test
-    @DisplayName("260초에 세션을 끝내고(COMPLETED) JUDGING · SESSION_FINISHED 를 보낸 뒤 새 방을 만들 수 있다")
+    @DisplayName("260초에 세션을 끝내고(COMPLETED) JUDGING · SESSION_FINISHED 를 보내고 판정을 시작하며, 새 방을 만들 수 있다")
     void finishesAt260() {
         Room room = startedRoom(257);
 
@@ -136,8 +137,9 @@ class PhaseSchedulerTest extends TimerTestSupport {
         assertThat(session.getStatus()).isEqualTo(SessionStatus.FINISHED);
         assertThat(session.getFinishReason()).isEqualTo(FinishReason.COMPLETED);
         assertThat(game(room).isFinished()).isTrue();
-        // 판정이 대화를 읽어야 하므로 게임은 메모리에 남아 있습니다.
+        // 판정이 대화를 읽어야 하므로 게임은 메모리에 남아 있고, 종료와 함께 판정이 시작됩니다.
         assertThat(gameRegistry.find(room.sessionId())).isPresent();
+        waitUntil(() -> game(room).judgeStatus() == JudgeStatus.READY);
         // 게임이 끝났으므로 ALREADY_IN_SESSION 에 걸리지 않습니다.
         Long newRoom = sessionMatchFacade.create(room.hostUserId(),
                 new SessionCreateRequest(RoomType.RANDOM, fixture.topic().getId(), Stance.AGREE));
