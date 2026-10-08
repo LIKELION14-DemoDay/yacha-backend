@@ -6,6 +6,8 @@ import java.util.Objects;
 import java.util.Optional;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
+import likelion.yacha_backend.domain.session.entity.ParticipantRole;
+import likelion.yacha_backend.domain.session.entity.RoomType;
 import likelion.yacha_backend.domain.session.entity.SessionMode;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.topic.entity.Topic;
@@ -121,4 +123,26 @@ public interface DebateSessionRepository extends JpaRepository<DebateSession, Lo
      * 이 서버가 뜬 뒤 시작된 게임은 이어갈 수 있으므로 {@code startedAt} 이 {@code before} 보다 앞선 세션만 찾습니다.
      */
     List<DebateSession> findAllByStatusAndStartedAtBefore(SessionStatus status, LocalDateTime before);
+
+    /**
+     * 서버 재시작 복구용. {@code before} 보다 먼저 만든 대기 중인 랜덤 방과 방장 ({@link WaitingRoom}).
+     * 방장 계정이 게스트 정리로 지워졌으면 {@code hostUserId} 가 null 입니다.
+     */
+    @Query("""
+            select new likelion.yacha_backend.domain.session.repository.WaitingRoom(s.id, u.id, s.createdAt)
+              from DebateParticipant p
+              join p.session s
+              left join p.user u
+             where s.status = :waiting and s.roomType = :random and p.role = :initiator
+               and s.createdAt < :before
+            """)
+    List<WaitingRoom> findWaitingRandomRoomsCreatedBefore(@Param("before") LocalDateTime before,
+                                                          @Param("waiting") SessionStatus waiting,
+                                                          @Param("random") RoomType random,
+                                                          @Param("initiator") ParticipantRole initiator);
+
+    default List<WaitingRoom> findWaitingRandomRoomsCreatedBefore(LocalDateTime before) {
+        return findWaitingRandomRoomsCreatedBefore(before, SessionStatus.WAITING, RoomType.RANDOM,
+                ParticipantRole.INITIATOR);
+    }
 }

@@ -3,13 +3,14 @@ package likelion.yacha_backend.domain.session.service;
 import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
+import likelion.yacha_backend.domain.session.service.SessionCommandService.Created;
 import likelion.yacha_backend.domain.session.service.SessionCommandService.Matched;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
  * 방 생성 · 입장 · 취소 · 봇전 시작의 진입점. DB 작업은 {@link SessionCommandService} 의 트랜잭션에서 하고,
- * <b>커밋이 끝난 뒤에</b> 게임 생성과 방장 알림을 합니다.
+ * <b>커밋이 끝난 뒤에</b> 대기 타이머 등록 · 정리, 게임 생성, 방장 알림을 합니다.
  *
  * <p>트랜잭션 안에서 하면 두 가지 문제가 생깁니다.
  * <ul>
@@ -25,14 +26,20 @@ public class SessionMatchFacade {
     private final SessionCommandService sessionCommandService;
     private final GameRegistry gameRegistry;
     private final MatchNotifier matchNotifier;
+    private final WaitTimerService waitTimerService;
 
+    /** 방 생성 → (커밋) → 대기 타이머 등록 (30초마다 팝업, 5분이면 취소). */
     public Long create(Long userId, SessionCreateRequest request) {
-        return sessionCommandService.create(userId, request);
+        Created created = sessionCommandService.create(userId, request);
+        waitTimerService.register(created.sessionId(), userId, created.createdAt());
+        return created.sessionId();
     }
 
-    /** 입장 → (커밋) → 게임 생성 → 방장에게 {@code MATCHED}. 입장한 사람은 응답으로 시작을 압니다. */
+    /** 입장 → (커밋) → 대기 타이머 정리 → 게임 생성 → 방장에게 {@code MATCHED}. 입장한 사람은 응답으로 시작을 압니다. */
     public Long join(Long userId, Long sessionId) {
         Matched matched = sessionCommandService.join(userId, sessionId);
+        // 구간 타이머도 같은 세션 id 를 쓰므로, 게임을 만들기 전에 대기 타이머부터 지웁니다.
+        waitTimerService.cancel(sessionId);
         createGame(matched);
         matchNotifier.matched(matched.hostUserId(), matched.sessionId());
         return matched.sessionId();
@@ -45,15 +52,18 @@ public class SessionMatchFacade {
         return matched.sessionId();
     }
 
-    /** 대기 중 AI 전환 → (커밋) → 게임 생성. 전환을 요청한 방장이 응답으로 시작을 압니다. */
+    /** 대기 중 AI 전환 → (커밋) → 대기 타이머 정리 → 게임 생성. 전환을 요청한 방장이 응답으로 시작을 압니다. */
     public Long convertToAi(Long userId, Long sessionId) {
         Matched matched = sessionCommandService.convertToAi(userId, sessionId);
+        waitTimerService.cancel(sessionId);
         createGame(matched);
         return matched.sessionId();
     }
 
+    /** 대기 취소 → (커밋) → 대기 타이머 정리. */
     public void cancel(Long userId, Long sessionId) {
         sessionCommandService.cancel(userId, sessionId);
+        waitTimerService.cancel(sessionId);
     }
 
     private void createGame(Matched matched) {
