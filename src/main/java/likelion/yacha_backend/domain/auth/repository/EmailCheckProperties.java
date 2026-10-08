@@ -23,11 +23,12 @@ public record EmailCheckProperties(
 ) {
 
     /**
-     * 0이나 음수면 Redis가 PEXPIRE에서 키를 바로 지워 횟수가 매번 1부터 시작함 = 제한이 꺼짐
+     * Redis에는 밀리초로 넘기므로(PEXPIRE) 1밀리초 이상이어야 함
+     * 0 이하이거나, 1us처럼 밀리초로 바꾸면 0이 되는 값이면 Redis가 키를 바로 지워 횟수가 매번 1부터 시작함 = 제한이 꺼짐
      * 잘못된 설정으로 제한이 조용히 꺼지지 않게 서버가 뜰 때 막음 (null 은 위의 @NotNull 이 검사)
      */
-    @AssertTrue(message = "auth.email-check.window 는 0보다 커야 합니다.")
+    @AssertTrue(message = "auth.email-check.window는 1ms 이상이어야 합니다.")
     public boolean isWindowPositive() {
-        return window == null || (!window.isZero() && !window.isNegative());
+        return window == null || window.toMillis() >= 1;
     }
 }

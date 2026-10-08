@@ -38,6 +38,15 @@ class EmailCheckPropertiesTest {
     }
 
     @Test
+    @DisplayName("밀리초로 바꾸면 0이 되는 구간(1us)도 기동이 실패하고, 1ms는 기동한다")
+    void subMillisecondWindow() {
+        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.window=1us")
+                .run(context -> assertThat(context).hasFailed());
+        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.window=1ms")
+                .run(context -> assertThat(context).hasNotFailed());
+    }
+
+    @Test
     @DisplayName("구간이 빠지면 기동이 실패한다")
     void missingWindow() {
         runner.withPropertyValues(MAX_REQUESTS)
