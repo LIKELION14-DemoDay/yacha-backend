@@ -125,7 +125,7 @@ public class SessionFixture {
         return room;
     }
 
-    /** 제안을 모두 거절해 서버가 만든 자동 봇전. 이것도 {@code room_type} 이 RANDOM 입니다. */
+    /** 바로 봇전 ({@code POST /sessions/bot}). 이것도 {@code room_type} 이 RANDOM 입니다. */
     public Room autoBot(long elapsedSeconds) {
         LocalDateTime startedAt = startedAt(elapsedSeconds);
         Room room = inTransaction(() -> {
