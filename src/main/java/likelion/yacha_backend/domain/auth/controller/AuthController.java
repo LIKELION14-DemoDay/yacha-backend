@@ -6,6 +6,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import likelion.yacha_backend.domain.auth.dto.AuthResponse;
+import likelion.yacha_backend.domain.auth.dto.EmailAvailabilityRequest;
+import likelion.yacha_backend.domain.auth.dto.EmailAvailabilityResponse;
 import likelion.yacha_backend.domain.auth.dto.GoogleCodeLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.KakaoCodeLoginRequest;
@@ -16,6 +18,7 @@ import likelion.yacha_backend.domain.auth.dto.SignupRequest;
 import likelion.yacha_backend.domain.auth.dto.SocialLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.service.AuthService;
+import likelion.yacha_backend.domain.auth.service.EmailAvailabilityService;
 import likelion.yacha_backend.domain.auth.service.GoogleLoginService;
 import likelion.yacha_backend.domain.auth.service.PasswordResetService;
 import likelion.yacha_backend.domain.auth.service.KakaoLoginService;
@@ -23,9 +26,12 @@ import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.cookie.CookieProvider;
 import likelion.yacha_backend.global.security.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,6 +49,7 @@ public class AuthController {
     private final CookieProvider cookieProvider;
     private final AuthResponseFactory authResponseFactory;
     private final PasswordResetService passwordResetService;
+    private final EmailAvailabilityService emailAvailabilityService;
 
     @Operation(
             summary = "게스트 생성",
@@ -80,6 +87,35 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<ApiResponse<AuthResponse>> signup(@Valid @RequestBody SignupRequest request) {
         return withRefreshCookie(authService.signup(request));
+    }
+
+    @Operation(
+            summary = "회원가입 이메일 중복 확인",
+            description = """
+                    회원가입 아이디(이메일) 단계의 [다음]에서 호출. 마지막 [시작하기]까지 가지 않고 바로 알려줌
+                    로그인 없이 부를 수 있고, 비회원 승격 화면에서도 같은 API 를 씀
+
+                    ```json
+                    { "available": true }
+                    ```
+
+                    - 이미 가입된 이메일이면 `available: false`. 에러가 아니라 정상 결과라 200
+                    - 대소문자만 다른 이메일도 같은 이메일로 봄 (가입과 같은 규칙)
+                    - 안내용이라, 확인한 뒤에도 가입 때 `EMAIL_ALREADY_EXISTS`(409)가 날 수 있음
+                      (그 사이 다른 사람이 같은 이메일로 가입한 경우)
+                    - 같은 IP에서 1분에 30번까지. 넘으면 429 이고 1분 안에 풀림
+
+                    에러
+                    - `VALIDATION_FAILED` (400): 이메일이 없거나 형식 · 길이 위반 (가입과 같은 검증)
+                    - `TOO_MANY_REQUESTS` (429): 같은 IP에서 너무 많이 부름
+                    """)
+    @SecurityRequirements
+    @GetMapping("/email/availability")
+    public ApiResponse<EmailAvailabilityResponse> checkEmailAvailability(
+            @Valid @ParameterObject @ModelAttribute EmailAvailabilityRequest request,
+            HttpServletRequest httpRequest) {
+        boolean available = emailAvailabilityService.isAvailable(request.email(), httpRequest.getRemoteAddr());
+        return ApiResponse.success(new EmailAvailabilityResponse(available));
     }
 
     @Operation(
