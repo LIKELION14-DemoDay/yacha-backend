@@ -60,6 +60,7 @@ class RefreshLogoutApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.data.userId").value(userId))
+                .andExpect(jsonPath("$.data.isNewUser").value(false))
                 .andExpect(cookie().exists("refreshToken"));
     }
 

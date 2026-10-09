@@ -101,6 +101,8 @@ class UpgradeApiTest {
                 // 새 계정이 아니라 같은 행이어야 합니다. id 가 바뀌면 대기 · 진행 중인 게임에서 참가자로 인정되지 않습니다.
                 .andExpect(jsonPath("$.data.userId").value(guestUserId))
                 .andExpect(jsonPath("$.data.isGuest").value(false))
+                // 행은 그대로이고 닉네임도 가입 폼에서 이미 받았으므로 새 계정으로 보지 않음
+                .andExpect(jsonPath("$.data.isNewUser").value(false))
                 .andExpect(jsonPath("$.data.nickname").value("멋사"));
     }
 

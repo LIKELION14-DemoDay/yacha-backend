@@ -52,6 +52,7 @@ public class AuthController {
                     - 응답 body 의 `accessToken` 을 이후 요청의 `Authorization: Bearer` 헤더에 넣음
                     - 리프레시 토큰은 HttpOnly 쿠키로 내려감
                       JS 로 읽을 수 없고, 재발급 시 브라우저가 자동으로 실어 보냄
+                    - `isNewUser`는 항상 true. 비회원은 닉네임을 바꿀 수 없으니 닉네임 화면 판단에는 쓰지 않음
                     """)
     @SecurityRequirements   // 전역 bearerAuth를 끔. 인증 없이 호출
     @PostMapping("/guest")
@@ -69,6 +70,7 @@ public class AuthController {
                     - 비밀번호는 8자 이상 72자 이하 (BCrypt 입력 상한)
                     - 게스트가 쓰던 기록을 이어가려면 이 API 가 아니라 `/auth/upgrade`
                       여기서는 새 계정이 만들어짐
+                    - `isNewUser`는 true. 닉네임은 가입 폼에서 받았으므로 닉네임 화면은 필요 없음
 
                     에러
                     - `VALIDATION_FAILED` (400): 형식·길이 위반
@@ -122,6 +124,9 @@ public class AuthController {
                     ```
 
                     - 처음 로그인하면 계정이 자동으로 만들어집니다. 별도 회원가입이 없습니다.
+                    - 응답의 `isNewUser`가 true면 이번에 계정이 만들어진 것입니다.
+                      닉네임 화면(소셜 닉네임을 기본값으로)을 보여 주고 `PATCH /users/me`로 바꿔 주세요.
+                      같은 계정으로 다시 로그인하면 false 라서 바로 홈으로 보내면 됩니다.
                     - 같은 이메일로 가입된 계정이 이미 있으면 연결하지 않고 409 를 줍니다.
                       원래 쓰던 방법으로 로그인하도록 안내해 주세요.
                     - 카카오는 이메일 제공이 선택 동의라, 이메일 없이 가입될 수 있습니다.
@@ -144,7 +149,7 @@ public class AuthController {
             description = """
                     웹의 카카오 JS SDK 는 id_token 을 바로 주지 않고, redirect URI 로 **인가 코드**만 넘겨줍니다.
                     그 코드를 보내면 서버가 카카오에 id_token 으로 바꿔 받은 뒤 `/auth/social` 과 같은 절차로 로그인합니다.
-                    응답 · 가입 규칙 · 409 는 `/auth/social` 과 같습니다.
+                    응답(`isNewUser` 포함) · 가입 규칙 · 409 는 `/auth/social` 과 같습니다.
 
                     ```json
                     { "code": "인가 코드", "redirectUri": "https://yacha.com/oauth/kakao" }
@@ -174,7 +179,7 @@ public class AuthController {
             description = """
                     프론트가 만든 버튼으로 구글 인가 주소에 보내면, redirect URI로 **인가 코드**가 돌아옵니다.
                     그 코드를 보내면 서버가 구글에 id_token으로 바꿔 받은 뒤 `/auth/social`과 같은 절차로 로그인합니다.
-                    응답 · 가입 규칙 · 409는 `/auth/social`과 같습니다.
+                    응답(`isNewUser` 포함) · 가입 규칙 · 409는 `/auth/social`과 같습니다.
 
                     ```json
                     { "code": "인가 코드", "redirectUri": "http://localhost:5173/oauth/google" }
