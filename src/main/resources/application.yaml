@@ -123,6 +123,12 @@ game:
     prompt-interval: 30s
     # 대기 상한. 지나면 방을 취소하고 WAIT_EXPIRED 를 보냄
     limit: 5m
+  # 판정 (260초에 채팅이 끝나면 시작)
+  judge:
+    # 최대 시도 횟수. 모두 실패하면 FAILED 이고, /result 를 다시 부르면 다시 판정함
+    max-attempts: 3
+    # 결과 화면 보관 시간. 지나면 점수 · 요약은 지우고 승패만 남음
+    result-retention: 10m
 
 springdoc:
   # 기본값은 비활성화하고, local 및 데모 기간의 prod 프로필에서 필요한 경우 명시적으로 활성화한다.
@@ -139,6 +145,10 @@ cors:
 liner:
   base-url: https://platform.liner.com
   api-key: ${LINER_API_KEY:}
+
+ai:
+  # 힌트 키워드 · 봇 · 판정 구현 선택. stub 은 AI 연동 전까지 쓰는 임시 구현 (#76)
+  mode: ${AI_MODE:stub}
 
 spectate:
   # 관전 스위치. 관전은 사용하지 않아(10/5) 꺼 둔다. 켜면 진행 중인 랜덤 사람전을 참가자가 아니어도 볼 수 있다

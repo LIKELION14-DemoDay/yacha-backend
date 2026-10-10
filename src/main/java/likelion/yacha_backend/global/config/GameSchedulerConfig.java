@@ -2,6 +2,7 @@ package likelion.yacha_backend.global.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 /**
@@ -21,6 +22,9 @@ public class GameSchedulerConfig {
 
     public static final String GAME_TASK_SCHEDULER = "gameTaskScheduler";
 
+    /** 판정(LLM 호출) 전용 실행기. 타이머 스레드에서 판정을 기다리지 않도록 이쪽으로 넘깁니다. */
+    public static final String JUDGE_EXECUTOR = "judgeExecutor";
+
     /** 타이머 작업은 상태 확인 · 전송 정도라 짧습니다. 명세에서 정할 값이 아니라 상수로 둡니다. */
     private static final int POOL_SIZE = 2;
 
@@ -34,5 +38,22 @@ public class GameSchedulerConfig {
         // 종료할 때 남은 타이머를 기다리지 않습니다. 재시작하면 진행 중인 게임은 어차피 ABORTED 로 정리됩니다.
         scheduler.setWaitForTasksToCompleteOnShutdown(false);
         return scheduler;
+    }
+
+    /**
+     * 판정 실행기. 한 판정이 재시도까지 30초 넘게 걸릴 수 있어 타이머와 나눕니다.
+     *
+     * <p>큐가 가득 차면 넘기는 쪽에서 예외가 나고, 그 판정은 {@code FAILED} 가 됩니다 (결과를 다시 조회하면 다시 시작).
+     * 종료할 때 기다리지 않습니다 — 재시작하면 메모리의 대화가 사라져 어차피 판정을 이어갈 수 없습니다.
+     */
+    @Bean(name = JUDGE_EXECUTOR)
+    public ThreadPoolTaskExecutor judgeExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setThreadNamePrefix("judge-");
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(100);
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        return executor;
     }
 }

@@ -34,9 +34,11 @@ import org.springframework.transaction.annotation.Transactional;
  * 랜덤 방 생성 · 입장 · 대기 취소 · 봇전 시작의 DB 작업 (명세 2-3-4). 게임 생성 · 알림처럼 커밋 뒤에 할 일은
  * {@link SessionMatchFacade} 가 맡습니다.
  *
- * <p><b>같은 사용자의 요청이 겹칠 때</b> — 생성 · 입장은 먼저 사용자 행을 잠급니다({@code SELECT ... FOR UPDATE}).
+ * <p><b>같은 사용자의 요청이 겹칠 때</b> — 생성 · 입장 · 봇전 시작은 먼저 사용자 행을 잠급니다({@code SELECT ... FOR UPDATE}).
  * "참여 중인 세션 확인 → 저장" 사이에 같은 사용자의 다른 요청이 끼어들면 방이 두 개 생기거나 게임 두 개에 들어가기 때문입니다.
  * 잠금은 커밋까지 유지되므로 뒤 요청은 앞 요청이 저장한 세션을 보고 {@code ALREADY_IN_SESSION} 을 받습니다.
+ * 이때 잠금은 반드시 트랜잭션의 첫 쿼리여야 합니다. MySQL REPEATABLE READ 에서는 첫 SELECT 때 스냅샷이 잡히므로,
+ * 잠금 앞에 일반 조회가 있으면 앞 요청이 저장한 세션을 보지 못합니다.
  *
  * <p><b>다른 사용자끼리 겹칠 때</b> — 같은 방에 두 사람이 들어오거나, 입장과 취소 · AI 전환이 겹치면
  * {@code status = WAITING} 조건부 UPDATE 가 한쪽만 성공시킵니다.

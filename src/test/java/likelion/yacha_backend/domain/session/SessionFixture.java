@@ -72,13 +72,28 @@ public class SessionFixture {
         return userRepository.save(User.createGuest("u" + UUID.randomUUID().toString().substring(0, 8))).getId();
     }
 
+    /** 회원. 승패가 DB 에 기록됩니다 (게스트는 기록하지 않음). */
+    public Long newMember() {
+        String name = "m" + UUID.randomUUID().toString().substring(0, 8);
+        return userRepository.save(User.createMember(name + "@test.com", "encoded", name)).getId();
+    }
+
     /** 진행 중인 랜덤 사람전. 관전할 수 있는 유일한 방입니다. {@code elapsedSeconds} 는 시작 후 흐른 시간. */
     public Room randomHuman(long elapsedSeconds) {
+        return randomHuman(elapsedSeconds, this::user, this::user);
+    }
+
+    /** 방장은 회원, 상대는 게스트인 랜덤 사람전. 승패 기록을 확인할 때 씁니다. */
+    public Room memberVsGuest(long elapsedSeconds) {
+        return randomHuman(elapsedSeconds, this::member, this::user);
+    }
+
+    private Room randomHuman(long elapsedSeconds, Supplier<User> hosts, Supplier<User> opponents) {
         LocalDateTime startedAt = startedAt(elapsedSeconds);
         Room room = inTransaction(() -> {
             DebateSession session = sessionRepository.save(DebateSession.createRandom(topic()));
-            User host = user();
-            User opponent = user();
+            User host = hosts.get();
+            User opponent = opponents.get();
             Long hostParticipant = participantRepository.save(
                     DebateParticipant.initiator(session, host, Stance.AGREE, startedAt)).getId();
             Long opponentParticipant = participantRepository.save(
@@ -127,11 +142,20 @@ public class SessionFixture {
 
     /** 바로 봇전 ({@code POST /sessions/bot}). 이것도 {@code room_type} 이 RANDOM 입니다. */
     public Room autoBot(long elapsedSeconds) {
+        return autoBot(elapsedSeconds, this::user);
+    }
+
+    /** 회원이 하는 바로 봇전. 사용자 · AI 승패가 모두 기록됩니다. */
+    public Room memberBot(long elapsedSeconds) {
+        return autoBot(elapsedSeconds, this::member);
+    }
+
+    private Room autoBot(long elapsedSeconds, Supplier<User> users) {
         LocalDateTime startedAt = startedAt(elapsedSeconds);
         Room room = inTransaction(() -> {
             DebateSession session = sessionRepository.save(
                     DebateSession.createAiMatch(topic(), startedAt));
-            User host = user();
+            User host = users.get();
             Long hostParticipant = participantRepository.save(
                     DebateParticipant.initiator(session, host, Stance.AGREE, startedAt)).getId();
             participantRepository.save(DebateParticipant.ai(session, Stance.DISAGREE, startedAt));
@@ -183,6 +207,10 @@ public class SessionFixture {
 
     private User user() {
         return userRepository.findById(newUser()).orElseThrow();
+    }
+
+    private User member() {
+        return userRepository.findById(newMember()).orElseThrow();
     }
 
     private <T> T inTransaction(Supplier<T> action) {
