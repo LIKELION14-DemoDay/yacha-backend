@@ -134,6 +134,10 @@ liner:
   base-url: https://platform.liner.com
   api-key: ${LINER_API_KEY:}
 
+ai:
+  # 힌트 키워드 · 봇 · 판정 구현 선택. stub 은 AI 연동 전까지 쓰는 임시 구현 (#76)
+  mode: ${AI_MODE:stub}
+
 spectate:
   # 관전 스위치. 관전은 사용하지 않아(10/5) 꺼 둔다. 켜면 진행 중인 랜덤 사람전을 참가자가 아니어도 볼 수 있다
   enabled: false
