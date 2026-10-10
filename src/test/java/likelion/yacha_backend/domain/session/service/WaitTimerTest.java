@@ -29,27 +29,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-/**
- * 대기 타이머 — 실제 타이머로 확인하므로 간격을 1초 · 상한을 3초로 줄입니다.
- * 타이머 작업은 커밋된 데이터를 읽으므로 테스트 트랜잭션을 쓰지 않습니다.
- */
-@SpringBootTest
-@Import(SessionFixture.class)
-@TestPropertySource(properties = {"game.wait.prompt-interval=1s", "game.wait.limit=3s"})
+/** 대기 타이머 — 간격 1초 · 상한 3초로 줄여 실제 타이머로 확인합니다 ({@link TimerTestSupport}). */
 @DisplayName("대기 타이머 — WAIT_PROMPT · 5분 상한 · 재시작 복구")
-class WaitTimerTest {
+class WaitTimerTest extends TimerTestSupport {
 
     /** 상한(3초) 뒤 만료 작업까지 끝나기를 기다리는 시간. */
     private static final long AFTER_LIMIT_MILLIS = 4_000;
 
-    @MockitoBean
-    private MatchNotifier matchNotifier;
 
     @Autowired
     private SessionMatchFacade sessionMatchFacade;
