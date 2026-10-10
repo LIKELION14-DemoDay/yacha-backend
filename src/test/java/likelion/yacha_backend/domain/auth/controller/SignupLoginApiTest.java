@@ -58,6 +58,7 @@ class SignupLoginApiTest {
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.data.nickname").value("수민"))
                 .andExpect(jsonPath("$.data.isGuest").value(false))
+                .andExpect(jsonPath("$.data.isNewUser").value(true))
                 .andExpect(cookie().exists("refreshToken"));
     }
 
@@ -137,6 +138,7 @@ class SignupLoginApiTest {
                         .content(loginBody("soomin@example.com", "password123")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.data.isNewUser").value(false))
                 .andExpect(cookie().exists("refreshToken"));
     }
 
