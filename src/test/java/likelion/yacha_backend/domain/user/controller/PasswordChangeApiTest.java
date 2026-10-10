@@ -101,6 +101,8 @@ class PasswordChangeApiTest {
                                 """.formatted(OLD_PASSWORD, NEW_PASSWORD)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                // 기존 계정에 새 토큰을 주는 것이라 새 계정으로 보지 않음
+                .andExpect(jsonPath("$.data.isNewUser").value(false))
                 .andExpect(cookie().exists("refreshToken"));
     }
 

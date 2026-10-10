@@ -3,6 +3,7 @@ package likelion.yacha_backend.domain.auth.service;
 import jakarta.annotation.PostConstruct;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
@@ -62,7 +63,7 @@ public class AuthService {
         User guest = userRepository.save(User.createGuest(nicknameGenerator.generate()));
 
         // 토큰 발급은 DB 작업이 끝난 뒤 마지막에
-        IssuedTokens tokens = tokenIssuer.issue(guest);
+        IssuedTokens tokens = tokenIssuer.issue(guest).asNewUser();
 
         log.info("게스트 생성: userId={}", guest.getId());
         return tokens;
@@ -83,7 +84,7 @@ public class AuthService {
 
         User user = saveMember(email, request);
 
-        IssuedTokens tokens = tokenIssuer.issue(user);
+        IssuedTokens tokens = tokenIssuer.issue(user).asNewUser();
         log.info("회원가입: userId={}", user.getId());
         return tokens;
     }
@@ -172,6 +173,8 @@ public class AuthService {
      * id_token 검증 → sub · 이메일 · 닉네임
      * {@code provider + sub} 로 기존 계정 조회
      * 없으면 새 계정. 단 같은 이메일의 기존 계정이 있으면 만들지 않고 409 (자동 연결하지 않음)
+     *
+     * 새 계정을 만든 경우에만 {@code isNewUser}가 true. 프론트는 이걸 보고 닉네임 화면을 띄움
      */
     @Transactional
     public IssuedTokens socialLogin(SocialLoginRequest request) {
@@ -183,10 +186,12 @@ public class AuthService {
 
         SocialProfile profile = verifier.verify(request.idToken());
 
-        User user = userRepository.findByProviderAndProviderId(profile.provider(), profile.providerId())
-                .orElseGet(() -> createIfEmailFree(profile));
+        Optional<User> existing = userRepository.findByProviderAndProviderId(profile.provider(), profile.providerId());
+        if (existing.isPresent()) {
+            return tokenIssuer.issue(existing.get());
+        }
 
-        return tokenIssuer.issue(user);
+        return tokenIssuer.issue(createIfEmailFree(profile)).asNewUser();
     }
 
     /**

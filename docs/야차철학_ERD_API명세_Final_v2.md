@@ -244,14 +244,28 @@ erDiagram
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
 | POST | `/auth/signup` | 회원가입 + 토큰 발급 | — |
+| GET | `/auth/email/availability?email=` | 🟢 회원가입 이메일 중복 확인 → `{ "available": true \| false }` | — |
 | POST | `/auth/login` | 로그인 (토큰 발급) | — |
 | POST | `/auth/token` | 🔷 `/auth/login` 과 같은 동작. 프론트가 쓰는 쪽을 정하면 나머지는 정리 | — |
 | POST | `/auth/token/refresh` | 토큰 재발급. 쿠키의 리프레시 토큰으로 인증 | 쿠키 |
 | POST | `/auth/logout` | 로그아웃 (서버의 리프레시 토큰 삭제 + 쿠키 만료) | ✅ |
 | POST | `/auth/guest` | 게스트 생성 + 토큰 발급 | — |
+| POST | `/auth/social/kakao` | 카카오 로그인 (인가 코드, 웹) | — |
+| POST | `/auth/social/google` | 구글 로그인 (인가 코드, 웹) | — |
+| POST | `/auth/social` | 소셜 로그인 (카카오 · 구글 id_token) | — |
 | POST | `/auth/upgrade` | 게스트 → 회원 승격 (같은 계정 유지, 토큰 재발급) | ✅ |
 | GET | `/users/me` | 내 정보 · 누적 통계 | ✅ |
 | PATCH | `/users/me` | 닉네임 변경 — 🟠 회원 전용 | ✅ (회원) |
+
+🟢 **로그인 응답 (10/5)** — 토큰을 주는 API(가입 · 로그인 · 소셜 · 게스트 · 재발급 · 승격 · 비밀번호 변경)는 모두 같은 형태다. 리프레시 토큰은 body 가 아니라 쿠키로 간다.
+
+```json
+{ "accessToken": "eyJ...", "userId": 7, "nickname": "카카오수민", "isGuest": false, "isNewUser": true }
+```
+
+- `isNewUser`: 이번 요청으로 계정이 **새로 만들어졌으면** true (게스트 생성 · 회원가입 · 소셜 첫 로그인), 나머지는 false.
+- **소셜 첫 로그인**(`isNewUser` true)이면 닉네임 화면을 보여 준다. 소셜 닉네임을 기본값으로 두고 `PATCH /users/me` 로 바꾼다. 닉네임은 중복을 허용한다.
+- 게스트 생성 · 회원가입도 true 지만 닉네임 화면은 필요 없다 (비회원은 닉네임을 못 바꾸고, 회원가입은 폼에서 받았다).
 
 **로그인 정책 (MVP)**
 
@@ -266,6 +280,15 @@ erDiagram
 | 🟠 친구 초대 링크로 참여 (구현 예정) | ✅ | ✅ |
 | 🟠 1분 철학 | ❌ | ✅ |
 | 🟠 닉네임 · 비밀번호 변경 | ❌ | ✅ |
+
+🟢 **회원가입 이메일 중복 확인 (10/5)** — 회원가입이 여러 단계(닉네임 → 아이디 → 비밀번호)라, 마지막 단계까지 가지 않고 아이디 단계의 [다음]에서 바로 확인한다.
+
+- 이미 가입된 이메일이면 `available: false` 로 **200** 을 준다. 사용 중인 것은 오류가 아니라 정상 결과다.
+- 가입과 같은 검증(형식 · 255자)과 정규화(소문자)를 쓴다. 로그인 없이 부를 수 있고, 비회원 승격 화면에서도 쓴다.
+- **안내용**이다. 확인한 뒤 가입하기 전에 다른 사람이 같은 이메일로 가입할 수 있어서, 최종 중복 판단은 가입(`/auth/signup` · `/auth/upgrade`) 때 다시 한다 (`EMAIL_ALREADY_EXISTS` 409).
+- 가입 화면은 원래 "이미 있는 이메일" 을 알려 주는 곳이라 결과 자체는 공개해도 된다. 비밀번호 찾기 · 로그인 실패는 여전히 가입 여부를 숨긴다.
+- 이메일 목록을 대량으로 대조하지 못하게 **같은 IP 에서 1분에 30번**까지만 받는다 (`auth.email-check.*`). 넘으면 429 `TOO_MANY_REQUESTS` 이고 1분 안에 풀린다. 행사장 · 학교 와이파이처럼 여러 명이 같은 IP 를 쓰는 경우가 있어 넉넉하게 잡았다.
+- 운영은 프록시 뒤라, 프록시가 붙인 `X-Forwarded-For` 로 실제 클라이언트 IP 를 읽는다 (`server.forward-headers-strategy: native`).
 
 🟠 **비회원 권한 (10/2)**
 
@@ -720,6 +743,7 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 | `CONTENT_TOO_LONG` | 400 | 🔶 글자 수 초과 (🟢 채팅 100자 · 주장 200자 · 반론 250자) |
 | `MESSAGE_LIMIT_EXCEEDED` | 409 | 🟢 참가자 한 명당 채팅 200건 초과 |
 | `GUEST_NOT_ALLOWED` | 403 | 🟠 비회원이 회원 전용 기능을 부름. 프론트는 가입 안내를 띄운다 |
+| `TOO_MANY_REQUESTS` | 429 | 🟢 같은 IP 에서 짧은 시간에 너무 많이 부름 (지금은 이메일 중복 확인) |
 
 > 🔶 `EVIDENCE_LIMIT_EXCEEDED` 는 근거 검색이 사라져 제거했다. 🟢 `FINAL_ALREADY_SUBMITTED` 는 최종변론이 사라져 제거했다.
 > 🟣 `NOT_PARTICIPANT` 는 참가자가 아닌 사용자가 SEND 하거나 🟢 토론방 상태 · 메시지 · 힌트 · 주장 · 결과를 조회할 때 쓴다.

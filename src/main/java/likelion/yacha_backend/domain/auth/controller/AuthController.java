@@ -6,6 +6,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import likelion.yacha_backend.domain.auth.dto.AuthResponse;
+import likelion.yacha_backend.domain.auth.dto.EmailAvailabilityRequest;
+import likelion.yacha_backend.domain.auth.dto.EmailAvailabilityResponse;
 import likelion.yacha_backend.domain.auth.dto.GoogleCodeLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.KakaoCodeLoginRequest;
@@ -16,6 +18,7 @@ import likelion.yacha_backend.domain.auth.dto.SignupRequest;
 import likelion.yacha_backend.domain.auth.dto.SocialLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.service.AuthService;
+import likelion.yacha_backend.domain.auth.service.EmailAvailabilityService;
 import likelion.yacha_backend.domain.auth.service.GoogleLoginService;
 import likelion.yacha_backend.domain.auth.service.PasswordResetService;
 import likelion.yacha_backend.domain.auth.service.KakaoLoginService;
@@ -23,9 +26,12 @@ import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.cookie.CookieProvider;
 import likelion.yacha_backend.global.security.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,6 +49,7 @@ public class AuthController {
     private final CookieProvider cookieProvider;
     private final AuthResponseFactory authResponseFactory;
     private final PasswordResetService passwordResetService;
+    private final EmailAvailabilityService emailAvailabilityService;
 
     @Operation(
             summary = "게스트 생성",
@@ -52,6 +59,7 @@ public class AuthController {
                     - 응답 body 의 `accessToken` 을 이후 요청의 `Authorization: Bearer` 헤더에 넣음
                     - 리프레시 토큰은 HttpOnly 쿠키로 내려감
                       JS 로 읽을 수 없고, 재발급 시 브라우저가 자동으로 실어 보냄
+                    - `isNewUser`는 항상 true. 비회원은 닉네임을 바꿀 수 없으니 닉네임 화면 판단에는 쓰지 않음
                     """)
     @SecurityRequirements   // 전역 bearerAuth를 끔. 인증 없이 호출
     @PostMapping("/guest")
@@ -69,6 +77,7 @@ public class AuthController {
                     - 비밀번호는 8자 이상 72자 이하 (BCrypt 입력 상한)
                     - 게스트가 쓰던 기록을 이어가려면 이 API 가 아니라 `/auth/upgrade`
                       여기서는 새 계정이 만들어짐
+                    - `isNewUser`는 true. 닉네임은 가입 폼에서 받았으므로 닉네임 화면은 필요 없음
 
                     에러
                     - `VALIDATION_FAILED` (400): 형식·길이 위반
@@ -78,6 +87,35 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<ApiResponse<AuthResponse>> signup(@Valid @RequestBody SignupRequest request) {
         return withRefreshCookie(authService.signup(request));
+    }
+
+    @Operation(
+            summary = "회원가입 이메일 중복 확인",
+            description = """
+                    회원가입 아이디(이메일) 단계의 [다음]에서 호출. 마지막 [시작하기]까지 가지 않고 바로 알려줌
+                    로그인 없이 부를 수 있고, 비회원 승격 화면에서도 같은 API 를 씀
+
+                    ```json
+                    { "available": true }
+                    ```
+
+                    - 이미 가입된 이메일이면 `available: false`. 에러가 아니라 정상 결과라 200
+                    - 대소문자만 다른 이메일도 같은 이메일로 봄 (가입과 같은 규칙)
+                    - 안내용이라, 확인한 뒤에도 가입 때 `EMAIL_ALREADY_EXISTS`(409)가 날 수 있음
+                      (그 사이 다른 사람이 같은 이메일로 가입한 경우)
+                    - 같은 IP에서 1분에 30번까지. 넘으면 429 이고 1분 안에 풀림
+
+                    에러
+                    - `VALIDATION_FAILED` (400): 이메일이 없거나 형식 · 길이 위반 (가입과 같은 검증)
+                    - `TOO_MANY_REQUESTS` (429): 같은 IP에서 너무 많이 부름
+                    """)
+    @SecurityRequirements
+    @GetMapping("/email/availability")
+    public ApiResponse<EmailAvailabilityResponse> checkEmailAvailability(
+            @Valid @ParameterObject @ModelAttribute EmailAvailabilityRequest request,
+            HttpServletRequest httpRequest) {
+        boolean available = emailAvailabilityService.isAvailable(request.email(), httpRequest.getRemoteAddr());
+        return ApiResponse.success(new EmailAvailabilityResponse(available));
     }
 
     @Operation(
@@ -122,6 +160,9 @@ public class AuthController {
                     ```
 
                     - 처음 로그인하면 계정이 자동으로 만들어집니다. 별도 회원가입이 없습니다.
+                    - 응답의 `isNewUser`가 true면 이번에 계정이 만들어진 것입니다.
+                      닉네임 화면(소셜 닉네임을 기본값으로)을 보여 주고 `PATCH /users/me`로 바꿔 주세요.
+                      같은 계정으로 다시 로그인하면 false 라서 바로 홈으로 보내면 됩니다.
                     - 같은 이메일로 가입된 계정이 이미 있으면 연결하지 않고 409 를 줍니다.
                       원래 쓰던 방법으로 로그인하도록 안내해 주세요.
                     - 카카오는 이메일 제공이 선택 동의라, 이메일 없이 가입될 수 있습니다.
@@ -144,7 +185,7 @@ public class AuthController {
             description = """
                     웹의 카카오 JS SDK 는 id_token 을 바로 주지 않고, redirect URI 로 **인가 코드**만 넘겨줍니다.
                     그 코드를 보내면 서버가 카카오에 id_token 으로 바꿔 받은 뒤 `/auth/social` 과 같은 절차로 로그인합니다.
-                    응답 · 가입 규칙 · 409 는 `/auth/social` 과 같습니다.
+                    응답(`isNewUser` 포함) · 가입 규칙 · 409 는 `/auth/social` 과 같습니다.
 
                     ```json
                     { "code": "인가 코드", "redirectUri": "https://yacha.com/oauth/kakao" }
@@ -174,7 +215,7 @@ public class AuthController {
             description = """
                     프론트가 만든 버튼으로 구글 인가 주소에 보내면, redirect URI로 **인가 코드**가 돌아옵니다.
                     그 코드를 보내면 서버가 구글에 id_token으로 바꿔 받은 뒤 `/auth/social`과 같은 절차로 로그인합니다.
-                    응답 · 가입 규칙 · 409는 `/auth/social`과 같습니다.
+                    응답(`isNewUser` 포함) · 가입 규칙 · 409는 `/auth/social`과 같습니다.
 
                     ```json
                     { "code": "인가 코드", "redirectUri": "http://localhost:5173/oauth/google" }
