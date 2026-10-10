@@ -40,10 +40,18 @@ jwt:
 
 auth:
   password-reset:
-    # 재설정 링크 유효시간. 길면 메일함이 털렸을 때 위험 구간이 길어짐 (팀 결정)
-    token-ttl: 30m
+    # 인증번호 확인 뒤 받는 재설정 토큰의 유효시간. 새 비밀번호를 정하는 화면 하나만 남아서 짧게 둠 (10/5)
+    token-ttl: 10m
     # 같은 이메일로 다시 보낼 수 있을 때까지의 간격. 남의 메일함에 계속 보내는 것을 막음 (팀 결정)
     send-interval: 1m
+    # 메일로 보낸 인증번호 유효시간. 화면 타이머와 같음 (와이어프레임 10/5)
+    code-ttl: 3m
+    # 인증번호를 틀릴 수 있는 횟수. 넘기면 다시 요청해야 함. 6자리 + 5번이면 맞힐 확률 0.0005%
+    max-code-attempts: 5
+    # 이메일 하나가 failure-window 동안 틀릴 수 있는 횟수. 인증번호를 새로 받아도 이어서 셈
+    # 위 5번만으로는 1분마다 새로 요청해 하루 수천 번 대입할 수 있어서 둠 (인증번호 2개 분량)
+    failure-limit: 10
+    failure-window: 24h
 
   email-check:
     # 회원가입 이메일 중복 확인을 한 IP가 window 안에 부를 수 있는 횟수
@@ -99,13 +107,6 @@ oauth:
     # 비밀 값이라 저장소에 적지 마세요. 없으면 /auth/social/google 은 UNSUPPORTED_PROVIDER 입니다.
     client-secret: ${GOOGLE_CLIENT_SECRET:}
     token-uri: https://oauth2.googleapis.com/token
-
-mail:
-  # 비밀번호 재설정 메일에 넣을 링크. 재설정 페이지는 프론트가 그리고, 서버는 주소만 만들어 보냄
-  # 배포에서는 FRONTEND_BASE_URL 로 실제 도메인을 넘김
-  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
-  # 프론트와 맞춰야 하는 값. 경로가 정해지면 여기만 바꾸면 됨
-  reset-path: /reset-password
 
 game:
   # 토론 중 채팅 · 주장 · 반론은 서버 메모리에만 둡니다 (명세 1-5)

@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import likelion.yacha_backend.global.validation.MaxBytes;
 
-/** 메일 링크로 들어와 새 비밀번호를 정하는 요청 */
+/** 인증번호 확인(/auth/password/verify)으로 받은 resetToken으로 새 비밀번호를 정하는 요청 */
 public record PasswordResetConfirmRequest(
 
         @NotBlank(message = "토큰은 필수입니다.")

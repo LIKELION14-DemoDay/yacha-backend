@@ -40,7 +40,7 @@ class PasswordResetMailerAsyncTest {
         final CompletableFuture<String> thread = new CompletableFuture<>();
 
         @Override
-        public void sendPasswordReset(String email, String resetUrl) {
+        public void sendPasswordResetCode(String email, String code) {
             thread.complete(Thread.currentThread().getName());
         }
 
@@ -59,7 +59,7 @@ class PasswordResetMailerAsyncTest {
     @Test
     @DisplayName("요청 스레드가 아니라 메일 전용 스레드에서 보낸다")
     void sendsOnMailThread() throws Exception {
-        mailer.sendResetLink(1L, "a@example.com", "https://yacha.com/reset-password?token=t");
+        mailer.sendResetCode(1L, "a@example.com", "012345");
 
         assertThat(mailSender.thread.get(5, TimeUnit.SECONDS))
                 .startsWith("mail-")

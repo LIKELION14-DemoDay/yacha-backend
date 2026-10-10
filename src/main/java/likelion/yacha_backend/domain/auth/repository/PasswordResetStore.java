@@ -5,13 +5,15 @@ import java.util.Optional;
 /**
  * 비밀번호 재설정에 필요한 짧은 수명 상태를 보관
  *
- * 두 가지를 담음
- *   재설정 토큰 — 메일 링크에 실리는 값. 30분 뒤 사라지고, 한 번 쓰면 없어짐
+ * 세 가지를 담음
+ *   인증번호 — 메일로 보내는 6자리. 이메일당 하나, 3분 뒤 사라지고 정해진 횟수만 틀릴 수 있음
+ *   재설정 토큰 — 인증번호를 맞히면 주는 값. 10분 뒤 사라지고, 한 번 쓰면 없어짐
  *   재요청 제한 — 같은 이메일로 메일을 연속 보내지 못하게 막음
  *
  * 토큰은 JWT가 아님.
  * 서버만 알면 되는 값이라 서명이 필요 없고, 메일·URL 에 들어가므로 짧을수록 좋음
  * 대신 저장소에 있는 동안만 유효하므로 즉시 폐기가 가능
+ * (메일 링크 방식일 때 만든 구조라 URL에 넣을 수 있는 형식이지만, 지금은 응답 body로만 줌)
  */
 public interface PasswordResetStore {
 
@@ -22,7 +24,7 @@ public interface PasswordResetStore {
      * 토큰에 해당하는 userId를 꺼내고 즉시 삭제(1회용)
      *
      * 조회와 삭제가 하나의 동작이어야 함
-     * 나눠서 하면 같은 링크를 동시에 두 번 눌렀을 때 둘 다 통과할 수 있음
+     * 나눠서 하면 같은 토큰으로 동시에 두 번 보냈을 때 둘 다 통과할 수 있음
      */
     Optional<Long> consume(String token);
 
@@ -31,4 +33,32 @@ public interface PasswordResetStore {
      * 제한이 없으면 남의 메일함에 재설정 메일을 계속 보낼 수 있음
      */
     boolean tryAcquireSendSlot(String email);
+
+    /**
+     * 이메일에 인증번호를 저장. 이메일당 하나라 이전 인증번호와 틀린 횟수는 버림
+     * 유효시간({@link PasswordResetProperties#codeTtl()})이 지나면 사라짐
+     */
+    void saveCode(String email, String code);
+
+    /**
+     * 인증번호를 확인하고 시도 횟수를 하나 늘림
+     *
+     * 틀리면 이메일의 하루 실패 횟수도 늘림. 이건 인증번호를 새로 받아도 이어서 셈
+     * 하루 한도({@link PasswordResetProperties#failureLimit()})를 넘긴 이메일은 맞는 번호여도 {@code LOCKED}
+     *
+     * 확인 · 횟수 증가 · 삭제가 하나의 동작이어야 함
+     * 나눠서 하면 동시에 여러 번 보내 횟수 제한을 넘기거나, 같은 번호로 두 번 통과할 수 있음
+     */
+    CodeCheck checkCode(String email, String code);
+
+    enum CodeCheck {
+        /** 맞음. 인증번호는 지워져 다시 쓸 수 없음 */
+        MATCHED,
+        /** 틀림. 남은 횟수 안에서 다시 시도할 수 있음 */
+        MISMATCHED,
+        /** 인증번호가 없음. 요청한 적 없음 · 유효시간 지남 · 틀린 횟수 초과 · 이미 사용함 */
+        EXPIRED,
+        /** 이 이메일은 하루 실패 한도를 넘김. 기간이 지날 때까지 인증번호를 확인하지 않음 */
+        LOCKED
+    }
 }
