@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
+import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
 import likelion.yacha_backend.domain.session.dto.CurrentSessionResponse;
 import likelion.yacha_backend.domain.session.dto.GameMessageResponse;
 import likelion.yacha_backend.domain.session.dto.MemoResponse;
@@ -28,7 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "토론 세션", description = "방 생성 · 입장 · 취소, 토론방 조회 — 현재 상태 · 놓친 메시지 · 내 주장 작성")
+@Tag(name = "토론 세션", description = "방 생성 · 입장 · 취소 · 봇전, 토론방 조회 — 현재 상태 · 놓친 메시지 · 내 주장 작성")
 @RestController
 @RequestMapping("/api/v1/sessions")
 @RequiredArgsConstructor
@@ -71,6 +72,38 @@ public class SessionController {
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long sessionId) {
         return ApiResponse.success(new SessionIdResponse(sessionMatchFacade.join(authUser.getUserId(), sessionId)));
+    }
+
+    @Operation(
+            summary = "바로 봇전",
+            description = """
+                    대기 방 없이 봇전을 만들고 바로 시작 (`IN_PROGRESS`). 카테고리 화면 · 자동 제안 `NEW_TOPIC` 화면에서 "봇전으로 시작"
+                    `topicId` 는 주제 화면에서 고른 주제, `stance` 는 내 입장 (봇은 반대)
+                    `MATCHED` 는 오지 않음. 응답을 받으면 토론방을 구독하고 `/state` 로 구간을 맞춤
+
+                    로그인 필요 (게스트 가능)
+                    이미 대기 · 진행 중인 토론이 있으면 `ALREADY_IN_SESSION`, 없거나 내린 주제면 `TOPIC_NOT_FOUND`
+                    """)
+    @PostMapping("/bot")
+    public ApiResponse<SessionIdResponse> startBot(
+            @AuthenticationPrincipal AuthUser authUser,
+            @Valid @RequestBody BotMatchRequest request) {
+        return ApiResponse.success(new SessionIdResponse(sessionMatchFacade.startBot(authUser.getUserId(), request)));
+    }
+
+    @Operation(
+            summary = "AI 대결로 전환",
+            description = """
+                    기다리던 내 방을 봇전으로 바꿔 바로 시작 (`IN_PROGRESS`). 대기 팝업(`WAIT_PROMPT`)에서 "봇전" 을 고르면 부름
+                    내 입장은 그대로, 봇은 반대. 즉시 대기열에서 빠짐. 응답을 받으면 토론방을 구독하고 `/state` 로 구간을 맞춤
+
+                    방장만 (`NOT_ROOM_OWNER`), 그 사이 상대가 들어왔거나 취소된 방이면 `SESSION_NOT_WAITING`
+                    """)
+    @PostMapping("/{sessionId}/ai")
+    public ApiResponse<SessionIdResponse> convertToAi(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long sessionId) {
+        return ApiResponse.success(new SessionIdResponse(sessionMatchFacade.convertToAi(authUser.getUserId(), sessionId)));
     }
 
     @Operation(
