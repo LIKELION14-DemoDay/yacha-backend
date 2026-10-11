@@ -66,14 +66,11 @@ public class InMemoryPasswordResetStore implements PasswordResetStore {
      * (테스트 전용이라 단순하게 둠)
      */
     @Override
-    public synchronized CodeCheck checkCode(String email, String code) {
+    public synchronized CodeCheck checkCode(String email, String clientIp, String code) {
         Instant now = Instant.now();
-        FailureCount failure = failures.get(email);
-        if (failure != null && failure.resetsAt().isBefore(now)) {
-            failures.remove(email);
-            failure = null;
-        }
-        if (failure != null && failure.count() >= properties.failureLimit()) {
+        String ipKey = email + ":" + clientIp;
+        if (failureCount(ipKey, now) >= properties.ipFailureLimit()
+                || failureCount(email, now) >= properties.emailFailureLimit()) {
             return CodeCheck.LOCKED;
         }
 
@@ -89,14 +86,32 @@ public class InMemoryPasswordResetStore implements PasswordResetStore {
         }
         if (entry.code().equals(code)) {
             codes.remove(email);
+            failures.remove(ipKey);
             failures.remove(email);
             return CodeCheck.MATCHED;
         }
         codes.put(email, new CodeEntry(entry.code(), attempts, entry.expiresAt()));
-        failures.put(email, failure == null
-                ? new FailureCount(1, now.plus(properties.failureWindow()))
-                : new FailureCount(failure.count() + 1, failure.resetsAt()));
+        addFailure(ipKey, now);
+        addFailure(email, now);
         return CodeCheck.MISMATCHED;
+    }
+
+    /** 기간이 지난 횟수는 지우고 0으로 봄 (Redis의 TTL을 흉내 냄) */
+    private int failureCount(String key, Instant now) {
+        FailureCount failure = failures.get(key);
+        if (failure == null) {
+            return 0;
+        }
+        if (failure.resetsAt().isBefore(now)) {
+            failures.remove(key);
+            return 0;
+        }
+        return failure.count();
+    }
+
+    private void addFailure(String key, Instant now) {
+        failures.merge(key, new FailureCount(1, now.plus(properties.failureWindow())),
+                (current, first) -> new FailureCount(current.count() + 1, current.resetsAt()));
     }
 
     /** 재요청 제한(1분)을 기다리지 않고 다시 요청하는 테스트용 */

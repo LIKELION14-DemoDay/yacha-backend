@@ -48,9 +48,13 @@ auth:
     code-ttl: 3m
     # 인증번호를 틀릴 수 있는 횟수. 넘기면 다시 요청해야 함. 6자리 + 5번이면 맞힐 확률 0.0005%
     max-code-attempts: 5
-    # 이메일 하나가 failure-window 동안 틀릴 수 있는 횟수. 인증번호를 새로 받아도 이어서 셈
-    # 위 5번만으로는 1분마다 새로 요청해 하루 수천 번 대입할 수 있어서 둠 (인증번호 2개 분량)
-    failure-limit: 10
+    # 틀린 횟수를 failure-window 동안 두 단계로 셈. 인증번호를 새로 받아도 이어서 셈
+    # 위 5번만으로는 1분마다 새로 요청해 하루 수천 번 대입할 수 있어서 둠
+    #   ip-failure-limit    이메일 하나를 한 IP가 틀릴 수 있는 횟수 (인증번호 2개 분량)
+    #                       IP마다 따로 세서, 남이 일부러 틀려도 본인(다른 IP)은 막히지 않음
+    #   email-failure-limit 이메일 하나를 모든 IP가 합쳐서 틀릴 수 있는 횟수. IP를 바꿔 가며 대입하는 것을 막음
+    ip-failure-limit: 10
+    email-failure-limit: 100
     failure-window: 24h
     # 한 IP가 인증번호 메일을 요청할 수 있는 횟수
     # 이메일별 간격(send-interval)만 있으면 이메일을 바꿔 가며 대량으로 요청해 Redis · DB 에 부하를 줄 수 있어서 둠

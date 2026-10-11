@@ -112,7 +112,9 @@ public class PasswordResetService {
      * 인증번호를 확인하고 재설정 토큰을 발급
      *
      * 틀리면 INVALID_RESET_CODE, 인증번호가 없으면(만료 · 5번 틀림 · 요청 안 함) RESET_CODE_EXPIRED
-     * 이메일이 하루 10번을 틀렸으면 RESET_ATTEMPTS_EXCEEDED (인증번호를 새로 받아 횟수를 되돌리는 대입을 막음)
+     * 하루 실패 한도를 넘겼으면 RESET_ATTEMPTS_EXCEEDED (인증번호를 새로 받아 횟수를 되돌리는 대입을 막음)
+     *   같은 IP가 한 이메일을 10번 틀렸거나, 모든 IP를 합쳐 한 이메일을 100번 틀린 경우
+     *   IP마다 따로 세므로, 남이 일부러 틀려도 본인(다른 IP)의 비밀번호 찾기는 막히지 않음
      * 가입 안 된 이메일도 ①에서 인증번호를 저장해 두고 틀린 횟수도 똑같이 세므로 같은 응답이 나옴
      *
      * 트랜잭션을 걸지 않음. 조회만 함
@@ -121,7 +123,7 @@ public class PasswordResetService {
         checkIpLimit(VERIFY_RATE_LIMIT_PURPOSE, clientIp, properties.verifyIpLimit());
         String email = normalizeEmail(request.email());
 
-        CodeCheck result = passwordResetStore.checkCode(email, request.code());
+        CodeCheck result = passwordResetStore.checkCode(email, clientIp, request.code());
         if (result == CodeCheck.LOCKED) {
             throw new BusinessException(AuthErrorCode.RESET_ATTEMPTS_EXCEEDED);
         }

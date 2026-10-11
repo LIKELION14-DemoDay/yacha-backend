@@ -27,7 +27,8 @@ class PasswordResetPropertiesTest {
         values.put("send-interval", "1m");
         values.put("code-ttl", "3m");
         values.put("max-code-attempts", "5");
-        values.put("failure-limit", "10");
+        values.put("ip-failure-limit", "10");
+        values.put("email-failure-limit", "100");
         values.put("failure-window", "24h");
         values.put("request-ip-limit.max-requests", "10");
         values.put("request-ip-limit.window", "10m");
@@ -86,7 +87,9 @@ class PasswordResetPropertiesTest {
     @Test
     @DisplayName("하루 실패 한도가 0 이하이거나 기간이 0 이하면 기동이 실패한다")
     void invalidFailureSettings() {
-        expectStartupFailsWith("failure-limit", "0");
+        expectStartupFailsWith("ip-failure-limit", "0");
+        expectStartupFailsWithout("email-failure-limit");
+        expectStartupFailsWith("email-failure-limit", "0");
         expectStartupFailsWith("failure-window", "0s");
     }
 

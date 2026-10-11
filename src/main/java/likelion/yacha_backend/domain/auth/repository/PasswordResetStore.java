@@ -43,13 +43,16 @@ public interface PasswordResetStore {
     /**
      * 인증번호를 확인하고 시도 횟수를 하나 늘림
      *
-     * 틀리면 이메일의 하루 실패 횟수도 늘림. 이건 인증번호를 새로 받아도 이어서 셈
-     * 하루 한도({@link PasswordResetProperties#failureLimit()})를 넘긴 이메일은 맞는 번호여도 {@code LOCKED}
+     * 틀리면 하루 실패 횟수도 늘림. 이건 인증번호를 새로 받아도 이어서 세고, 두 단계로 셈
+     *   이메일 + IP  — {@link PasswordResetProperties#ipFailureLimit()}. 넘기면 그 IP만 {@code LOCKED}
+     *   이메일 전체  — {@link PasswordResetProperties#emailFailureLimit()}. 넘기면 모든 IP가 {@code LOCKED}
+     * 이메일 하나로만 세면 남이 일부러 틀려서 본인의 비밀번호 찾기를 막을 수 있어서 나눔
+     * {@code LOCKED}면 맞는 번호여도 통과하지 못하고, 인증번호의 시도 횟수도 쓰지 않음
      *
      * 확인 · 횟수 증가 · 삭제가 하나의 동작이어야 함
      * 나눠서 하면 동시에 여러 번 보내 횟수 제한을 넘기거나, 같은 번호로 두 번 통과할 수 있음
      */
-    CodeCheck checkCode(String email, String code);
+    CodeCheck checkCode(String email, String clientIp, String code);
 
     enum CodeCheck {
         /** 맞음. 인증번호는 지워져 다시 쓸 수 없음 */
@@ -58,7 +61,7 @@ public interface PasswordResetStore {
         MISMATCHED,
         /** 인증번호가 없음. 요청한 적 없음 · 유효시간 지남 · 틀린 횟수 초과 · 이미 사용함 */
         EXPIRED,
-        /** 이 이메일은 하루 실패 한도를 넘김. 기간이 지날 때까지 인증번호를 확인하지 않음 */
+        /** 하루 실패 한도를 넘김 (이 IP가 넘겼거나, 이메일 전체가 넘김). 기간이 지날 때까지 인증번호를 확인하지 않음 */
         LOCKED
     }
 }

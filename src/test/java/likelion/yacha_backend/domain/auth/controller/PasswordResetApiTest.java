@@ -146,11 +146,19 @@ class PasswordResetApiTest {
     }
 
     private ResultActions verify(String email, String code) throws Exception {
+        return verify(email, code, "127.0.0.1");
+    }
+
+    private ResultActions verify(String email, String code, String clientIp) throws Exception {
         return mockMvc.perform(post("/api/v1/auth/password/verify")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"email": "%s", "code": "%s"}
-                        """.formatted(email, code)));
+                        """.formatted(email, code))
+                .with(request -> {
+                    request.setRemoteAddr(clientIp);
+                    return request;
+                }));
     }
 
     /** 인증번호를 확인하고 받은 재설정 토큰을 돌려줍니다. */
@@ -404,7 +412,29 @@ class PasswordResetApiTest {
     }
 
     @Test
-    @DisplayName("인증번호를 새로 받아도 하루 10번 틀리면 맞는 번호도 429 RESET_ATTEMPTS_EXCEEDED")
+    @DisplayName("남이 다른 IP에서 10번 틀려 잠겨도, 본인은 맞는 번호로 통과한다")
+    void attackerCannotLockOwner() throws Exception {
+        String attackerIp = "203.0.113.7";
+        for (int i = 0; i < 10; i++) {
+            if (i % 5 == 0) {
+                passwordResetStore.clearSendSlots();
+                requestReset(email);
+            }
+            verify(email, "000000", attackerIp).andExpect(jsonPath("$.error.code").value("INVALID_RESET_CODE"));
+        }
+
+        passwordResetStore.clearSendSlots();
+        requestReset(email);
+        // 틀린 쪽 IP는 잠기고
+        verify(email, lastCode(), attackerIp)
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error.code").value("RESET_ATTEMPTS_EXCEEDED"));
+        // 본인(다른 IP)은 메일로 받은 번호로 통과
+        verify(email, lastCode()).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("인증번호를 새로 받아도 같은 IP가 하루 10번 틀리면 맞는 번호도 429 RESET_ATTEMPTS_EXCEEDED")
     void locksAfterTenFailures() throws Exception {
         failTenTimes(email);
 
@@ -416,7 +446,7 @@ class PasswordResetApiTest {
     }
 
     @Test
-    @DisplayName("가입되지 않은 이메일도 하루 10번 틀리면 같은 429 (가입 여부가 드러나지 않음)")
+    @DisplayName("가입되지 않은 이메일도 같은 IP가 하루 10번 틀리면 같은 429 (가입 여부가 드러나지 않음)")
     void locksUnknownEmailTheSame() throws Exception {
         failTenTimes("nobody-lock@example.com");
 
