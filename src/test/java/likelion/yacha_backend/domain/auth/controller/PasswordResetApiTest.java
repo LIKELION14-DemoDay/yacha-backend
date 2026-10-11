@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import likelion.yacha_backend.domain.auth.mail.MailSender;
+import likelion.yacha_backend.domain.auth.repository.InMemoryIpRateLimiter;
 import likelion.yacha_backend.domain.auth.repository.InMemoryPasswordResetStore;
 import likelion.yacha_backend.domain.user.entity.Provider;
 import likelion.yacha_backend.domain.user.entity.User;
@@ -110,6 +111,9 @@ class PasswordResetApiTest {
     private InMemoryPasswordResetStore passwordResetStore;
 
     @Autowired
+    private InMemoryIpRateLimiter ipRateLimiter;
+
+    @Autowired
     private UserRepository userRepository;
 
     private Cookie refreshCookie;
@@ -117,6 +121,8 @@ class PasswordResetApiTest {
     @BeforeEach
     void signup() throws Exception {
         mailSender.clear();
+        // 테스트는 모두 같은 IP(127.0.0.1)로 부르므로, IP별 호출 수가 다음 테스트로 넘어가지 않게 비움
+        ipRateLimiter.clear();
         email = "reset-%d@example.com".formatted(SEQ.incrementAndGet());
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/signup")

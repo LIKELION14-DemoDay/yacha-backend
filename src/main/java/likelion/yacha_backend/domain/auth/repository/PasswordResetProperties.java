@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.auth.repository;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -25,6 +26,9 @@ import org.springframework.validation.annotation.Validated;
  * @param failureLimit     이메일 하나가 {@code failureWindow} 동안 틀릴 수 있는 횟수. 인증번호를 새로 받아도 이어서 셈 (10번)
  *                         maxCodeAttempts만 있으면 1분마다 새로 요청해 하루 수천 번 대입할 수 있어서 둠
  * @param failureWindow    틀린 횟수를 세는 기간. 처음 틀린 때부터 (24시간)
+ * @param requestIpLimit   한 IP가 인증번호 메일을 요청할 수 있는 횟수 (10분에 10번)
+ *                         이메일별 간격(sendInterval)만 있으면 이메일을 바꿔 가며 대량으로 요청할 수 있어서 둠
+ * @param verifyIpLimit    한 IP가 인증번호를 확인할 수 있는 횟수 (10분에 30번)
  */
 @Validated
 @ConfigurationProperties(prefix = "auth.password-reset")
@@ -34,7 +38,9 @@ public record PasswordResetProperties(
         @NotNull Duration codeTtl,
         @Positive int maxCodeAttempts,
         @Positive int failureLimit,
-        @NotNull Duration failureWindow
+        @NotNull Duration failureWindow,
+        @NotNull @Valid IpRateLimit requestIpLimit,
+        @NotNull @Valid IpRateLimit verifyIpLimit
 ) {
 
     /** null은 위의 @NotNull이 검사함 */

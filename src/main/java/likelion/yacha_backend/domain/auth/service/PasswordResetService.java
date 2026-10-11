@@ -7,6 +7,8 @@ import likelion.yacha_backend.domain.auth.dto.PasswordResetConfirmRequest;
 import likelion.yacha_backend.domain.auth.dto.PasswordResetRequest;
 import likelion.yacha_backend.domain.auth.dto.PasswordResetVerifyRequest;
 import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
+import likelion.yacha_backend.domain.auth.repository.IpRateLimit;
+import likelion.yacha_backend.domain.auth.repository.IpRateLimiter;
 import likelion.yacha_backend.domain.auth.repository.PasswordResetProperties;
 import likelion.yacha_backend.domain.auth.mail.PasswordResetMailer;
 import likelion.yacha_backend.domain.auth.repository.PasswordResetStore;
@@ -14,6 +16,7 @@ import likelion.yacha_backend.domain.auth.repository.PasswordResetStore.CodeChec
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.exception.BusinessException;
+import likelion.yacha_backend.global.exception.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -34,6 +37,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * 가입 여부를 드러내지 않는 것이 핵심
  * ①은 항상 성공 응답이고, ②는 가입된 이메일과 아닌 이메일이 같은 응답을 받아야 함
+ *
+ * ① · ②는 IP마다 호출 수도 제한함 (넘으면 429). 이메일과 관계없이 IP만 보므로 가입 여부는 드러나지 않음
  */
 @Slf4j
 @Service
@@ -44,11 +49,17 @@ public class PasswordResetService {
     private static final int TOKEN_BYTES = 32;
     private static final int CODE_BOUND = 1_000_000;   // 000000 ~ 999999
 
+    /** IP별 호출 수를 셀 때 쓰는 용도 이름 (Redis 키: {용도}:{IP}) */
+    private static final String REQUEST_RATE_LIMIT_PURPOSE = "password-reset-request-ip";
+    private static final String VERIFY_RATE_LIMIT_PURPOSE = "password-reset-verify-ip";
+
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
 
     private final UserRepository userRepository;
     private final PasswordResetStore passwordResetStore;
+    private final PasswordResetProperties properties;
+    private final IpRateLimiter ipRateLimiter;
     private final PasswordResetMailer passwordResetMailer;
     private final PasswordEncoder passwordEncoder;
     private final TokenIssuer tokenIssuer;
@@ -69,7 +80,9 @@ public class PasswordResetService {
      * 메일은 {@link PasswordResetMailer}가 따로 보냄
      * 가입된 이메일도 발송을 기다리지 않고 바로 돌아오고, 발송이 실패해도 응답은 같음
      */
-    public void sendResetMail(PasswordResetRequest request) {
+    public void sendResetMail(PasswordResetRequest request, String clientIp) {
+        // IP 제한을 가장 먼저 확인해서, 막힌 요청은 Redis 에 인증번호를 쌓거나 DB 를 조회하지 않게 함
+        checkIpLimit(REQUEST_RATE_LIMIT_PURPOSE, clientIp, properties.requestIpLimit());
         String email = normalizeEmail(request.email());
 
         if (!passwordResetStore.tryAcquireSendSlot(email)) {
@@ -104,7 +117,8 @@ public class PasswordResetService {
      *
      * 트랜잭션을 걸지 않음. 조회만 함
      */
-    public String verify(PasswordResetVerifyRequest request) {
+    public String verify(PasswordResetVerifyRequest request, String clientIp) {
+        checkIpLimit(VERIFY_RATE_LIMIT_PURPOSE, clientIp, properties.verifyIpLimit());
         String email = normalizeEmail(request.email());
 
         CodeCheck result = passwordResetStore.checkCode(email, request.code());
@@ -155,6 +169,13 @@ public class PasswordResetService {
         tokenIssuer.revoke(userId);
 
         log.info("비밀번호 재설정 완료: userId={}", userId);
+    }
+
+    private void checkIpLimit(String purpose, String clientIp, IpRateLimit limit) {
+        if (!ipRateLimiter.tryAcquire(purpose, clientIp, limit.maxRequests(), limit.window())) {
+            log.warn("비밀번호 찾기 호출 제한 초과: purpose={}, ip={}", purpose, clientIp);
+            throw new BusinessException(GlobalErrorCode.TOO_MANY_REQUESTS);
+        }
     }
 
     /** 6자리 숫자. 앞자리 0도 그대로 둠 (예: 012345). 추측할 수 없어야 하므로 {@link SecureRandom} 사용 */

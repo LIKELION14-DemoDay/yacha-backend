@@ -253,6 +253,7 @@ public class AuthController {
                     어떤 주소가 가입돼 있는지 알려주지 않기 위해서임
                     프론트도 "가입된 계정이 있다면 메일을 보냈습니다"처럼 안내해 주세요
 
+                    - 같은 IP에서 10분에 10번까지. 넘으면 429 `TOO_MANY_REQUESTS` (이메일과 관계없이 IP만 봄)
                     - 인증번호는 3분 동안 유효 (화면 타이머)
                     - 새로 요청하면 이전 인증번호는 무효가 되고, 틀린 횟수도 처음부터
                     - 같은 이메일로는 1분에 한 번만 보냄. 제한에 걸려도 응답은 200 이고, 이전 인증번호가 그대로 유효
@@ -261,8 +262,9 @@ public class AuthController {
                     """)
     @SecurityRequirements
     @PostMapping("/password/reset-request")
-    public ApiResponse<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
-        passwordResetService.sendResetMail(request);
+    public ApiResponse<Void> requestPasswordReset(
+            @Valid @RequestBody PasswordResetRequest request, HttpServletRequest httpRequest) {
+        passwordResetService.sendResetMail(request, httpRequest.getRemoteAddr());
         return ApiResponse.noContent();
     }
 
@@ -287,12 +289,14 @@ public class AuthController {
                     - `INVALID_RESET_CODE` (400): 인증번호가 틀림. 다시 입력
                     - `RESET_CODE_EXPIRED` (400): 만료(3분) · 5번 틀림 · 요청한 적 없음 · 이미 사용함. 다시 요청
                     - `RESET_ATTEMPTS_EXCEEDED` (429): 24시간 동안 10번 틀림. 처음 틀린 때부터 24시간 뒤에 다시 시도
+                    - `TOO_MANY_REQUESTS` (429): 같은 IP에서 10분에 30번 넘게 확인함. 잠시 뒤 다시 시도
                     """)
     @SecurityRequirements
     @PostMapping("/password/verify")
     public ApiResponse<PasswordResetVerifyResponse> verifyPasswordResetCode(
-            @Valid @RequestBody PasswordResetVerifyRequest request) {
-        return ApiResponse.success(new PasswordResetVerifyResponse(passwordResetService.verify(request)));
+            @Valid @RequestBody PasswordResetVerifyRequest request, HttpServletRequest httpRequest) {
+        return ApiResponse.success(new PasswordResetVerifyResponse(
+                passwordResetService.verify(request, httpRequest.getRemoteAddr())));
     }
 
     @Operation(
