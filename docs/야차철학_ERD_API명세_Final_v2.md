@@ -497,6 +497,7 @@ flowchart TD
 - **입장 · 승낙 · AI 전환 · 취소는 모두 원자적 UPDATE** 다. `status = 'WAITING'` 조건의 UPDATE 가 **1건 갱신된 쪽만** 성공한다. 팝업에서 AI 를 누르는 순간 사람이 들어와도 한쪽만 이긴다.
 - 성공하면 `started_at` 기록 → `IN_PROGRESS` → 🟢 힌트 생성 시작 → 방장에게 `MATCHED` 를 푸시한다.
 - **대기 타이머**(30초 팝업 · 5분 상한 · 초대 10분)는 `created_at` 기준으로 스케줄러에 등록한다. 서버가 재시작되면 `WAITING` 방을 `created_at` 으로 다시 등록한다. 구간 스케줄러(2-11)와 같은 방식이다.
+- 5분 취소가 실패해도(DB 순간 장애 · 타이머 등록 실패) 방이 남지 않게, **1분마다** 상한보다 1분 더 지났는데도 `WAITING` 인 랜덤 방을 취소한다. 남으면 방장이 `ALREADY_IN_SESSION` 으로 막히기 때문이다.
 - 자기 방에는 입장할 수 없다 (`CANNOT_JOIN_OWN_ROOM`).
 - 이미 대기 중이거나 진행 중인 세션이 있는 사용자는 방을 만들거나 입장할 수 없다 (`ALREADY_IN_SESSION`).
 - 봇전은 사용자 참가자와 AI 참가자를 **한 트랜잭션에서 함께 만든다**. AI 의 `stance` 는 사용자의 반대다. 🟢 바로 봇전(`POST /sessions/bot`)도 `ALREADY_IN_SESSION` 검사를 똑같이 한다.

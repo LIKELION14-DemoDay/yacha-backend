@@ -6,6 +6,7 @@ import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.service.SessionCommandService.Created;
 import likelion.yacha_backend.domain.session.service.SessionCommandService.Matched;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
  * </ul>
  * 그래서 이 클래스에는 트랜잭션을 걸지 않습니다.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SessionMatchFacade {
@@ -28,10 +30,20 @@ public class SessionMatchFacade {
     private final MatchNotifier matchNotifier;
     private final WaitTimerService waitTimerService;
 
-    /** 방 생성 → (커밋) → 대기 타이머 등록 (30초마다 팝업, 5분이면 취소). */
+    /**
+     * 방 생성 → (커밋) → 대기 타이머 등록 (30초마다 팝업, 5분이면 취소).
+     *
+     * <p>방은 이미 커밋됐으므로 타이머 등록이 실패해도 생성은 성공으로 응답합니다. 실패로 응답하면 사용자는 방이
+     * 생긴 줄 모르고, 다시 만들려다 {@code ALREADY_IN_SESSION} 을 받습니다. 타이머 없이 남은 방은 주기 정리
+     * ({@link WaitingSessionRecovery#sweepExpired}) 가 상한 뒤에 취소합니다.
+     */
     public Long create(Long userId, SessionCreateRequest request) {
         Created created = sessionCommandService.create(userId, request);
-        waitTimerService.register(created.sessionId(), userId, created.createdAt());
+        try {
+            waitTimerService.register(created.sessionId(), userId, created.createdAt());
+        } catch (RuntimeException e) {
+            log.error("[대기 타이머] 등록하지 못했습니다. sessionId={}", created.sessionId(), e);
+        }
         return created.sessionId();
     }
 

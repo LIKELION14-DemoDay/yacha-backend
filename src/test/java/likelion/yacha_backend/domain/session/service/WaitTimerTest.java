@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -40,15 +41,16 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 /**
- * 대기 타이머 — 실제 타이머로 확인하므로 간격을 1초 · 상한을 3초로 줄입니다.
+ * 대기 타이머 — 실제 타이머로 확인하므로 간격을 1초 · 상한을 3초 · 정리 간격을 1초로 줄입니다.
  * 타이머 작업은 커밋된 데이터를 읽으므로 테스트 트랜잭션을 쓰지 않습니다.
  */
 @SpringBootTest
 @Import(SessionFixture.class)
-@TestPropertySource(properties = {"game.wait.prompt-interval=1s", "game.wait.limit=3s"})
-@DisplayName("대기 타이머 — WAIT_PROMPT · 5분 상한 · 재시작 복구")
+@TestPropertySource(properties = {"game.wait.prompt-interval=1s", "game.wait.limit=3s", "game.wait.sweep-interval=1s"})
+@DisplayName("대기 타이머 — WAIT_PROMPT · 5분 상한 · 재시작 복구 · 주기 정리")
 class WaitTimerTest {
 
     /** 상한(3초) 뒤 만료 작업까지 끝나기를 기다리는 시간. */
@@ -63,7 +65,7 @@ class WaitTimerTest {
     @Autowired
     private WaitingSessionRecovery waitingSessionRecovery;
 
-    @Autowired
+    @MockitoSpyBean
     private WaitTimerService waitTimerService;
 
     @Autowired
@@ -229,6 +231,33 @@ class WaitTimerTest {
         verify(matchNotifier, after(500).never()).waitExpired(anyLong(), eq(afterBoot.sessionId()));
         assertThat(session(overdue.sessionId()).getStatus()).isEqualTo(SessionStatus.CANCELLED);
         assertThat(session(afterBoot.sessionId()).getStatus()).isEqualTo(SessionStatus.WAITING);
+    }
+
+    @Test
+    @DisplayName("타이머 등록이 실패해도 방 생성은 성공하고, 상한이 지난 뒤 주기 정리가 방을 취소한다")
+    void sweepCancelsRoomWithoutTimer() {
+        Long hostId = fixture.newUser();
+        // 방을 만들 때의 등록만 실패시키고, 주기 정리의 재등록은 그대로 둔다
+        doThrow(new IllegalStateException("등록 실패")).doCallRealMethod()
+                .when(waitTimerService).register(anyLong(), eq(hostId), any());
+
+        Long sessionId = createRoom(hostId);
+        assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.WAITING);
+        // 타이머가 없으므로 상한(3초)이 지나도 취소되지 않는다
+        verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitExpired(anyLong(), eq(sessionId));
+        // 상한 + 정리 간격(4초)을 확실히 넘기도록 만든 시각을 앞당긴다
+        setCreatedAt(sessionId, LocalDateTime.now(clock).minusSeconds(10));
+        Room fresh = fixture.waitingRandom();
+
+        waitingSessionRecovery.sweepExpired();
+
+        verify(matchNotifier, timeout(1_000)).waitExpired(hostId, sessionId);
+        assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.CANCELLED);
+        // 상한 + 정리 간격이 지나지 않은 방은 건드리지 않는다
+        verify(matchNotifier, after(500).never()).waitExpired(anyLong(), eq(fresh.sessionId()));
+        assertThat(session(fresh.sessionId()).getStatus()).isEqualTo(SessionStatus.WAITING);
+        // 취소됐으므로 방장은 새 방을 만들 수 있다
+        createRoom(hostId);
     }
 
     private void setCreatedAt(Long sessionId, LocalDateTime createdAt) {
