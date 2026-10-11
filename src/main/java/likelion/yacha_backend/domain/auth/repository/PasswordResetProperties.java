@@ -16,7 +16,7 @@ import org.springframework.validation.annotation.Validated;
  * 그대로 뜨면 비밀번호 찾기가 조용히 망가짐
  *   maxCodeAttempts가 빠지면 0으로 바인딩돼 맞는 번호도 전부 만료로 처리됨
  *   codeTtl이 빠지면 saveCode 에서 NPE → 500
- *   기간이 0 이하면 Redis가 키를 바로 지우거나(PEXPIRE) 거부함(SET PX)
+ *   기간이 1ms 미만이면 Redis가 키를 바로 지우거나(PEXPIRE) 거부함(SET PX)
  *
  * @param tokenTtl         인증번호 확인 뒤 받는 재설정 토큰의 유효시간.
  *                         새 비밀번호를 정하는 화면 하나만 남아서 짧게 둠 (10분)
@@ -47,10 +47,13 @@ public record PasswordResetProperties(
         @NotNull @Valid IpRateLimit verifyIpLimit
 ) {
 
-    /** null은 위의 @NotNull이 검사함 */
-    @AssertTrue(message = "auth.password-reset 의 기간 값은 0보다 커야 합니다.")
-    public boolean isDurationsPositive() {
+    /**
+     * Redis에는 밀리초로 넘기므로 1밀리초 이상이어야 함
+     * 0 이하뿐 아니라 1us처럼 밀리초로 바꾸면 0이 되는 값도 막음 (null은 위의 @NotNull이 검사)
+     */
+    @AssertTrue(message = "auth.password-reset 의 기간 값은 1ms 이상이어야 합니다.")
+    public boolean isDurationsAtLeastOneMillisecond() {
         return Stream.of(tokenTtl, sendInterval, codeTtl, failureWindow)
-                .allMatch(duration -> duration == null || (!duration.isZero() && !duration.isNegative()));
+                .allMatch(duration -> duration == null || duration.toMillis() >= 1);
     }
 }

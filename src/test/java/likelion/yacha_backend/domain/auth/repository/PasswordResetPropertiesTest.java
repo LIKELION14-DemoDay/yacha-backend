@@ -85,6 +85,19 @@ class PasswordResetPropertiesTest {
     }
 
     @Test
+    @DisplayName("밀리초로 바꾸면 0이 되는 기간(1us)도 기동이 실패하고, 1ms는 기동한다")
+    void subMillisecondDuration() {
+        expectStartupFailsWith("code-ttl", "1us");
+        expectStartupFailsWith("token-ttl", "1us");
+        expectStartupFailsWith("send-interval", "1us");
+        expectStartupFailsWith("failure-window", "1us");
+
+        Map<String, String> values = validValues();
+        values.put("code-ttl", "1ms");
+        runnerWith(values).run(context -> assertThat(context).hasNotFailed());
+    }
+
+    @Test
     @DisplayName("하루 실패 한도가 0 이하이거나 기간이 0 이하면 기동이 실패한다")
     void invalidFailureSettings() {
         expectStartupFailsWith("ip-failure-limit", "0");
