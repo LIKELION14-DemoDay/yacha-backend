@@ -1,12 +1,14 @@
 package likelion.yacha_backend.domain.auth.service;
 
 import java.util.Locale;
-import likelion.yacha_backend.domain.auth.repository.EmailCheckLimiter;
+import likelion.yacha_backend.domain.auth.repository.EmailCheckProperties;
+import likelion.yacha_backend.domain.auth.repository.IpRateLimiter;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.exception.BusinessException;
 import likelion.yacha_backend.global.exception.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,15 +24,20 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@EnableConfigurationProperties(EmailCheckProperties.class)
 public class EmailAvailabilityService {
 
-    private final EmailCheckLimiter emailCheckLimiter;
+    /** IP별 호출 수를 셀 때 쓰는 용도 이름 (Redis 키: email-check:{IP}) */
+    private static final String RATE_LIMIT_PURPOSE = "email-check";
+
+    private final IpRateLimiter ipRateLimiter;
+    private final EmailCheckProperties properties;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
     public boolean isAvailable(String email, String clientIp) {
         // 제한을 먼저 확인해서, 막힌 요청은 DB까지 가지 않음
-        if (!emailCheckLimiter.tryAcquire(clientIp)) {
+        if (!ipRateLimiter.tryAcquire(RATE_LIMIT_PURPOSE, clientIp, properties.maxRequests(), properties.window())) {
             log.warn("이메일 중복 확인 호출 제한 초과: ip={}", clientIp);
             throw new BusinessException(GlobalErrorCode.TOO_MANY_REQUESTS);
         }

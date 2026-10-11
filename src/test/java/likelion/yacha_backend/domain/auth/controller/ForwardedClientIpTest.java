@@ -6,7 +6,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import likelion.yacha_backend.domain.auth.repository.InMemoryEmailCheckLimiter;
+import likelion.yacha_backend.domain.auth.repository.InMemoryIpRateLimiter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,7 +29,7 @@ class ForwardedClientIpTest {
     private int port;
 
     @Autowired
-    private InMemoryEmailCheckLimiter limiter;
+    private InMemoryIpRateLimiter limiter;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
