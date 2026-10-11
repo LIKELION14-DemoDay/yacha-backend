@@ -51,4 +51,7 @@ tasks.named('test') {
 
 	// 모든 테스트를 test 프로필로 실행 (설정: src/test/resources/application-test.yaml)
 	systemProperty 'spring.profiles.active', 'test'
+
+	// 운영(Dockerfile)처럼 JVM 을 KST 로 띄운다. UTC 인 CI 에서 기동 중에 바꾸면 DB 연결과 시각이 9시간 어긋난다
+	systemProperty 'user.timezone', 'Asia/Seoul'
 }

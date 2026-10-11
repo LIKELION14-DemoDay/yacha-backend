@@ -126,6 +126,8 @@ public class SessionController {
             description = """
                     새로고침 · 재접속으로 sessionId 를 잃었을 때 되찾음. 앱 진입 · 새로고침 때 한 번 부르면 됨
                     `WAITING` 이면 대기 화면으로 돌아가거나 `DELETE /sessions/{id}` 로 취소, `IN_PROGRESS` 면 토론방 구독 후 `/state`
+                    대기 중인 랜덤 방이면 `expiresAt`(5분 상한 시각, `WAIT_PROMPT` 와 같은 값)을 줌. 끊긴 동안의 `WAIT_PROMPT` 는 다시 오지 않으므로
+                    재접속하면 이 값으로 남은 시간과 "봇전으로 시작하시겠습니까?" 팝업을 바로 그림. 그 밖에는 `null`
                     대기 · 진행 중인 세션이 없으면 `data: null`
 
                     로그인 필요 (게스트 가능)

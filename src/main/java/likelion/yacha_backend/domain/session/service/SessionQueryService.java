@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.session.service;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.List;
@@ -14,6 +15,7 @@ import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.PhaseState;
+import likelion.yacha_backend.domain.session.entity.RoomType;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.session.exception.SessionErrorCode;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
@@ -39,6 +41,7 @@ public class SessionQueryService {
     private final SessionAccessService sessionAccessService;
     private final DebateParticipantRepository participantRepository;
     private final GameRegistry gameRegistry;
+    private final WaitTimerService waitTimerService;
     private final Clock clock;
 
     /**
@@ -64,12 +67,19 @@ public class SessionQueryService {
                 .toList();
     }
 
-    /** 내가 대기 · 진행 중인 세션. 없으면 null 입니다. */
+    /** 내가 대기 · 진행 중인 세션. 없으면 null 입니다. 대기 중인 랜덤 방이면 대기 상한 시각도 줍니다. */
     public CurrentSessionResponse getCurrent(Long userId) {
         return participantRepository.findFirstByUser_IdAndSession_StatusInOrderByIdDesc(userId, ACTIVE_STATUSES)
                 .map(DebateParticipant::getSession)
-                .map(session -> new CurrentSessionResponse(session.getId(), session.getStatus()))
+                .map(session -> new CurrentSessionResponse(session.getId(), session.getStatus(), waitExpiresAt(session)))
                 .orElse(null);
+    }
+
+    private OffsetDateTime waitExpiresAt(DebateSession session) {
+        if (!session.isWaiting() || session.getRoomType() != RoomType.RANDOM) {
+            return null;
+        }
+        return DateTimes.withOffset(waitTimerService.expiresAt(session.getCreatedAt()), clock.getZone());
     }
 
     public SessionStateResponse getState(Long sessionId, Long userId) {

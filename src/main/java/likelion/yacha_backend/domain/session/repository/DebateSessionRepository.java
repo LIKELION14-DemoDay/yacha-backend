@@ -1,15 +1,19 @@
 package likelion.yacha_backend.domain.session.repository;
 
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
+import likelion.yacha_backend.domain.session.entity.ParticipantRole;
+import likelion.yacha_backend.domain.session.entity.RoomType;
 import likelion.yacha_backend.domain.session.entity.SessionMode;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.topic.entity.Topic;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -117,8 +121,39 @@ public interface DebateSessionRepository extends JpaRepository<DebateSession, Lo
     Optional<DebateSession> findByInviteCode(String inviteCode);
 
     /**
+     * 대기 팝업: 세션 행을 잠그며 읽음 (SELECT ... FOR UPDATE)
+     * 잠금은 트랜잭션이 끝날 때까지 유지돼, 그 사이 입장 · AI 전환 · 취소의 조건부 UPDATE 는 기다림
+     * 그래서 팝업은 상태가 바뀌기 전에 나가거나, 바뀐 뒤라면 아예 나가지 않음
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from DebateSession s where s.id = :id")
+    Optional<DebateSession> findByIdForUpdate(@Param("id") Long id);
+
+    /**
      * 서버 재시작 정리용. 메모리에 있던 게임은 이어갈 수 없으므로 IN_PROGRESS 를 {@link #finishIfInProgress} 로 ABORTED 처리합니다.
      * 이 서버가 뜬 뒤 시작된 게임은 이어갈 수 있으므로 {@code startedAt} 이 {@code before} 보다 앞선 세션만 찾습니다.
      */
     List<DebateSession> findAllByStatusAndStartedAtBefore(SessionStatus status, LocalDateTime before);
+
+    /**
+     * 서버 재시작 복구용. {@code before} 보다 먼저 만든 대기 중인 랜덤 방과 방장 ({@link WaitingRoom}).
+     * 방장 계정이 게스트 정리로 지워졌으면 {@code hostUserId} 가 null 입니다.
+     */
+    @Query("""
+            select new likelion.yacha_backend.domain.session.repository.WaitingRoom(s.id, u.id, s.createdAt)
+              from DebateParticipant p
+              join p.session s
+              left join p.user u
+             where s.status = :waiting and s.roomType = :random and p.role = :initiator
+               and s.createdAt < :before
+            """)
+    List<WaitingRoom> findWaitingRandomRoomsCreatedBefore(@Param("before") LocalDateTime before,
+                                                          @Param("waiting") SessionStatus waiting,
+                                                          @Param("random") RoomType random,
+                                                          @Param("initiator") ParticipantRole initiator);
+
+    default List<WaitingRoom> findWaitingRandomRoomsCreatedBefore(LocalDateTime before) {
+        return findWaitingRandomRoomsCreatedBefore(before, SessionStatus.WAITING, RoomType.RANDOM,
+                ParticipantRole.INITIATOR);
+    }
 }

@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.session.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -8,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import likelion.yacha_backend.domain.session.SessionFixture;
@@ -368,10 +371,17 @@ class SessionMatchApiTest {
             Long sessionId = ((Number) JsonPath.read(body, "$.data.sessionId")).longValue();
             createAs(userId, topicId).andExpect(jsonPath("$.error.code").value("ALREADY_IN_SESSION"));
 
-            currentAs(userId, Role.USER)
+            String current = currentAs(userId, Role.USER)
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.sessionId").value(sessionId))
-                    .andExpect(jsonPath("$.data.status").value("WAITING"));
+                    .andExpect(jsonPath("$.data.status").value("WAITING"))
+                    .andReturn().getResponse().getContentAsString();
+            // 대기 상한(5분) 시각을 KST 오프셋을 붙여 준다 — 재접속한 방장이 남은 시간과 팝업을 바로 그린다
+            String expiresAt = JsonPath.read(current, "$.data.expiresAt");
+            assertThat(expiresAt).endsWith("+09:00");
+            assertThat(OffsetDateTime.parse(expiresAt).toLocalDateTime()).isCloseTo(
+                    sessionRepository.findById(sessionId).orElseThrow().getCreatedAt().plusMinutes(5),
+                    within(1, ChronoUnit.MILLIS));
 
             cancelAs(userId, sessionId).andExpect(status().isOk());
             currentAs(userId, Role.USER)
@@ -389,7 +399,8 @@ class SessionMatchApiTest {
                 currentAs(userId, Role.USER)
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.data.sessionId").value(room.sessionId()))
-                        .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
+                        .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
+                        .andExpect(jsonPath("$.data.expiresAt").doesNotExist());
             }
         }
 
