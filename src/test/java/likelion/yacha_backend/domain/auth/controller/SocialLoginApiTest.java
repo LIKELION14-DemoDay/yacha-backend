@@ -106,6 +106,7 @@ class SocialLoginApiTest {
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.data.nickname").value("카카오수민"))
                 .andExpect(jsonPath("$.data.isGuest").value(false))
+                .andExpect(jsonPath("$.data.isNewUser").value(true))
                 .andExpect(cookie().exists("refreshToken"));
 
         User saved = userRepository.findByEmail("a@example.com").orElseThrow();
@@ -124,6 +125,16 @@ class SocialLoginApiTest {
 
         assertThat(second).isEqualTo(first);
         assertThat(userRepository.count()).isEqualTo(countAfterFirst);
+    }
+
+    @Test
+    @DisplayName("isNewUser는 계정을 만든 첫 로그인만 true, 다시 로그인하면 false")
+    void isNewUserOnlyOnFirstLogin() throws Exception {
+        MvcResult first = login("kakao-1|a@example.com|true|수민");
+        MvcResult second = login("kakao-1|a@example.com|true|수민");
+
+        assertThat((Boolean) JsonPath.read(first.getResponse().getContentAsString(), "$.data.isNewUser")).isTrue();
+        assertThat((Boolean) JsonPath.read(second.getResponse().getContentAsString(), "$.data.isNewUser")).isFalse();
     }
 
     @Test

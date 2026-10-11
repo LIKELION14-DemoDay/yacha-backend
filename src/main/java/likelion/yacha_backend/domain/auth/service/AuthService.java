@@ -3,6 +3,7 @@ package likelion.yacha_backend.domain.auth.service;
 import jakarta.annotation.PostConstruct;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
@@ -62,7 +63,7 @@ public class AuthService {
         User guest = userRepository.save(User.createGuest(nicknameGenerator.generate()));
 
         // 토큰 발급은 DB 작업이 끝난 뒤 마지막에
-        IssuedTokens tokens = tokenIssuer.issue(guest);
+        IssuedTokens tokens = tokenIssuer.issue(guest).asNewUser();
 
         log.info("게스트 생성: userId={}", guest.getId());
         return tokens;
@@ -83,7 +84,7 @@ public class AuthService {
 
         User user = saveMember(email, request);
 
-        IssuedTokens tokens = tokenIssuer.issue(user);
+        IssuedTokens tokens = tokenIssuer.issue(user).asNewUser();
         log.info("회원가입: userId={}", user.getId());
         return tokens;
     }
@@ -151,7 +152,17 @@ public class AuthService {
 
         // 액세스 토큰만이 아니라 리프레시 토큰도 새로 발급해 저장소 값을 바꿈
         // role을 여기서 DB로부터 다시 읽으므로, 권한 변경도 이 시점에 반영
-        return tokenIssuer.issue(user);
+        //
+        // 위에서 확인한 뒤 지금까지 저장소가 바뀌지 않았을 때만 바꿈 (compare-and-set)
+        // 그 사이 로그아웃 · 비밀번호 변경 · 같은 토큰의 다른 재발급이 끼어들었으면 실패
+        return tokenIssuer.rotate(user, refreshToken)
+                .orElseThrow(() -> {
+                    // 같은 토큰을 거의 동시에 두 번 쓴 경우도 여기로 옴. 위의 재사용 탐지와 같게 폐기
+                    // 비밀번호 변경이 끼어든 경우엔 사용자의 새 토큰도 지워지지만, 다시 로그인하면 되고 세션이 남는 쪽보다 안전함
+                    log.warn("재발급 중 리프레시 토큰이 바뀌었습니다. 저장된 토큰을 폐기합니다. userId={}", userId);
+                    tokenIssuer.revoke(userId);
+                    return new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+                });
     }
 
     /**
@@ -162,6 +173,8 @@ public class AuthService {
      * id_token 검증 → sub · 이메일 · 닉네임
      * {@code provider + sub} 로 기존 계정 조회
      * 없으면 새 계정. 단 같은 이메일의 기존 계정이 있으면 만들지 않고 409 (자동 연결하지 않음)
+     *
+     * 새 계정을 만든 경우에만 {@code isNewUser}가 true. 프론트는 이걸 보고 닉네임 화면을 띄움
      */
     @Transactional
     public IssuedTokens socialLogin(SocialLoginRequest request) {
@@ -173,10 +186,12 @@ public class AuthService {
 
         SocialProfile profile = verifier.verify(request.idToken());
 
-        User user = userRepository.findByProviderAndProviderId(profile.provider(), profile.providerId())
-                .orElseGet(() -> createIfEmailFree(profile));
+        Optional<User> existing = userRepository.findByProviderAndProviderId(profile.provider(), profile.providerId());
+        if (existing.isPresent()) {
+            return tokenIssuer.issue(existing.get());
+        }
 
-        return tokenIssuer.issue(user);
+        return tokenIssuer.issue(createIfEmailFree(profile)).asNewUser();
     }
 
     /**

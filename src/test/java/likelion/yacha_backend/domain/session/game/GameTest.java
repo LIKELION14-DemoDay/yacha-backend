@@ -41,7 +41,7 @@ class GameTest {
     private static final LocalDateTime CHAT = STARTED_AT.plusSeconds(150);
 
     private static Game newGame(int chatMaxLength, int maxChatsPerParticipant) {
-        return new Game(1L, STARTED_AT, Map.of(ALICE, ALICE_PARTICIPANT, BOB, BOB_PARTICIPANT),
+        return new Game(1L, STARTED_AT, Map.of(ALICE, ALICE_PARTICIPANT, BOB, BOB_PARTICIPANT), null,
                 chatMaxLength, maxChatsPerParticipant, 200, 250);
     }
 

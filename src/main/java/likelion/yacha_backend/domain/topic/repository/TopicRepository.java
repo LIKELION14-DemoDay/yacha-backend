@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.topic.repository;
 
 import java.util.List;
+import java.util.Optional;
 import likelion.yacha_backend.domain.topic.entity.Category;
 import likelion.yacha_backend.domain.topic.entity.Subcategory;
 import likelion.yacha_backend.domain.topic.entity.Topic;
@@ -32,4 +33,7 @@ public interface TopicRepository extends JpaRepository<Topic, Long> {
             """)
     List<Topic> findActiveTopics(@Param("subcategory") Subcategory subcategory,
                                  @Param("excludeId") Long excludeId);
+
+    /** 방을 만들 때 고른 주제. 내린(비활성) 주제는 없는 것으로 봅니다. */
+    Optional<Topic> findByIdAndActiveTrue(Long id);
 }

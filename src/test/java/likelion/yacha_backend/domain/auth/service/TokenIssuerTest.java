@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.auth.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Optional;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.repository.RefreshTokenStore;
 import likelion.yacha_backend.domain.user.entity.User;
@@ -103,6 +104,29 @@ class TokenIssuerTest {
         assertThat(refreshTokenStore.find(user.getId()).orElseThrow())
                 .isEqualTo(issued.refreshToken())
                 .isNotEqualTo("old-refresh-token");
+    }
+
+    @Test
+    @DisplayName("rotate는 저장된 토큰이 확인한 값 그대로면 새 토큰으로 바꾼다")
+    void rotateReplacesWhenUnchanged() {
+        User user = savedGuest();
+        String current = tokenIssuer.issue(user).refreshToken();
+
+        Optional<IssuedTokens> rotated = tokenIssuer.rotate(user, current);
+
+        assertThat(rotated).isPresent();
+        assertThat(refreshTokenStore.find(user.getId())).contains(rotated.get().refreshToken());
+    }
+
+    @Test
+    @DisplayName("rotate는 그 사이 저장소가 바뀌었으면 덮어쓰지 않고 비어 있다")
+    void rotateKeepsNewerToken() {
+        User user = savedGuest();
+        String current = tokenIssuer.issue(user).refreshToken();
+        IssuedTokens newer = tokenIssuer.issue(user);   // 비밀번호 변경 등으로 새로 발급됨
+
+        assertThat(tokenIssuer.rotate(user, current)).isEmpty();
+        assertThat(refreshTokenStore.find(user.getId())).contains(newer.refreshToken());
     }
 
     @Test

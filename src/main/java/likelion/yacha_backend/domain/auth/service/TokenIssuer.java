@@ -34,6 +34,26 @@ public class TokenIssuer {
         return new IssuedTokens(accessToken, refreshToken, user);
     }
 
+    /**
+     * 재발급용 발급
+     * 저장된 리프레시 토큰이 아직 {@code currentRefreshToken}일 때만 새 토큰으로 바꿈
+     *
+     * {@link #issue}는 무조건 덮어씀.
+     * 로그인 · 비밀번호 변경처럼 사용자가 직접 한 동작이라 그 값이 맞기 때문
+     * 재발급은 "확인한 토큰이 아직 유효하다"는 전제로 바꾸는 것이라, 그 사이 저장소가 바뀌었으면 바꾸면 안 됨
+     *
+     * @return 바꿨으면 새 토큰. 그 사이 로그아웃 · 비밀번호 변경 · 다른 재발급이 끼어들었으면 비어 있음
+     */
+    public Optional<IssuedTokens> rotate(User user, String currentRefreshToken) {
+        String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.tokenRole());
+        String refreshToken = jwtTokenProvider.createRefreshToken(user.getId());
+
+        if (!refreshTokenStore.replace(user.getId(), currentRefreshToken, refreshToken)) {
+            return Optional.empty();
+        }
+        return Optional.of(new IssuedTokens(accessToken, refreshToken, user));
+    }
+
     /** 저장된 리프레시 토큰을 지움. 로그아웃·재사용 탐지에서 사용 */
     public void revoke(Long userId) {
         refreshTokenStore.delete(userId);

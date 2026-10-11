@@ -45,4 +45,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.id in :ids and u.isGuest = true")
     List<User> findGuestsByIdForUpdate(@Param("ids") Collection<Long> ids);
+
+    /**
+     * 매칭: 사용자 행을 잠그며 읽음 (SELECT ... FOR UPDATE)
+     * 잠금은 트랜잭션이 끝날 때까지 유지돼, 같은 사용자의 방 생성 · 입장이 겹치면 뒤 요청은 앞 요청이 커밋된 뒤에 진행함
+     * 그래서 뒤 요청은 앞 요청이 만든 방을 보고 ALREADY_IN_SESSION 을 받음
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id = :id")
+    Optional<User> findByIdForUpdate(@Param("id") Long id);
 }

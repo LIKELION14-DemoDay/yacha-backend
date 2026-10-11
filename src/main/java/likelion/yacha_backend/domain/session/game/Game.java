@@ -51,6 +51,10 @@ public class Game {
      */
     private final Map<Long, Long> participantIdByUserId;
 
+    /** 봇전의 AI 참가자 id. 사람전이면 null. 봇의 주장 · 반론 · 채팅을 기록할 때 씁니다. */
+    @Getter
+    private final Long aiParticipantId;
+
     private final int chatMaxLength;
 
     /**
@@ -74,11 +78,12 @@ public class Game {
     private final Set<DebatePhase> revealedPhases = EnumSet.noneOf(DebatePhase.class);
     private boolean finished;
 
-    Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId,
+    Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId, Long aiParticipantId,
          int chatMaxLength, int maxChatsPerParticipant, int argumentMaxLength, int rebuttalMaxLength) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
         this.participantIdByUserId = Map.copyOf(participantIdByUserId);
+        this.aiParticipantId = aiParticipantId;
         this.chatMaxLength = chatMaxLength;
         this.maxChatsPerParticipant = maxChatsPerParticipant;
         this.argumentMaxLength = argumentMaxLength;

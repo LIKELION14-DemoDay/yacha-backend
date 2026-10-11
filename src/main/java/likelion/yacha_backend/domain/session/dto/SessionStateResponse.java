@@ -9,6 +9,7 @@ import likelion.yacha_backend.domain.session.entity.RoomType;
 import likelion.yacha_backend.domain.session.entity.SessionMode;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.session.entity.Stance;
+import likelion.yacha_backend.domain.topic.dto.TopicResponse;
 import likelion.yacha_backend.domain.topic.entity.Category;
 
 /**
@@ -19,6 +20,7 @@ import likelion.yacha_backend.domain.topic.entity.Category;
  *
  * <p><b>승패와 사용자 id 는 넣지 않습니다.</b> 승패는 본인만 전투 기록에서 보고, 관전자에게 사용자 id 를 노출하지 않습니다.
  *
+ * @param topic         주제 · 찬성 / 반대 문구 (채팅 상단 "찬성 VS 반대"). 친구 방은 친구가 들어오기 전까지 null
  * @param phase         현재 구간. 진행 중일 때만 있고, 대기 · 종료 · 취소면 null
  * @param endsAt        현재 구간이 끝나는 시각. {@code JUDGING} 이거나 진행 중이 아니면 null
  * @param serverNow     서버 시각. 프론트는 이 값과의 차이로 남은 시간을 계산합니다
@@ -31,7 +33,7 @@ public record SessionStateResponse(
         RoomType roomType,
         SessionMode mode,
         Category category,
-        Long topicId,
+        TopicResponse topic,
         DebatePhase phase,
         OffsetDateTime startedAt,
         OffsetDateTime endsAt,
