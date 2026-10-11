@@ -374,6 +374,7 @@ erDiagram
 | POST | `/sessions/{id}/ai` | 🔷 **AI 대결로 전환** — 방장만, `WAITING` 일 때만 | ✅ |
 | DELETE | `/sessions/{id}` | 대기 취소 — 방장만, `WAITING` 일 때만 | ✅ |
 | POST | `/sessions/{id}/leave` | 🟢 **게임 중 나가기** — 참가자만, `IN_PROGRESS` 일 때. 바로 몰수패 (2-11) | ✅ |
+| GET | `/sessions/current` | 내가 대기 · 진행 중인 세션 (새로고침 · 재접속으로 `sessionId` 를 잃었을 때). 없으면 `data: null`. 대기 중인 랜덤 방이면 5분 상한 시각 `expiresAt` 도 준다 | ✅ |
 | GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용). 세션 상세(방 정보 · 참가자 · 🟢 주제 찬성 / 반대 문구 · 참가자 철학자 유형)와 🟢 지금 작성 구간의 제출 여부(`participants[].submitted` — 작성 구간이 아니면 `null`)도 여기서 준다. 승패 · 사용자 id 는 넣지 않는다 | ✅ |
 | GET | ~~`/sessions/live?category=&page=`~~ | 🟣 관전 목록 — 🟢 **관전 미사용으로 구현하지 않는다** | — |
 | GET | `/sessions/me` | 전투 기록 — 🟣 주제 · 상대 · 날짜 · **승패**만 (대화 내용 없음) | ✅ (회원) |
@@ -399,6 +400,15 @@ erDiagram
 ```json
 { "sessionId": 31, "inviteCode": "k3Xp9aQ2", "expiresAt": "2026-10-31T12:10:00+09:00" }
 ```
+
+**내가 참여 중인 세션** (`GET /sessions/current`)
+
+```json
+{ "sessionId": 31, "status": "WAITING", "expiresAt": "2026-10-31T12:05:00+09:00" }
+{ "sessionId": 31, "status": "IN_PROGRESS", "expiresAt": null }
+```
+
+- `expiresAt` 은 `WAIT_PROMPT` 의 `expiresAt` 과 같은 값이다. `WAIT_PROMPT` 는 연결이 끊긴 동안 사라지므로, 재접속한 방장은 이 값으로 남은 시간과 "봇전으로 시작하시겠습니까?" 팝업을 바로 그린다 (대기한 시간 = 5분 − 남은 시간).
 
 **제안 · 거절 응답**
 

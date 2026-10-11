@@ -59,7 +59,7 @@ public class WaitTimerService {
      */
     public void register(Long sessionId, Long hostUserId, LocalDateTime createdAt) {
         Duration interval = properties.promptInterval();
-        LocalDateTime expiresAt = createdAt.plus(properties.limit());
+        LocalDateTime expiresAt = expiresAt(createdAt);
         LocalDateTime now = LocalDateTime.now(clock);
         for (LocalDateTime at = createdAt.plus(interval); at.isBefore(expiresAt); at = at.plus(interval)) {
             if (at.isBefore(now)) {
@@ -69,6 +69,11 @@ public class WaitTimerService {
             gameTimers.schedule(sessionId, at, () -> prompt(sessionId, hostUserId, waitedSeconds, expiresAt));
         }
         gameTimers.schedule(sessionId, expiresAt, () -> expire(sessionId, hostUserId));
+    }
+
+    /** 대기 상한 시각. 이때 방을 취소합니다. {@code WAIT_PROMPT} 와 {@code GET /sessions/current} 가 같은 값을 줍니다. */
+    public LocalDateTime expiresAt(LocalDateTime createdAt) {
+        return createdAt.plus(properties.limit());
     }
 
     /** 입장 · 취소 · AI 전환으로 대기가 끝났습니다. 남은 대기 타이머를 지웁니다. */
