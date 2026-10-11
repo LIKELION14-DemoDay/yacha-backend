@@ -22,6 +22,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>입장 · 취소 · AI 전환이 성공하면 {@link #cancel} 로 남은 타이머를 지웁니다. 지우기 전에 이미 실행된 작업은
  * DB 상태를 다시 확인하므로 아무것도 하지 않습니다 — 팝업은 {@code WAITING} 일 때만 보내고, 취소는 조건부 UPDATE 입니다.
  *
+ * <p>팝업은 세션 행을 잠근 채로 확인하고 보냅니다. 확인과 전송 사이에 입장 · AI 전환이 끼어들면
+ * 이미 시작된 게임에 팝업이 뜨기 때문입니다. 잠금 동안 그 조건부 UPDATE 는 기다리므로, 팝업은 상태가 바뀌기 전에 나가고
+ * {@code MATCHED} 는 그 뒤에 나갑니다 (연결별 전송 순서는 {@code setPreservePublishOrder} 가 지킵니다).
+ *
  * <p>타이머는 {@link GameTimers} 에 세션 id 로 등록합니다. 매칭된 뒤의 구간 타이머도 같은 세션 id 를 쓰므로,
  * 만료 작업은 <b>방을 실제로 취소했을 때만</b> 타이머를 지웁니다.
  */
@@ -72,11 +76,21 @@ public class WaitTimerService {
         gameTimers.cancelAll(sessionId);
     }
 
-    private void prompt(Long sessionId, Long hostUserId, long waitedSeconds, LocalDateTime expiresAt) {
-        boolean waiting = sessionRepository.findById(sessionId).map(DebateSession::isWaiting).orElse(false);
-        if (waiting && hostUserId != null) {
-            matchNotifier.waitPrompt(hostUserId, sessionId, waitedSeconds, expiresAt);
+    /**
+     * 대기 팝업. 세션 행을 잠근 채로 {@code WAITING} 인지 확인하고 보내므로, 상태가 바뀐 뒤에는 나가지 않습니다.
+     * 타이머가 늦게 돌아 상한이 지났으면 곧 취소될 방이라 보내지 않습니다.
+     */
+    void prompt(Long sessionId, Long hostUserId, long waitedSeconds, LocalDateTime expiresAt) {
+        if (hostUserId == null) {
+            return;
         }
+        transactionTemplate.executeWithoutResult(status -> {
+            boolean waiting = sessionRepository.findByIdForUpdate(sessionId)
+                    .map(DebateSession::isWaiting).orElse(false);
+            if (waiting && LocalDateTime.now(clock).isBefore(expiresAt)) {
+                matchNotifier.waitPrompt(hostUserId, sessionId, waitedSeconds, expiresAt);
+            }
+        });
     }
 
     private void expire(Long sessionId, Long hostUserId) {

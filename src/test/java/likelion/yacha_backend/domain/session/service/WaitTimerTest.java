@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
@@ -15,6 +17,9 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
@@ -28,6 +33,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -56,6 +62,9 @@ class WaitTimerTest {
 
     @Autowired
     private WaitingSessionRecovery waitingSessionRecovery;
+
+    @Autowired
+    private WaitTimerService waitTimerService;
 
     @Autowired
     private SessionFixture fixture;
@@ -146,6 +155,55 @@ class WaitTimerTest {
         verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitPrompt(anyLong(), eq(sessionId), anyLong(), any());
         verify(matchNotifier, never()).waitExpired(anyLong(), eq(sessionId));
         assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.IN_PROGRESS);
+    }
+
+    @Test
+    @DisplayName("팝업을 확인하고 보내는 동안 들어온 입장은 기다렸다가 시작하고, 방장은 WAIT_PROMPT 다음에 MATCHED 를 받는다")
+    void joinWaitsForPromptInFlight() throws Exception {
+        Long hostId = fixture.newUser();
+        Long guestId = fixture.newUser();
+        CountDownLatch sending = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            sending.countDown();
+            release.await(5, TimeUnit.SECONDS);
+            return null;
+        }).when(matchNotifier).waitPrompt(eq(hostId), anyLong(), eq(1L), any());
+        Long sessionId = createRoom(hostId);
+
+        // 1초 팝업이 WAITING 을 확인하고 보내는 중
+        assertThat(sending.await(AFTER_LIMIT_MILLIS, TimeUnit.MILLISECONDS)).isTrue();
+        CompletableFuture<Long> join = CompletableFuture.supplyAsync(() -> sessionMatchFacade.join(guestId, sessionId));
+
+        // 팝업이 행을 잠그고 있으므로 입장은 시작하지 못하고 기다린다
+        Thread.sleep(300);
+        assertThat(join).isNotDone();
+        assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.WAITING);
+
+        release.countDown();
+        join.get(5, TimeUnit.SECONDS);
+
+        InOrder order = inOrder(matchNotifier);
+        order.verify(matchNotifier).waitPrompt(eq(hostId), eq(sessionId), eq(1L), any());
+        order.verify(matchNotifier).matched(hostId, sessionId);
+        verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitPrompt(anyLong(), eq(sessionId), eq(2L), any());
+        assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.IN_PROGRESS);
+    }
+
+    @Test
+    @DisplayName("타이머가 늦게 돌아 상한이 지났거나 이미 시작된 방이면 팝업을 보내지 않는다")
+    void skipsStalePrompt() {
+        Room waiting = fixture.waitingRandom();
+        Room started = fixture.waitingRandom();
+        sessionIds.add(started.sessionId());
+        sessionMatchFacade.join(fixture.newUser(), started.sessionId());
+        LocalDateTime now = LocalDateTime.now(clock);
+
+        waitTimerService.prompt(waiting.sessionId(), waiting.hostUserId(), 30, now.minusSeconds(1));
+        waitTimerService.prompt(started.sessionId(), started.hostUserId(), 30, now.plusMinutes(5));
+
+        verify(matchNotifier, never()).waitPrompt(anyLong(), eq(waiting.sessionId()), eq(30L), any());
+        verify(matchNotifier, never()).waitPrompt(anyLong(), eq(started.sessionId()), eq(30L), any());
     }
 
     @Test

@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.session.repository;
 
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -12,6 +13,7 @@ import likelion.yacha_backend.domain.session.entity.SessionMode;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.topic.entity.Topic;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -117,6 +119,15 @@ public interface DebateSessionRepository extends JpaRepository<DebateSession, Lo
     }
 
     Optional<DebateSession> findByInviteCode(String inviteCode);
+
+    /**
+     * 대기 팝업: 세션 행을 잠그며 읽음 (SELECT ... FOR UPDATE)
+     * 잠금은 트랜잭션이 끝날 때까지 유지돼, 그 사이 입장 · AI 전환 · 취소의 조건부 UPDATE 는 기다림
+     * 그래서 팝업은 상태가 바뀌기 전에 나가거나, 바뀐 뒤라면 아예 나가지 않음
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from DebateSession s where s.id = :id")
+    Optional<DebateSession> findByIdForUpdate(@Param("id") Long id);
 
     /**
      * 서버 재시작 정리용. 메모리에 있던 게임은 이어갈 수 없으므로 IN_PROGRESS 를 {@link #finishIfInProgress} 로 ABORTED 처리합니다.
