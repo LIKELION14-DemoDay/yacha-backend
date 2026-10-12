@@ -23,7 +23,7 @@ public class SchedulingConfig {
     @Bean
     public ThreadPoolTaskScheduler taskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        // 하루 한 번 도는 작업뿐이라 하나면 충분함
+        // 하루 한 번 도는 게스트 정리와 1분마다 도는 대기 방 정리뿐이고 둘 다 금방 끝나서 하나면 충분함
         scheduler.setPoolSize(1);
         scheduler.setThreadNamePrefix("scheduled-");
         return scheduler;

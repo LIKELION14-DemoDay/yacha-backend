@@ -55,6 +55,10 @@ public class SessionCommandService {
     private final DebateParticipantRepository participantRepository;
     private final Clock clock;
 
+    /** 만든 대기 방. 커밋 뒤 대기 타이머를 등록하는 데 씁니다 ({@code createdAt} 이 타이머 기준). */
+    public record Created(Long sessionId, LocalDateTime createdAt) {
+    }
+
     /**
      * 매칭이 성사된 방. 커밋 뒤 게임을 만들고 방장에게 알리는 데 씁니다.
      *
@@ -66,7 +70,7 @@ public class SessionCommandService {
     }
 
     /** 랜덤 방을 만들고 방장으로 들어갑니다. 상대를 기다리는 {@code WAITING} 이 됩니다. */
-    public Long create(Long userId, SessionCreateRequest request) {
+    public Created create(Long userId, SessionCreateRequest request) {
         if (request.roomType() != RoomType.RANDOM) {
             // 친구 방은 구현 보류 (명세 2-3-3)
             throw new BusinessException(GlobalErrorCode.VALIDATION_FAILED);
@@ -77,7 +81,7 @@ public class SessionCommandService {
 
         DebateSession session = sessionRepository.save(DebateSession.createRandom(topic));
         participantRepository.save(DebateParticipant.initiator(session, user, request.stance(), LocalDateTime.now(clock)));
-        return session.getId();
+        return new Created(session.getId(), session.getCreatedAt());
     }
 
     /**
