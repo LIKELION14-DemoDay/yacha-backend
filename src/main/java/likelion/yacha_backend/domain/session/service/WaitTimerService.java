@@ -93,16 +93,23 @@ public class WaitTimerService {
         });
     }
 
-    private void expire(Long sessionId, Long hostUserId) {
+    /**
+     * 대기 상한 도달. 5분 타이머와 주기 정리({@link WaitingSessionRecovery#sweepExpired})가 부릅니다.
+     * 취소는 조건부 UPDATE 라서 둘이 겹쳐도 1 을 받은 쪽만 타이머를 지우고 {@code WAIT_EXPIRED} 를 보냅니다.
+     *
+     * @return 이번 호출로 방을 취소했으면 true
+     */
+    boolean expire(Long sessionId, Long hostUserId) {
         Integer cancelled = transactionTemplate.execute(
                 status -> sessionRepository.cancelIfWaiting(sessionId, LocalDateTime.now(clock)));
         if (cancelled == null || cancelled == 0) {
             // 그 사이 입장 · 취소 · AI 전환됨. 매칭됐다면 구간 타이머가 같은 세션 id 로 있을 수 있어 지우지 않습니다.
-            return;
+            return false;
         }
         gameTimers.cancelAll(sessionId);
         if (hostUserId != null) {
             matchNotifier.waitExpired(hostUserId, sessionId);
         }
+        return true;
     }
 }

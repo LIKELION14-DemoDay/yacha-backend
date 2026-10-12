@@ -22,9 +22,9 @@ import org.springframework.stereotype.Service;
  *
  * <p>실패해도 기동은 막지 않고 로그만 남깁니다. 서버 1대 전제입니다.
  *
- * <p>같은 방식으로 주기 정리({@link #sweepExpired})도 합니다. 5분 취소는 한 번만 도는 타이머라, 그때 DB 가 잠깐
+ * <p>주기 정리({@link #sweepExpired})도 합니다. 5분 취소는 한 번만 도는 타이머라, 그때 DB 가 잠깐
  * 끊기거나 생성 직후 등록이 실패하면 방이 {@code WAITING} 으로 남아 방장이 {@code ALREADY_IN_SESSION} 으로 막힙니다.
- * 원인과 상관없이 상한이 지난 방을 다시 등록하면 바로 취소됩니다.
+ * 정리는 타이머를 다시 등록하지 않고 만료 처리를 바로 부릅니다. 실패한 방은 다음 주기에 다시 시도됩니다.
  */
 @Slf4j
 @Service
@@ -59,8 +59,8 @@ public class WaitingSessionRecovery {
     }
 
     /**
-     * 주기 정리. 상한보다 정리 간격만큼 더 지났는데도 대기 중인 방을 다시 등록해 바로 취소합니다.
-     * 정상 방은 그 전에 만료 타이머가 취소하므로 걸리지 않고, 걸려도 취소는 조건부 UPDATE 라 한 번만 됩니다.
+     * 주기 정리. 상한보다 정리 간격만큼 더 지났는데도 대기 중인 방을 바로 취소합니다.
+     * 타이머를 등록하지 않으므로 반복돼도 타이머가 쌓이지 않고, 만료 타이머와 겹쳐도 취소는 조건부 UPDATE 라 한 번만 됩니다.
      * 스케줄링은 SchedulingConfig 가 켭니다 (테스트에서는 꺼져 있어 직접 부릅니다).
      */
     @Scheduled(fixedDelayString = "${game.wait.sweep-interval}")
@@ -69,9 +69,9 @@ public class WaitingSessionRecovery {
                 .minus(properties.limit())
                 .minus(properties.sweepInterval());
         try {
-            int swept = restore(createdBefore);
+            int swept = expireAll(createdBefore);
             if (swept > 0) {
-                log.warn("[대기 정리] 상한이 지났는데 대기 중인 방 {}건을 취소합니다.", swept);
+                log.warn("[대기 정리] 상한이 지났는데 대기 중인 방 {}건을 취소했습니다.", swept);
             }
         } catch (RuntimeException e) {
             log.error("[대기 정리] 대기 방을 조회하지 못했습니다.", e);
@@ -91,5 +91,21 @@ public class WaitingSessionRecovery {
             }
         }
         return restored;
+    }
+
+    /** {@code createdBefore} 보다 먼저 만든 대기 방을 취소하고, 취소한 방 수를 돌려줍니다. 한 방이 실패해도 나머지는 계속합니다. */
+    int expireAll(LocalDateTime createdBefore) {
+        List<WaitingRoom> rooms = sessionRepository.findWaitingRandomRoomsCreatedBefore(createdBefore);
+        int expired = 0;
+        for (WaitingRoom room : rooms) {
+            try {
+                if (waitTimerService.expire(room.sessionId(), room.hostUserId())) {
+                    expired++;
+                }
+            } catch (RuntimeException e) {
+                log.error("[대기 정리] 취소하지 못했습니다. 다음 주기에 다시 시도합니다. sessionId={}", room.sessionId(), e);
+            }
+        }
+        return expired;
     }
 }

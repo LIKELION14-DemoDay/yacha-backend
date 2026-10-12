@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import java.time.Clock;
@@ -232,8 +233,8 @@ class WaitTimerTest {
     @DisplayName("타이머 등록이 실패해도 방 생성은 성공하고, 상한이 지난 뒤 주기 정리가 방을 취소한다")
     void sweepCancelsRoomWithoutTimer() {
         Long hostId = fixture.newUser();
-        // 방을 만들 때의 등록만 실패시키고, 주기 정리의 재등록은 그대로 둔다
-        doThrow(new IllegalStateException("등록 실패")).doCallRealMethod()
+        // 방을 만들 때의 등록을 실패시킨다
+        doThrow(new IllegalStateException("등록 실패"))
                 .when(waitTimerService).register(anyLong(), eq(hostId), any());
 
         Long sessionId = createRoom(hostId);
@@ -246,13 +247,44 @@ class WaitTimerTest {
 
         waitingSessionRecovery.sweepExpired();
 
-        verify(matchNotifier, timeout(1_000)).waitExpired(hostId, sessionId);
+        verify(matchNotifier).waitExpired(hostId, sessionId);
         assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.CANCELLED);
+        // 정리는 타이머를 다시 등록하지 않는다 (방 생성 때의 1번뿐)
+        verify(waitTimerService, times(1)).register(anyLong(), eq(hostId), any());
         // 상한 + 정리 간격이 지나지 않은 방은 건드리지 않는다
         verify(matchNotifier, after(500).never()).waitExpired(anyLong(), eq(fresh.sessionId()));
         assertThat(session(fresh.sessionId()).getStatus()).isEqualTo(SessionStatus.WAITING);
         // 취소됐으므로 방장은 새 방을 만들 수 있다
         createRoom(hostId);
+    }
+
+    @Test
+    @DisplayName("주기 정리 — 취소에 실패한 방은 다음 주기에 다시 취소하고, 다른 방은 계속 정리하며, 반복돼도 알림은 한 번이다")
+    void sweepRetriesFailedRoomOnce() {
+        Room failing = fixture.waitingRandom();
+        Room other = fixture.waitingRandom();
+        LocalDateTime now = LocalDateTime.now(clock);
+        setCreatedAt(failing.sessionId(), now.minusSeconds(10));
+        setCreatedAt(other.sessionId(), now.minusSeconds(10));
+        // 첫 정리에서만 이 방의 취소가 실패한다 (DB 가 잠깐 끊긴 경우)
+        doThrow(new IllegalStateException("DB 끊김")).doCallRealMethod()
+                .when(waitTimerService).expire(eq(failing.sessionId()), any());
+
+        waitingSessionRecovery.sweepExpired();
+
+        assertThat(session(failing.sessionId()).getStatus()).isEqualTo(SessionStatus.WAITING);
+        assertThat(session(other.sessionId()).getStatus()).isEqualTo(SessionStatus.CANCELLED);
+        verify(matchNotifier).waitExpired(other.hostUserId(), other.sessionId());
+
+        waitingSessionRecovery.sweepExpired();
+        waitingSessionRecovery.sweepExpired();
+
+        assertThat(session(failing.sessionId()).getStatus()).isEqualTo(SessionStatus.CANCELLED);
+        verify(matchNotifier, times(1)).waitExpired(failing.hostUserId(), failing.sessionId());
+        verify(matchNotifier, times(1)).waitExpired(other.hostUserId(), other.sessionId());
+        // 정리는 타이머를 등록하지 않는다
+        verify(waitTimerService, never()).register(eq(failing.sessionId()), any(), any());
+        verify(waitTimerService, never()).register(eq(other.sessionId()), any(), any());
     }
 
     private void setCreatedAt(Long sessionId, LocalDateTime createdAt) {
