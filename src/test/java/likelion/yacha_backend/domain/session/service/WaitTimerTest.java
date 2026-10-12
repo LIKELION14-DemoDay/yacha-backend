@@ -1,7 +1,6 @@
 package likelion.yacha_backend.domain.session.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -15,7 +14,6 @@ import static org.mockito.Mockito.verify;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -33,7 +31,6 @@ import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -107,16 +104,14 @@ class WaitTimerTest {
         Long hostId = fixture.newUser();
         Long sessionId = createRoom(hostId);
 
-        ArgumentCaptor<LocalDateTime> expiresAt = ArgumentCaptor.forClass(LocalDateTime.class);
-        verify(matchNotifier, timeout(AFTER_LIMIT_MILLIS)).waitPrompt(eq(hostId), eq(sessionId), eq(1L), expiresAt.capture());
-        verify(matchNotifier, timeout(AFTER_LIMIT_MILLIS)).waitPrompt(eq(hostId), eq(sessionId), eq(2L), any());
+        verify(matchNotifier, timeout(AFTER_LIMIT_MILLIS)).waitPrompt(eq(hostId), eq(sessionId), eq(1L));
+        verify(matchNotifier, timeout(AFTER_LIMIT_MILLIS)).waitPrompt(eq(hostId), eq(sessionId), eq(2L));
         verify(matchNotifier, timeout(AFTER_LIMIT_MILLIS)).waitExpired(hostId, sessionId);
 
         DebateSession session = session(sessionId);
         assertThat(session.getStatus()).isEqualTo(SessionStatus.CANCELLED);
-        assertThat(expiresAt.getValue()).isCloseTo(session.getCreatedAt().plusSeconds(3), within(1, ChronoUnit.MILLIS));
         // 상한 시각에는 팝업 대신 취소만 합니다.
-        verify(matchNotifier, never()).waitPrompt(anyLong(), eq(sessionId), eq(3L), any());
+        verify(matchNotifier, never()).waitPrompt(anyLong(), eq(sessionId), eq(3L));
         // 취소됐으므로 새 방을 만들 수 있습니다.
         createRoom(hostId);
     }
@@ -129,7 +124,7 @@ class WaitTimerTest {
 
         sessionMatchFacade.join(fixture.newUser(), sessionId);
 
-        verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitPrompt(anyLong(), eq(sessionId), anyLong(), any());
+        verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitPrompt(anyLong(), eq(sessionId), anyLong());
         verify(matchNotifier, never()).waitExpired(anyLong(), eq(sessionId));
         assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.IN_PROGRESS);
     }
@@ -142,7 +137,7 @@ class WaitTimerTest {
 
         sessionMatchFacade.cancel(hostId, sessionId);
 
-        verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitPrompt(anyLong(), eq(sessionId), anyLong(), any());
+        verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitPrompt(anyLong(), eq(sessionId), anyLong());
         verify(matchNotifier, never()).waitExpired(anyLong(), eq(sessionId));
     }
 
@@ -154,7 +149,7 @@ class WaitTimerTest {
 
         sessionMatchFacade.convertToAi(hostId, sessionId);
 
-        verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitPrompt(anyLong(), eq(sessionId), anyLong(), any());
+        verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitPrompt(anyLong(), eq(sessionId), anyLong());
         verify(matchNotifier, never()).waitExpired(anyLong(), eq(sessionId));
         assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.IN_PROGRESS);
     }
@@ -170,7 +165,7 @@ class WaitTimerTest {
             sending.countDown();
             release.await(5, TimeUnit.SECONDS);
             return null;
-        }).when(matchNotifier).waitPrompt(eq(hostId), anyLong(), eq(1L), any());
+        }).when(matchNotifier).waitPrompt(eq(hostId), anyLong(), eq(1L));
         Long sessionId = createRoom(hostId);
 
         // 1초 팝업이 WAITING 을 확인하고 보내는 중
@@ -186,9 +181,9 @@ class WaitTimerTest {
         join.get(5, TimeUnit.SECONDS);
 
         InOrder order = inOrder(matchNotifier);
-        order.verify(matchNotifier).waitPrompt(eq(hostId), eq(sessionId), eq(1L), any());
+        order.verify(matchNotifier).waitPrompt(eq(hostId), eq(sessionId), eq(1L));
         order.verify(matchNotifier).matched(hostId, sessionId);
-        verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitPrompt(anyLong(), eq(sessionId), eq(2L), any());
+        verify(matchNotifier, after(AFTER_LIMIT_MILLIS).never()).waitPrompt(anyLong(), eq(sessionId), eq(2L));
         assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.IN_PROGRESS);
     }
 
@@ -204,8 +199,8 @@ class WaitTimerTest {
         waitTimerService.prompt(waiting.sessionId(), waiting.hostUserId(), 30, now.minusSeconds(1));
         waitTimerService.prompt(started.sessionId(), started.hostUserId(), 30, now.plusMinutes(5));
 
-        verify(matchNotifier, never()).waitPrompt(anyLong(), eq(waiting.sessionId()), eq(30L), any());
-        verify(matchNotifier, never()).waitPrompt(anyLong(), eq(started.sessionId()), eq(30L), any());
+        verify(matchNotifier, never()).waitPrompt(anyLong(), eq(waiting.sessionId()), eq(30L));
+        verify(matchNotifier, never()).waitPrompt(anyLong(), eq(started.sessionId()), eq(30L));
     }
 
     @Test
@@ -225,9 +220,9 @@ class WaitTimerTest {
         assertThat(restored).isGreaterThanOrEqualTo(2);
         verify(matchNotifier, timeout(1_000)).waitExpired(overdue.hostUserId(), overdue.sessionId());
         // 지난 팝업(1초)은 건너뛰고 2초 팝업부터, 상한에 취소
-        verify(matchNotifier, timeout(AFTER_LIMIT_MILLIS)).waitPrompt(eq(recent.hostUserId()), eq(recent.sessionId()), eq(2L), any());
+        verify(matchNotifier, timeout(AFTER_LIMIT_MILLIS)).waitPrompt(eq(recent.hostUserId()), eq(recent.sessionId()), eq(2L));
         verify(matchNotifier, timeout(AFTER_LIMIT_MILLIS)).waitExpired(recent.hostUserId(), recent.sessionId());
-        verify(matchNotifier, never()).waitPrompt(anyLong(), eq(recent.sessionId()), eq(1L), any());
+        verify(matchNotifier, never()).waitPrompt(anyLong(), eq(recent.sessionId()), eq(1L));
         verify(matchNotifier, after(500).never()).waitExpired(anyLong(), eq(afterBoot.sessionId()));
         assertThat(session(overdue.sessionId()).getStatus()).isEqualTo(SessionStatus.CANCELLED);
         assertThat(session(afterBoot.sessionId()).getStatus()).isEqualTo(SessionStatus.WAITING);

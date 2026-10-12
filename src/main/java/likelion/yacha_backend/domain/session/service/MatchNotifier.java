@@ -1,9 +1,6 @@
 package likelion.yacha_backend.domain.session.service;
 
-import java.time.Clock;
-import java.time.LocalDateTime;
 import likelion.yacha_backend.domain.session.dto.MatchNotice;
-import likelion.yacha_backend.global.util.DateTimes;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
@@ -21,16 +18,14 @@ public class MatchNotifier {
     static final String MATCH_QUEUE = "/queue/match";
 
     private final SimpMessagingTemplate messagingTemplate;
-    private final Clock clock;
 
     public void matched(Long hostUserId, Long sessionId) {
         send(hostUserId, MatchNotice.matched(sessionId));
     }
 
-    /** 대기 팝업. {@code expiresAt} 은 KST 시각이고 오프셋을 붙여 보냅니다. */
-    public void waitPrompt(Long hostUserId, Long sessionId, long waitedSeconds, LocalDateTime expiresAt) {
-        send(hostUserId, MatchNotice.waitPrompt(sessionId, waitedSeconds,
-                DateTimes.withOffset(expiresAt, clock.getZone())));
+    /** 대기 팝업. 5분 상한은 사용자에게 보여 주지 않으므로 기다린 초만 보냅니다. */
+    public void waitPrompt(Long hostUserId, Long sessionId, long waitedSeconds) {
+        send(hostUserId, MatchNotice.waitPrompt(sessionId, waitedSeconds));
     }
 
     public void waitExpired(Long hostUserId, Long sessionId) {
