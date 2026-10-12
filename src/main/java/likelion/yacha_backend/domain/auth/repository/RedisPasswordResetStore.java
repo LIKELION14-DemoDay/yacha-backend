@@ -13,12 +13,17 @@ import org.springframework.stereotype.Repository;
  * Redis 구현
  * 두 값 모두 TTL 로 알아서 사라지므로 정리 작업이 필요 없음
  *
- *   password-reset:{토큰}        → userId   (10분)
- *   password-reset-user:{userId}  → 토큰     (10분)  사용자당 마지막 토큰
- *   password-reset-send:{이메일} → "1"      (1분)
- *   password-reset-code:{이메일} → { code, attempts }  (3분)  해시
- *   password-reset-fail:{이메일}         → 모든 IP가 틀린 횟수  (처음 틀린 때부터 24시간)
- *   password-reset-fail-ip:{이메일}:{IP} → 그 IP가 틀린 횟수    (처음 틀린 때부터 24시간)
+ *   password-reset:<토큰>        → userId   (10분)
+ *   password-reset-user:<userId>  → 토큰     (10분)  사용자당 마지막 토큰
+ *   password-reset-send:<이메일> → "1"      (1분)
+ *   password-reset-code:{<이메일>} → { code, attempts }  (3분)  해시
+ *   password-reset-fail:{<이메일>}         → 모든 IP가 틀린 횟수  (처음 틀린 때부터 24시간)
+ *   password-reset-fail-ip:{<이메일>}:<IP> → 그 IP가 틀린 횟수    (처음 틀린 때부터 24시간)
+ *
+ * 아래 세 키는 이메일을 중괄호로 감쌈 (Redis 해시 태그. 키에 실제로 { } 가 들어감)
+ * 인증번호 확인 스크립트가 세 키를 한 번에 다루는데, Redis 클러스터에서는 한 스크립트의 키가 모두 같은 슬롯에 있어야 함
+ * 해시 태그가 있으면 중괄호 안의 값(이메일)만으로 슬롯을 정하므로 세 키가 같은 슬롯에 놓임
+ * 지금은 Redis 한 대라 없어도 동작하지만, 클러스터로 바꿀 때 CROSSSLOT 오류로 인증번호 확인이 전부 실패하는 것을 미리 막음
  */
 @Repository
 @Profile("!test")
@@ -125,14 +130,14 @@ public class RedisPasswordResetStore implements PasswordResetStore {
 
     @Override
     public void saveCode(String email, String code) {
-        redisTemplate.execute(SAVE_CODE, List.of(CODE_PREFIX + email),
+        redisTemplate.execute(SAVE_CODE, List.of(codeKey(email)),
                 code, String.valueOf(properties.codeTtl().toMillis()));
     }
 
     @Override
     public CodeCheck checkCode(String email, String clientIp, String code) {
         Long result = redisTemplate.execute(CHECK_CODE,
-                List.of(CODE_PREFIX + email, IP_FAIL_PREFIX + email + ":" + clientIp, FAIL_PREFIX + email),
+                List.of(codeKey(email), ipFailKey(email, clientIp), failKey(email)),
                 code, String.valueOf(properties.maxCodeAttempts()),
                 String.valueOf(properties.ipFailureLimit()), String.valueOf(properties.emailFailureLimit()),
                 String.valueOf(properties.failureWindow().toMillis()));
@@ -143,5 +148,23 @@ public class RedisPasswordResetStore implements PasswordResetStore {
             return CodeCheck.LOCKED;
         }
         return result == 1L ? CodeCheck.MATCHED : CodeCheck.MISMATCHED;
+    }
+
+    // 인증번호 확인 스크립트가 함께 다루는 세 키. 이메일을 해시 태그로 감싸 같은 슬롯에 놓음 (클래스 주석 참고)
+
+    static String codeKey(String email) {
+        return CODE_PREFIX + hashTag(email);
+    }
+
+    static String failKey(String email) {
+        return FAIL_PREFIX + hashTag(email);
+    }
+
+    static String ipFailKey(String email, String clientIp) {
+        return IP_FAIL_PREFIX + hashTag(email) + ":" + clientIp;
+    }
+
+    private static String hashTag(String email) {
+        return "{" + email + "}";
     }
 }
