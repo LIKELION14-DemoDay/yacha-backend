@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +59,9 @@ class PhaseSchedulerTest extends TimerTestSupport {
     @Autowired
     private SessionMatchFacade sessionMatchFacade;
 
+    @Autowired
+    private Clock clock;
+
     private final List<Room> rooms = new ArrayList<>();
     private final List<Long> sessionIds = new ArrayList<>();
 
@@ -95,7 +99,7 @@ class PhaseSchedulerTest extends TimerTestSupport {
     void revealsWithoutChat() {
         Room room = startedRoom(57);
         Game game = game(room);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         game.saveMemo(room.hostUserId(), "거짓말은 신뢰를 무너뜨린다", now);
         game.saveMemo(room.opponentUserId(), "선의의 거짓말도 있다", now);
 
