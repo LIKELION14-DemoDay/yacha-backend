@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -16,6 +17,7 @@ import java.util.List;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
+import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,7 +35,8 @@ class InProgressSessionCleanerFailureTest {
 
     private final DebateSessionRepository sessionRepository = mock(DebateSessionRepository.class);
     private final InProgressSessionCleaner cleaner =
-            new InProgressSessionCleaner(sessionRepository, new NoOpTransactionManager(), CLOCK);
+            new InProgressSessionCleaner(sessionRepository, mock(GameRegistry.class), mock(PhaseScheduler.class),
+                    new InProgressSweepProperties(Duration.ofMinutes(1)), new NoOpTransactionManager(), CLOCK);
 
     private static DebateSession session(Long id) {
         DebateSession session = mock(DebateSession.class);
