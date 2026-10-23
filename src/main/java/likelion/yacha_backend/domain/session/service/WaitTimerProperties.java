@@ -13,12 +13,14 @@ import org.springframework.validation.annotation.Validated;
  *
  * @param promptInterval {@code WAIT_PROMPT} 간격 (30초)
  * @param limit          대기 상한. 지나면 방을 취소하고 {@code WAIT_EXPIRED} (5분)
+ * @param sweepInterval  주기 정리 간격 (1분). 상한보다 이만큼 더 지났는데도 대기 중인 방을 취소합니다
  */
 @Validated
 @ConfigurationProperties(prefix = "game.wait")
 public record WaitTimerProperties(
         @NotNull Duration promptInterval,
-        @NotNull Duration limit
+        @NotNull Duration limit,
+        @NotNull Duration sweepInterval
 ) {
 
     /**
@@ -28,6 +30,12 @@ public record WaitTimerProperties(
     @AssertTrue(message = "game.wait.prompt-interval 은 1초 이상이어야 합니다.")
     public boolean isPromptIntervalValid() {
         return promptInterval == null || promptInterval.compareTo(Duration.ofSeconds(1)) >= 0;
+    }
+
+    /** 0 이하면 정리 작업이 쉬지 않고 돕니다. */
+    @AssertTrue(message = "game.wait.sweep-interval 은 0 보다 커야 합니다.")
+    public boolean isSweepIntervalPositive() {
+        return sweepInterval == null || (!sweepInterval.isZero() && !sweepInterval.isNegative());
     }
 
     /** 0 이하면 방을 만들자마자 취소합니다. */
