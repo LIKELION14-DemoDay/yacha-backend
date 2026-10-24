@@ -198,7 +198,13 @@ public class SessionFixture {
         if (room.opponentUserId() != null) {
             participantIdByUserId.put(room.opponentUserId(), room.opponentParticipantId());
         }
-        gameRegistry.create(room.sessionId(), startedAt, participantIdByUserId);
+        // 봇전이면 매칭 성사 처리처럼 AI 참가자 id 를 게임에 넘깁니다 (봇 글을 기록할 때 씀).
+        Long aiParticipantId = participantRepository.findAllBySession_Id(room.sessionId()).stream()
+                .filter(DebateParticipant::isAi)
+                .map(DebateParticipant::getId)
+                .findFirst()
+                .orElse(null);
+        gameRegistry.create(room.sessionId(), startedAt, participantIdByUserId, aiParticipantId);
     }
 
     private LocalDateTime startedAt(long elapsedSeconds) {

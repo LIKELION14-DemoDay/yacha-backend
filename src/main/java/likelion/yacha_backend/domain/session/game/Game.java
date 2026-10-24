@@ -37,6 +37,9 @@ import lombok.Getter;
  * 양쪽 글을 {@link MessageType#ARGUMENT} 메시지로 기록합니다 (주장 63초, 반론 143초). 채팅은 반론이 공개된 뒤에만
  * 받고, 기록하기 전에 공개부터 하므로 스케줄러보다 채팅이 먼저 와도 반론이 앞 {@code seqNo} 를 받습니다.
  *
+ * <p><b>봇</b> — 봇전은 봇 몫의 주장 · 반론 · 채팅을 AI 참가자 id 로 기록합니다({@link #saveBotMemo} ·
+ * {@link #appendBotChat}). 규칙(구간 · 글자 수 · 채팅 수)은 사람과 같고, 공개 · 순서 · 판정 입력도 같습니다.
+ *
  * <p><b>채팅 · 주장 본문을 로그 · 예외 메시지에 넣지 마세요</b> (명세 1-5).
  */
 public class Game {
@@ -86,6 +89,8 @@ public class Game {
     private Verdict verdict;
     /** 판정을 시작한 횟수. 처음 판정 + 재판정입니다. */
     private int judgeRuns;
+    /** 봇전의 봇 글 진행 상태. 사람전이면 null 입니다. */
+    private final BotProgress botProgress;
 
     Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId, Long aiParticipantId,
          int chatMaxLength, int maxChatsPerParticipant, int argumentMaxLength, int rebuttalMaxLength) {
@@ -93,6 +98,7 @@ public class Game {
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
         this.participantIdByUserId = Map.copyOf(participantIdByUserId);
         this.aiParticipantId = aiParticipantId;
+        this.botProgress = aiParticipantId == null ? null : new BotProgress();
         this.chatMaxLength = chatMaxLength;
         this.maxChatsPerParticipant = maxChatsPerParticipant;
         this.argumentMaxLength = argumentMaxLength;
@@ -108,7 +114,19 @@ public class Game {
      * @param now 서버가 받은 시각. 구간은 이 시각으로 판단합니다
      */
     public synchronized GameMessage appendChat(Long userId, String content, LocalDateTime now) {
-        Long participantId = checkWritable(userId);
+        return appendChatOf(checkWritable(userId), content, now);
+    }
+
+    /**
+     * 봇전의 봇 채팅을 기록합니다. 규칙은 사람 채팅과 같습니다 (구간 · 글자 수 · 참가자별 채팅 수).
+     *
+     * @throws IllegalStateException 사람전 (AI 참가자가 없음)
+     */
+    public synchronized GameMessage appendBotChat(String content, LocalDateTime now) {
+        return appendChatOf(checkBotWritable(), content, now);
+    }
+
+    private GameMessage appendChatOf(Long participantId, String content, LocalDateTime now) {
         revealArguments(now);
         if (!DebatePhase.isChatOpen(startedAt, now)) {
             throw new BusinessException(SessionErrorCode.INVALID_PHASE);
@@ -135,7 +153,35 @@ public class Game {
      * @param now 서버가 받은 시각. 구간은 이 시각으로 판단합니다
      */
     public synchronized GameMemo saveMemo(Long userId, String content, LocalDateTime now) {
-        Long participantId = checkWritable(userId);
+        return saveMemoOf(checkWritable(userId), content, now);
+    }
+
+    /**
+     * 봇전의 봇 주장 · 반론을 제출합니다. 규칙은 사람 제출과 같습니다 (작성 구간 · 유예 3초 · 공개 전 · 글자 수).
+     *
+     * @throws IllegalStateException 사람전 (AI 참가자가 없음)
+     */
+    public synchronized GameMemo saveBotMemo(String content, LocalDateTime now) {
+        return saveMemoOf(checkBotWritable(), content, now);
+    }
+
+    /** 봇전의 봇 글 진행 상태. 사람전이면 null 입니다. */
+    public BotProgress botProgress() {
+        return botProgress;
+    }
+
+    /** 봇이 보낸 채팅 수. 사람전이면 0 입니다. */
+    public synchronized int botChatCount() {
+        return aiParticipantId == null ? 0 : chatCountByParticipantId.getOrDefault(aiParticipantId, 0);
+    }
+
+    /** 사람 참가자가 채팅을 한 번이라도 보냈는가. 봇의 첫마디를 정할 때 씁니다. */
+    public synchronized boolean hasHumanChat() {
+        return chatCountByParticipantId.entrySet().stream()
+                .anyMatch(entry -> !entry.getKey().equals(aiParticipantId) && entry.getValue() > 0);
+    }
+
+    private GameMemo saveMemoOf(Long participantId, String content, LocalDateTime now) {
         DebatePhase phase = DebatePhase.memoPhaseAt(startedAt, now);
         if (phase == null || revealedPhases.contains(phase)) {
             throw new BusinessException(SessionErrorCode.INVALID_PHASE);
@@ -291,6 +337,17 @@ public class Game {
             throw new BusinessException(SessionErrorCode.NOT_PARTICIPANT);
         }
         return participantId;
+    }
+
+    /** 봇 글을 쓸 수 있는지 확인합니다. 끝난 게임이면 사람과 같이 SESSION_NOT_IN_PROGRESS 입니다. */
+    private Long checkBotWritable() {
+        if (aiParticipantId == null) {
+            throw new IllegalStateException("봇전이 아닙니다. sessionId=" + sessionId);
+        }
+        if (finished) {
+            throw new BusinessException(SessionErrorCode.SESSION_NOT_IN_PROGRESS);
+        }
+        return aiParticipantId;
     }
 
     /** 비어 있거나 공백뿐인 메시지는 받지 않습니다. 요청 본문에 {@code content} 가 빠지면 null 로 들어옵니다. */
