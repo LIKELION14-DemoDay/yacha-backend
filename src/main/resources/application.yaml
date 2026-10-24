@@ -131,8 +131,10 @@ game:
     sweep-interval: 1m
   # 판정 (260초에 채팅이 끝나면 시작)
   judge:
-    # 최대 시도 횟수. 모두 실패하면 FAILED 이고, /result 를 다시 부르면 다시 판정함
+    # 판정 한 번의 최대 시도 횟수. 모두 실패하면 FAILED
     max-attempts: 3
+    # FAILED 뒤 /result 를 다시 부를 때 재판정하는 횟수. 다 쓰면 FAILED 를 그대로 줌 (폴링마다 LLM 을 부르지 않게)
+    max-rejudges: 2
     # 결과 화면 보관 시간. 지나면 점수 · 요약은 지우고 승패만 남음
     result-retention: 10m
 

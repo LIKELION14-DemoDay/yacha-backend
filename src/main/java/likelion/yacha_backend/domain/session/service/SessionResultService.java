@@ -31,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <tr><th>상황</th><th>응답</th></tr>
  *   <tr><td>정상 종료, 판정 중</td><td>{@code PENDING}</td></tr>
  *   <tr><td>정상 종료, 판정 끝 (보관 시간 안)</td><td>{@code READY} + 점수 · 요약</td></tr>
- *   <tr><td>정상 종료, 판정 실패 (보관 시간 안)</td><td>판정을 다시 시작하고 {@code PENDING}</td></tr>
+ *   <tr><td>정상 종료, 판정 실패 (보관 시간 안)</td><td>판정을 다시 시작하고 {@code PENDING}. 재판정 횟수를 다 썼으면 {@code FAILED}</td></tr>
  *   <tr><td>DB 에 승패가 있음 (보관 시간 뒤 · 몰수패)</td><td>{@code READY} + 승패만</td></tr>
  *   <tr><td>그 밖 (재시작으로 판정 못 함 · ABORTED · 게스트끼리 보관 시간 뒤)</td><td>{@code FAILED}</td></tr>
  * </table>
@@ -63,8 +63,8 @@ public class SessionResultService {
             if (status == JudgeStatus.READY) {
                 return judged(finishReason, game.get().verdict(), participants, userId);
             }
-            if (status == JudgeStatus.FAILED) {
-                judgeService.start(sessionId);
+            if (status == JudgeStatus.FAILED && !judgeService.start(sessionId)) {
+                return SessionResultResponse.failed(finishReason);
             }
             // 판정 시작 전(260초 종료 처리 직후의 아주 짧은 사이)도 곧 판정이 시작되므로 PENDING 입니다.
             return SessionResultResponse.pending();

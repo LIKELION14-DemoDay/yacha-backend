@@ -20,7 +20,7 @@ class GameJudgingTest {
     @Test
     @DisplayName("끝나지 않은 게임은 판정할 수 없다")
     void notFinished() {
-        assertThatThrownBy(newGame()::startJudging).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> newGame().startJudging(3)).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -30,15 +30,15 @@ class GameJudgingTest {
         game.finish();
 
         assertThat(game.judgeStatus()).isNull();
-        assertThat(game.startJudging()).isTrue();
+        assertThat(game.startJudging(3)).isTrue();
         assertThat(game.judgeStatus()).isEqualTo(JudgeStatus.PENDING);
-        assertThat(game.startJudging()).isFalse();
+        assertThat(game.startJudging(3)).isFalse();
 
         Verdict verdict = Verdict.of(List.of(11L, 12L), VerdictTest.result(11L, 20, 12L, 10));
         game.completeJudging(verdict);
         assertThat(game.judgeStatus()).isEqualTo(JudgeStatus.READY);
         assertThat(game.verdict()).isSameAs(verdict);
-        assertThat(game.startJudging()).isFalse();
+        assertThat(game.startJudging(3)).isFalse();
     }
 
     @Test
@@ -46,11 +46,25 @@ class GameJudgingTest {
     void restartsAfterFailure() {
         Game game = newGame();
         game.finish();
-        game.startJudging();
+        game.startJudging(3);
 
         game.failJudging();
 
         assertThat(game.judgeStatus()).isEqualTo(JudgeStatus.FAILED);
-        assertThat(game.startJudging()).isTrue();
+        assertThat(game.startJudging(3)).isTrue();
+    }
+
+    @Test
+    @DisplayName("시작한 횟수가 상한에 이르면 실패한 뒤에도 다시 시작하지 않는다")
+    void stopsAtMaxRuns() {
+        Game game = newGame();
+        game.finish();
+        assertThat(game.startJudging(2)).isTrue();
+        game.failJudging();
+        assertThat(game.startJudging(2)).isTrue();
+        game.failJudging();
+
+        assertThat(game.startJudging(2)).isFalse();
+        assertThat(game.judgeStatus()).isEqualTo(JudgeStatus.FAILED);
     }
 }

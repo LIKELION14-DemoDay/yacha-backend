@@ -84,6 +84,8 @@ public class Game {
     private JudgeStatus judgeStatus;
     /** 판정이 끝나면({@code READY}) 들어갑니다. */
     private Verdict verdict;
+    /** 판정을 시작한 횟수. 처음 판정 + 재판정입니다. */
+    private int judgeRuns;
 
     Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId, Long aiParticipantId,
          int chatMaxLength, int maxChatsPerParticipant, int argumentMaxLength, int rebuttalMaxLength) {
@@ -237,16 +239,21 @@ public class Game {
      * 판정을 시작합니다. 처음이거나 실패({@code FAILED})한 뒤에만 {@code PENDING} 으로 바꾸고 true 를 돌려줍니다.
      * 이미 판정 중이거나 끝났으면 false 라, 260초 종료와 결과 재요청이 겹쳐도 판정은 한 번만 돕니다.
      *
+     * <p>시작한 횟수가 {@code maxRuns} 에 이르면 실패한 뒤에도 false 입니다. 결과 화면 폴링마다 재판정이 돌아
+     * LLM 호출이 끝없이 늘지 않게 합니다.
+     *
+     * @param maxRuns 판정을 시작할 수 있는 최대 횟수 (처음 판정 + 재판정)
      * @throws IllegalStateException 아직 끝나지 않은 게임. 판정은 대화가 더 늘지 않을 때만 합니다
      */
-    public synchronized boolean startJudging() {
+    public synchronized boolean startJudging(int maxRuns) {
         if (!finished) {
             throw new IllegalStateException("끝나지 않은 게임은 판정할 수 없습니다. sessionId=" + sessionId);
         }
-        if (judgeStatus == JudgeStatus.PENDING || judgeStatus == JudgeStatus.READY) {
+        if (judgeStatus == JudgeStatus.PENDING || judgeStatus == JudgeStatus.READY || judgeRuns >= maxRuns) {
             return false;
         }
         judgeStatus = JudgeStatus.PENDING;
+        judgeRuns++;
         return true;
     }
 

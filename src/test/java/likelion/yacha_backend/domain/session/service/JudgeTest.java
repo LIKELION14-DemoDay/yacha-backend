@@ -246,6 +246,24 @@ class JudgeTest extends TimerTestSupport {
     }
 
     @Test
+    @DisplayName("재판정 2번까지 모두 실패하면 결과를 다시 조회해도 판정하지 않고 FAILED 를 준다")
+    void stopsRejudgingAtLimit() throws Exception {
+        Room room = finished(fixture.memberVsGuest(IN_CHAT));
+        doThrow(new IllegalStateException("AI 응답 없음")).when(judge).judge(any());
+
+        judgeService.start(room.sessionId());
+        for (int rejudge = 1; rejudge <= 2; rejudge++) {
+            waitUntil(() -> game(room).judgeStatus() == JudgeStatus.FAILED);
+            assertThat(judgeStatusOf(room.hostUserId(), room)).isEqualTo("PENDING");
+        }
+        waitUntil(() -> game(room).judgeStatus() == JudgeStatus.FAILED);
+
+        assertThat(judgeStatusOf(room.hostUserId(), room)).isEqualTo("FAILED");
+        assertThat(judgeStatusOf(room.opponentUserId(), room)).isEqualTo("FAILED");
+        verify(judge, times(9)).judge(any());
+    }
+
+    @Test
     @DisplayName("보관 시간이 지나면 게임을 지우고 승패만 준다 — 기록이 없는 게스트 쪽은 null")
     void afterRetention() throws Exception {
         Room room = finished(fixture.memberVsGuest(IN_CHAT));

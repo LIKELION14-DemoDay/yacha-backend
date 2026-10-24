@@ -37,7 +37,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <pre>
  * start ─▶ 판정 실행기 ─▶ Judge (최대 game.judge.max-attempts 번)
  *                          ├─ 성공: 총점 비교 → DB 승패 기록 → 메모리에 READY + 점수 · 요약
- *                          └─ 실패: 메모리에 FAILED (결과를 다시 조회하면 다시 시작)
+ *                          └─ 실패: 메모리에 FAILED (결과를 다시 조회하면 game.judge.max-rejudges 번까지 다시 시작)
  *          끝나면 결과 화면 보관 시간(game.judge.result-retention) 뒤 게임째 메모리에서 지움
  * </pre>
  *
@@ -83,13 +83,14 @@ public class JudgeService {
     }
 
     /**
-     * 판정을 시작합니다. 260초 종료 처리와, 실패한 판정의 결과를 다시 조회할 때 부릅니다.
-     * 게임이 메모리에 없거나(재시작 · 보관 시간 경과) 이미 판정 중 · 판정 완료면 아무것도 하지 않습니다.
+     * 판정을 시작하고, 시작했으면 true 를 돌려줍니다. 260초 종료 처리와, 실패한 판정의 결과를 다시 조회할 때 부릅니다.
+     * 게임이 메모리에 없거나(재시작 · 보관 시간 경과) 이미 판정 중 · 판정 완료거나, 재판정 횟수를 다 썼으면
+     * 아무것도 하지 않고 false 입니다.
      */
-    public void start(Long sessionId) {
+    public boolean start(Long sessionId) {
         Game game = gameRegistry.find(sessionId).orElse(null);
-        if (game == null || !game.startJudging()) {
-            return;
+        if (game == null || !game.startJudging(1 + properties.maxRejudges())) {
+            return false;
         }
         try {
             judgeExecutor.execute(() -> run(sessionId, game));
@@ -98,6 +99,7 @@ public class JudgeService {
             game.failJudging();
             scheduleRemoval(sessionId);
         }
+        return true;
     }
 
     private void run(Long sessionId, Game game) {
