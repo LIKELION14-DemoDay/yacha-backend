@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * 방 생성 · 입장 · 취소 · 봇전 시작의 진입점. DB 작업은 {@link SessionCommandService} 의 트랜잭션에서 하고,
- * <b>커밋이 끝난 뒤에</b> 대기 타이머 등록 · 정리, 게임 생성, 방장 알림을 합니다.
+ * <b>커밋이 끝난 뒤에</b> 대기 타이머 등록 · 정리, 게임 생성 · 구간 타이머 등록, 방장 알림을 합니다.
  *
  * <p>트랜잭션 안에서 하면 두 가지 문제가 생깁니다.
  * <ul>
@@ -29,6 +29,7 @@ public class SessionMatchFacade {
     private final GameRegistry gameRegistry;
     private final MatchNotifier matchNotifier;
     private final WaitTimerService waitTimerService;
+    private final PhaseScheduler phaseScheduler;
 
     /**
      * 방 생성 → (커밋) → 대기 타이머 등록 (30초마다 팝업, 5분이면 취소).
@@ -78,8 +79,20 @@ public class SessionMatchFacade {
         waitTimerService.cancel(sessionId);
     }
 
+    /**
+     * 게임을 만들고 시간표(60~260초) 타이머를 등록합니다. 봇전도 같은 시간표입니다.
+     *
+     * <p>세션은 이미 {@code IN_PROGRESS} 로 커밋됐으므로 여기서 실패해도 입장 · 봇전 · AI 전환은 성공으로 응답합니다
+     * ({@link #create} 와 같은 이유). 게임이나 타이머 없이 남은 세션은 주기 정리
+     * ({@link InProgressSessionCleaner#sweepOverdue}) 가 시간표가 끝난 뒤에 끝냅니다.
+     */
     private void createGame(Matched matched) {
-        gameRegistry.create(matched.sessionId(), matched.startedAt(), matched.participantIdByUserId(),
-                matched.aiParticipantId());
+        try {
+            gameRegistry.create(matched.sessionId(), matched.startedAt(), matched.participantIdByUserId(),
+                    matched.aiParticipantId());
+            phaseScheduler.register(matched.sessionId(), matched.startedAt());
+        } catch (RuntimeException e) {
+            log.error("[게임 생성] 게임 · 시간표를 만들지 못했습니다. sessionId={}", matched.sessionId(), e);
+        }
     }
 }
