@@ -35,8 +35,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>작업은 실행할 때 게임을 다시 확인하고, 없거나 끝난 게임이면 아무것도 하지 않습니다.
  * 종료는 {@code finishIfInProgress} 조건부 UPDATE 라 나가기 · 끊김 처리와 겹쳐도 한쪽만 끝냅니다.
  *
- * <p>정상 종료된 게임은 판정이 대화 전체를 읽어야 하므로 메모리에서 지우지 않고 쓰기만 막습니다 ({@link Game#finish()}).
- * 판정 시작 · 결과 보관 뒤 정리는 판정 · 결과 작업에서 붙입니다.
+ * <p>정상 종료된 게임은 판정이 대화 전체를 읽어야 하므로 바로 지우지 않고 쓰기만 막습니다 ({@link Game#finish()}).
+ * 끝난 게임이 메모리에 쌓이지 않게 보관 시간({@code game.in-progress.finished-retention}) 뒤 게임째 지웁니다.
  */
 @Service
 public class PhaseScheduler {
@@ -45,16 +45,18 @@ public class PhaseScheduler {
     private final GameRegistry gameRegistry;
     private final GameMessageService gameMessageService;
     private final DebateSessionRepository sessionRepository;
+    private final InProgressSweepProperties properties;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
     public PhaseScheduler(GameTimers gameTimers, GameRegistry gameRegistry, GameMessageService gameMessageService,
-                          DebateSessionRepository sessionRepository, PlatformTransactionManager transactionManager,
-                          Clock clock) {
+                          DebateSessionRepository sessionRepository, InProgressSweepProperties properties,
+                          PlatformTransactionManager transactionManager, Clock clock) {
         this.gameTimers = gameTimers;
         this.gameRegistry = gameRegistry;
         this.gameMessageService = gameMessageService;
         this.sessionRepository = sessionRepository;
+        this.properties = properties;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -114,6 +116,8 @@ public class PhaseScheduler {
      * <p>타이머는 한 번만 돌아서, 여기서 DB 가 실패하면 세션이 {@code IN_PROGRESS} 로 남습니다. 그런 세션은
      * 주기 정리({@link InProgressSessionCleaner#sweepOverdue})가 이 메서드를 다시 불러 끝냅니다.
      * 종료는 조건부 UPDATE 라 여러 번 불러도 알림은 한 번만 나갑니다.
+     *
+     * <p>끝난 게임은 보관 시간 뒤 메모리에서 지웁니다. 메모리에만 있는 일이라 DB 가 끊겨도 실패하지 않습니다.
      */
     void finish(Long sessionId) {
         LocalDateTime now = LocalDateTime.now(clock);
@@ -134,6 +138,7 @@ public class PhaseScheduler {
                 gameMessageService.broadcastEvent(sessionId, SessionFinishedEvent.of(FinishReason.COMPLETED));
             }
         });
+        gameTimers.schedule(sessionId, now.plus(properties.finishedRetention()), () -> gameRegistry.remove(sessionId));
     }
 
     /** 메모리에 있고 아직 끝나지 않은 게임. 없으면 시작 전 · 종료 · 서버 재시작입니다. */

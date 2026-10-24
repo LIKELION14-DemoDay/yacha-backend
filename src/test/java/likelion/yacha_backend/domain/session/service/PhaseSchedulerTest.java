@@ -151,6 +151,18 @@ class PhaseSchedulerTest extends TimerTestSupport {
     }
 
     @Test
+    @DisplayName("260초에 끝난 게임은 보관 시간(3초) 뒤 메모리에서 지운다")
+    void removesFinishedGameAfterRetention() {
+        Room room = startedRoom(257);
+
+        register(room);
+
+        verify(gameMessageService, timeout(WAIT_MILLIS)).broadcastEvent(eq(room.sessionId()), phaseChanged(DebatePhase.JUDGING));
+        assertThat(gameRegistry.find(room.sessionId())).isPresent();
+        waitUntil(() -> gameRegistry.find(room.sessionId()).isEmpty());
+    }
+
+    @Test
     @DisplayName("이미 끝난 게임이면 260초에 아무것도 하지 않는다")
     void skipsFinishedGame() {
         Room room = startedRoom(257);
