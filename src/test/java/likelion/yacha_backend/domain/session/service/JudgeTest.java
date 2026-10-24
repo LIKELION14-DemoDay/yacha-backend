@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -59,6 +60,9 @@ class JudgeTest extends TimerTestSupport {
 
     @Autowired
     private JudgeService judgeService;
+
+    @Autowired
+    private Clock clock;
 
     @Autowired
     private GameRegistry gameRegistry;
@@ -158,7 +162,7 @@ class JudgeTest extends TimerTestSupport {
         Room room = fixture.memberVsGuest(IN_CHAT);
         rooms.add(room);
         Game game = game(room);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         game.revealArguments(now);
         game.appendChat(room.hostUserId(), "첫 채팅", now);
         game.appendChat(room.opponentUserId(), "두 번째 채팅", now);
