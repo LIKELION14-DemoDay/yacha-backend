@@ -196,18 +196,11 @@ public class JudgeService {
     private void recordResults(Long sessionId, Verdict verdict) {
         for (DebateParticipant participant : participantRepository.findAllBySession_Id(sessionId)) {
             DebateResult result = verdict.resultOf(participant.getId());
-            if (result == null || participant.getResult() != null || !keepsRecord(participant)) {
+            if (result == null || participant.getResult() != null || !participant.keepsRecord()) {
                 continue;
             }
             participant.recordResult(result);
         }
-    }
-
-    private static boolean keepsRecord(DebateParticipant participant) {
-        if (participant.isAi()) {
-            return true;
-        }
-        return participant.getUser() != null && !participant.getUser().isGuest();
     }
 
     /**
