@@ -28,7 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *  60초  PHASE_CHANGED(REVEAL)       63초  주장 공개 (ARGUMENT)
  *  80초  PHASE_CHANGED(REBUTTAL)    140초  PHASE_CHANGED(CHAT)
  * 143초  반론 공개 (ARGUMENT)        230초  FINAL_NOTICE
- * 260초  세션 종료(COMPLETED) → PHASE_CHANGED(JUDGING) · SESSION_FINISHED
+ * 260초  세션 종료(COMPLETED) → PHASE_CHANGED(JUDGING) · SESSION_FINISHED → 판정 시작
  * </pre>
  *
  * <p><b>공개 · 전송은 게임 락 안에서</b> 합니다 ({@link GameMessageService} 와 같은 규칙). 채팅 · 제출 처리도
@@ -37,8 +37,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>작업은 실행할 때 게임을 다시 확인하고, 없거나 끝난 게임이면 아무것도 하지 않습니다.
  * 종료는 {@code finishIfInProgress} 조건부 UPDATE 라 나가기 · 끊김 처리와 겹쳐도 한쪽만 끝냅니다.
  *
- * <p>정상 종료된 게임은 판정이 대화 전체를 읽어야 하므로 바로 지우지 않고 쓰기만 막습니다 ({@link Game#finish()}).
- * 끝난 게임이 메모리에 쌓이지 않게 보관 시간({@code game.in-progress.finished-retention}) 뒤 게임째 지웁니다.
+ * <p>정상 종료된 게임은 판정이 대화 전체를 읽어야 하므로 메모리에서 지우지 않고 쓰기만 막습니다 ({@link Game#finish()}).
+ * 판정과 결과 보관 뒤 정리는 {@link JudgeService} 가 맡습니다.
  */
 @Service
 public class PhaseScheduler {
@@ -46,19 +46,19 @@ public class PhaseScheduler {
     private final GameTimers gameTimers;
     private final GameRegistry gameRegistry;
     private final GameMessageService gameMessageService;
+    private final JudgeService judgeService;
     private final DebateSessionRepository sessionRepository;
-    private final InProgressSweepProperties properties;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
     public PhaseScheduler(GameTimers gameTimers, GameRegistry gameRegistry, GameMessageService gameMessageService,
-                          DebateSessionRepository sessionRepository, InProgressSweepProperties properties,
+                          JudgeService judgeService, DebateSessionRepository sessionRepository,
                           PlatformTransactionManager transactionManager, Clock clock) {
         this.gameTimers = gameTimers;
         this.gameRegistry = gameRegistry;
         this.gameMessageService = gameMessageService;
+        this.judgeService = judgeService;
         this.sessionRepository = sessionRepository;
-        this.properties = properties;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -113,15 +113,15 @@ public class PhaseScheduler {
     }
 
     /**
-     * 260초 — 세션을 끝내고 판정 화면으로 넘깁니다. 이미 다른 이유로 끝났으면 아무것도 하지 않습니다.
+     * 260초 — 세션을 끝내고 판정 화면으로 넘긴 뒤 판정을 시작합니다. 이미 다른 이유로 끝났으면 아무것도 하지 않습니다.
+     * 판정은 판정 실행기에서 돌므로 이 타이머 스레드는 기다리지 않습니다.
      *
      * <p>타이머는 한 번만 돌아서, 여기서 DB 가 실패하면 세션이 {@code IN_PROGRESS} 로 남습니다. 그런 세션은
      * 주기 정리({@link InProgressSessionCleaner#sweepOverdue})가 이 메서드를 다시 불러 끝냅니다.
      * 종료는 조건부 UPDATE 라 여러 번 불러도 알림은 한 번만 나갑니다.
      *
-     * <p>끝난 게임은 보관 시간 뒤 메모리에서 지웁니다. 메모리에만 있는 일이라 DB 가 끊겨도 실패하지 않습니다.
-     * 쓰기 막기 · 삭제 예약을 전송보다 먼저 해서, 전송이 예외로 끝나도 게임이 열린 채 메모리에 남지 않게 합니다
-     * (DB 는 이미 {@code FINISHED} 라 주기 정리가 다시 잡지 못합니다).
+     * <p>쓰기 막기 · 판정 시작을 전송보다 먼저 합니다. 전송이 예외로 끝나도 판정과 판정 뒤 정리({@link JudgeService})는
+     * 이어지므로 게임이 메모리에 남지 않습니다 (DB 는 이미 {@code FINISHED} 라 주기 정리가 다시 잡지 못합니다).
      */
     void finish(Long sessionId) {
         LocalDateTime now = LocalDateTime.now(clock);
@@ -131,12 +131,13 @@ public class PhaseScheduler {
             return;
         }
         gameTimers.cancelAll(sessionId);
-        gameTimers.schedule(sessionId, now.plus(properties.finishedRetention()), () -> gameRegistry.remove(sessionId));
         gameRegistry.find(sessionId).ifPresent(game -> {
             synchronized (game) {
                 // 반론 공개(143초)가 아직 안 됐다면(타이머 지연 등) 판정 입력에서 빠지지 않게 마지막으로 공개합니다.
                 List<GameMessage> revealed = game.revealArguments(now);
                 game.finish();
+                // 공개까지 끝나고 쓰기도 막혔으므로 지금 시작해도 판정 입력에서 빠지는 글이 없습니다.
+                judgeService.start(sessionId);
                 gameMessageService.broadcastAll(sessionId, revealed);
                 ZoneId zone = clock.getZone();
                 gameMessageService.broadcastEvent(sessionId,

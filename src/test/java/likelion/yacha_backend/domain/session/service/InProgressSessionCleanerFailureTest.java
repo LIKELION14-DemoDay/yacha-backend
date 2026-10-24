@@ -36,8 +36,7 @@ class InProgressSessionCleanerFailureTest {
     private final DebateSessionRepository sessionRepository = mock(DebateSessionRepository.class);
     private final InProgressSessionCleaner cleaner =
             new InProgressSessionCleaner(sessionRepository, mock(GameRegistry.class), mock(PhaseScheduler.class),
-                    new InProgressSweepProperties(Duration.ofMinutes(1), Duration.ofMinutes(10)),
-                    new NoOpTransactionManager(), CLOCK);
+                    new InProgressSweepProperties(Duration.ofMinutes(1)), new NoOpTransactionManager(), CLOCK);
 
     private static DebateSession session(Long id) {
         DebateSession session = mock(DebateSession.class);

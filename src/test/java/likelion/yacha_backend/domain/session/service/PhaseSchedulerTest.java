@@ -31,6 +31,7 @@ import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameMessage;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
+import likelion.yacha_backend.domain.session.game.JudgeStatus;
 import likelion.yacha_backend.domain.session.game.MessageType;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -129,7 +130,7 @@ class PhaseSchedulerTest extends TimerTestSupport {
     }
 
     @Test
-    @DisplayName("260초에 세션을 끝내고(COMPLETED) JUDGING · SESSION_FINISHED 를 보낸 뒤 새 방을 만들 수 있다")
+    @DisplayName("260초에 세션을 끝내고(COMPLETED) JUDGING · SESSION_FINISHED 를 보내고 판정을 시작하며, 새 방을 만들 수 있다")
     void finishesAt260() {
         Room room = startedRoom(257);
 
@@ -142,8 +143,9 @@ class PhaseSchedulerTest extends TimerTestSupport {
         assertThat(session.getStatus()).isEqualTo(SessionStatus.FINISHED);
         assertThat(session.getFinishReason()).isEqualTo(FinishReason.COMPLETED);
         assertThat(game(room).isFinished()).isTrue();
-        // 판정이 대화를 읽어야 하므로 게임은 메모리에 남아 있습니다.
+        // 판정이 대화를 읽어야 하므로 게임은 메모리에 남아 있고, 종료와 함께 판정이 시작됩니다.
         assertThat(gameRegistry.find(room.sessionId())).isPresent();
+        waitUntil(() -> game(room).judgeStatus() == JudgeStatus.READY);
         // 게임이 끝났으므로 ALREADY_IN_SESSION 에 걸리지 않습니다.
         Long newRoom = sessionMatchFacade.create(room.hostUserId(),
                 new SessionCreateRequest(RoomType.RANDOM, fixture.topic().getId(), Stance.AGREE));
@@ -151,19 +153,7 @@ class PhaseSchedulerTest extends TimerTestSupport {
     }
 
     @Test
-    @DisplayName("260초에 끝난 게임은 보관 시간(3초) 뒤 메모리에서 지운다")
-    void removesFinishedGameAfterRetention() {
-        Room room = startedRoom(257);
-
-        register(room);
-
-        verify(gameMessageService, timeout(WAIT_MILLIS)).broadcastEvent(eq(room.sessionId()), phaseChanged(DebatePhase.JUDGING));
-        assertThat(gameRegistry.find(room.sessionId())).isPresent();
-        waitUntil(() -> gameRegistry.find(room.sessionId()).isEmpty());
-    }
-
-    @Test
-    @DisplayName("260초 전송이 실패해도 게임은 쓰기가 막히고 보관 시간 뒤 메모리에서 지워진다")
+    @DisplayName("260초 전송이 실패해도 판정은 끝나고, 결과 보관 시간 뒤 게임이 메모리에서 지워진다")
     void cleansUpWhenBroadcastFails() {
         Room room = startedRoom(257);
         Game game = game(room);
@@ -172,7 +162,8 @@ class PhaseSchedulerTest extends TimerTestSupport {
         register(room);
 
         waitUntil(() -> session(room.sessionId()).getStatus() == SessionStatus.FINISHED);
-        waitUntil(game::isFinished);
+        waitUntil(() -> game.judgeStatus() == JudgeStatus.READY);
+        assertThat(game.isFinished()).isTrue();
         waitUntil(() -> gameRegistry.find(room.sessionId()).isEmpty());
         verify(gameMessageService, never()).broadcastEvent(eq(room.sessionId()), phaseChanged(DebatePhase.JUDGING));
     }
