@@ -119,6 +119,9 @@ public class PhaseScheduler {
      * <p>타이머는 한 번만 돌아서, 여기서 DB 가 실패하면 세션이 {@code IN_PROGRESS} 로 남습니다. 그런 세션은
      * 주기 정리({@link InProgressSessionCleaner#sweepOverdue})가 이 메서드를 다시 불러 끝냅니다.
      * 종료는 조건부 UPDATE 라 여러 번 불러도 알림은 한 번만 나갑니다.
+     *
+     * <p>쓰기 막기 · 판정 시작을 전송보다 먼저 합니다. 전송이 예외로 끝나도 판정과 판정 뒤 정리({@link JudgeService})는
+     * 이어지므로 게임이 메모리에 남지 않습니다 (DB 는 이미 {@code FINISHED} 라 주기 정리가 다시 잡지 못합니다).
      */
     void finish(Long sessionId) {
         LocalDateTime now = LocalDateTime.now(clock);
@@ -133,6 +136,8 @@ public class PhaseScheduler {
                 // 반론 공개(143초)가 아직 안 됐다면(타이머 지연 등) 판정 입력에서 빠지지 않게 마지막으로 공개합니다.
                 List<GameMessage> revealed = game.revealArguments(now);
                 game.finish();
+                // 공개까지 끝나고 쓰기도 막혔으므로 지금 시작해도 판정 입력에서 빠지는 글이 없습니다.
+                judgeService.start(sessionId);
                 gameMessageService.broadcastAll(sessionId, revealed);
                 ZoneId zone = clock.getZone();
                 gameMessageService.broadcastEvent(sessionId,
@@ -140,7 +145,6 @@ public class PhaseScheduler {
                 gameMessageService.broadcastEvent(sessionId, SessionFinishedEvent.of(FinishReason.COMPLETED));
             }
         });
-        judgeService.start(sessionId);
     }
 
     /** 메모리에 있고 아직 끝나지 않은 게임. 없으면 시작 전 · 종료 · 서버 재시작입니다. */

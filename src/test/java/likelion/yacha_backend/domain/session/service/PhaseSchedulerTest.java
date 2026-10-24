@@ -153,6 +153,22 @@ class PhaseSchedulerTest extends TimerTestSupport {
     }
 
     @Test
+    @DisplayName("260초 전송이 실패해도 판정은 끝나고, 결과 보관 시간 뒤 게임이 메모리에서 지워진다")
+    void cleansUpWhenBroadcastFails() {
+        Room room = startedRoom(257);
+        Game game = game(room);
+        doThrow(new IllegalStateException("전송 실패")).when(gameMessageService).broadcastAll(eq(room.sessionId()), any());
+
+        register(room);
+
+        waitUntil(() -> session(room.sessionId()).getStatus() == SessionStatus.FINISHED);
+        waitUntil(() -> game.judgeStatus() == JudgeStatus.READY);
+        assertThat(game.isFinished()).isTrue();
+        waitUntil(() -> gameRegistry.find(room.sessionId()).isEmpty());
+        verify(gameMessageService, never()).broadcastEvent(eq(room.sessionId()), phaseChanged(DebatePhase.JUDGING));
+    }
+
+    @Test
     @DisplayName("이미 끝난 게임이면 260초에 아무것도 하지 않는다")
     void skipsFinishedGame() {
         Room room = startedRoom(257);
