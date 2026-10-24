@@ -118,9 +118,15 @@ public class GameConnectionService {
             }
         }
         if (reconnected) {
+            // 복귀는 메모리 상태로 이미 끝났습니다. 기록이 실패해도 로그만 남깁니다 (끊김 기록과 같은 방식).
             Long participantId = game.participantIdOf(userId);
-            transactionTemplate.executeWithoutResult(status -> participantRepository.findById(participantId)
-                    .ifPresent(participant -> participant.markReconnected()));
+            try {
+                transactionTemplate.executeWithoutResult(status -> participantRepository.findById(participantId)
+                        .ifPresent(participant -> participant.markReconnected()));
+            } catch (RuntimeException e) {
+                log.error("[재접속] disconnected_at 을 지우지 못했습니다. sessionId={}, participantId={}",
+                        sessionId, participantId, e);
+            }
         }
     }
 
