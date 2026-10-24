@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.stream.Collectors;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
@@ -36,6 +37,10 @@ import lombok.Getter;
  * 공개 전에는 본인만 보고, 작성 구간이 끝나고 {@link DebatePhase#SUBMIT_GRACE} 가 지나면 {@link #revealArguments} 가
  * 양쪽 글을 {@link MessageType#ARGUMENT} 메시지로 기록합니다 (주장 63초, 반론 143초). 채팅은 반론이 공개된 뒤에만
  * 받고, 기록하기 전에 공개부터 하므로 스케줄러보다 채팅이 먼저 와도 반론이 앞 {@code seqNo} 를 받습니다.
+ *
+ * <p><b>연결</b> — 사람 참가자마다 지금 인정하는 연결(토론방을 마지막으로 구독한 STOMP 세션)을 둡니다.
+ * 새로고침처럼 새 연결이 먼저 붙고 예전 연결이 늦게 끊기면 그 끊김은 무시합니다. 인정하는 연결이 끊기면
+ * 이탈 유예가 시작되고({@link #disconnect}), 유예 안에 다시 구독하면 복귀합니다({@link #connect}).
  *
  * <p><b>채팅 · 주장 본문을 로그 · 예외 메시지에 넣지 마세요</b> (명세 1-5).
  */
@@ -86,6 +91,11 @@ public class Game {
     private Verdict verdict;
     /** 판정을 시작한 횟수. 처음 판정 + 재판정입니다. */
     private int judgeRuns;
+    /** 사람 참가자의 userId → 지금 인정하는 연결(STOMP 세션 id). 토론방을 마지막으로 구독한 연결입니다. */
+    private final Map<Long, String> connectionByUserId = new HashMap<>();
+    /** 연결이 끊겨 이탈 유예 중인 userId → 몇 번째 끊김인지. 유예 타이머가 자기 끊김인지 확인합니다. */
+    private final Map<Long, Long> disconnectNoByUserId = new HashMap<>();
+    private long disconnectCount;
 
     Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId, Long aiParticipantId,
          int chatMaxLength, int maxChatsPerParticipant, int argumentMaxLength, int rebuttalMaxLength) {
@@ -221,6 +231,42 @@ public class Game {
 
     public boolean isParticipant(Long userId) {
         return participantIdByUserId.containsKey(userId);
+    }
+
+    /**
+     * 토론방을 구독한 연결을 이 사용자의 연결로 인정합니다. 이탈 유예 중이었으면 복귀로 보고 true 를 돌려줍니다.
+     * 참가자가 아니거나(관전자) 끝난 게임이면 아무것도 하지 않고 false 입니다.
+     */
+    public synchronized boolean connect(Long userId, String connectionId) {
+        if (finished || !isParticipant(userId)) {
+            return false;
+        }
+        connectionByUserId.put(userId, Objects.requireNonNull(connectionId, "connectionId"));
+        return disconnectNoByUserId.remove(userId) != null;
+    }
+
+    /**
+     * 연결이 끊겼습니다. 이 사용자가 지금 인정하는 연결이면 이탈 유예를 시작하고 몇 번째 끊김인지 돌려줍니다.
+     * 예전 연결이거나, 이미 유예 중이거나, 끝난 게임이면 비어 있습니다.
+     */
+    public synchronized OptionalLong disconnect(Long userId, String connectionId) {
+        if (finished || !connectionId.equals(connectionByUserId.get(userId)) || disconnectNoByUserId.containsKey(userId)) {
+            return OptionalLong.empty();
+        }
+        long disconnectNo = ++disconnectCount;
+        disconnectNoByUserId.put(userId, disconnectNo);
+        return OptionalLong.of(disconnectNo);
+    }
+
+    /** {@code disconnectNo} 번째 끊김 뒤로 이 사용자가 아직 돌아오지 않았는가. 유예 타이머가 확인합니다. */
+    public synchronized boolean isStillDisconnected(Long userId, long disconnectNo) {
+        Long current = disconnectNoByUserId.get(userId);
+        return current != null && current == disconnectNo;
+    }
+
+    /** 이 사용자 말고 다른 사람 참가자도 이탈 유예 중인가 (양쪽 동시 이탈). */
+    public synchronized boolean isOtherDisconnected(Long userId) {
+        return disconnectNoByUserId.keySet().stream().anyMatch(other -> !other.equals(userId));
     }
 
     /**
