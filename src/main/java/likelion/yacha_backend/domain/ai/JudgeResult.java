@@ -9,8 +9,9 @@ import java.util.Objects;
 /**
  * 판정 출력 (명세 2-6). 승패는 넣지 않습니다 — 총점으로 서버가 정합니다 (높은 쪽 승리, 같으면 무승부).
  *
- * <p>기준 4개가 모두 있고 점수가 0 ~ 25 인지 생성할 때 확인합니다. AI 응답이 형식에 맞지 않으면
- * 여기서 예외가 나므로, 구현체는 응답을 이 타입으로 바꾸는 것만으로 검증이 됩니다.
+ * <p>두 참가자가 한 번씩 채점됐는지, 기준 4개가 모두 있고 점수가 0 ~ 25 인지 생성할 때 확인합니다.
+ * AI 응답이 형식에 맞지 않으면 여기서 예외가 나므로, 구현체는 응답을 이 타입으로 바꾸는 것만으로 검증이 됩니다.
+ * 채점된 참가자가 요청의 참가자인지는 이 타입이 요청을 모르므로 쓰는 쪽이 {@link #scoreOf} 로 확인합니다.
  *
  * <p>기준은 선언 순서(LOGIC → EVIDENCE → REBUTTAL → CONSISTENCY)로 유지됩니다. {@code Map.copyOf} 는
  * 순서를 보장하지 않아 서버를 띄울 때마다 응답 JSON 의 기준 순서가 바뀌므로 {@link EnumMap} 을 감싸서 씁니다.
@@ -20,10 +21,20 @@ import java.util.Objects;
  */
 public record JudgeResult(List<ParticipantScore> scores, Map<JudgeCriterion, String> summaries) {
 
+    /** 채점되는 참가자 수. 토론은 1:1 입니다. */
+    private static final int PARTICIPANT_COUNT = 2;
+
     public JudgeResult {
-        scores = List.copyOf(scores);
         requireAllCriteria(summaries, "summaries");
         summaries.values().forEach(summary -> Objects.requireNonNull(summary, "summary"));
+        scores = List.copyOf(scores);
+        if (scores.size() != PARTICIPANT_COUNT) {
+            throw new IllegalArgumentException("점수는 두 참가자 것이어야 합니다: " + scores.size());
+        }
+        if (scores.stream().map(ParticipantScore::participantId).distinct().count() != scores.size()) {
+            throw new IllegalArgumentException("같은 참가자가 두 번 채점됐습니다: "
+                    + scores.stream().map(ParticipantScore::participantId).toList());
+        }
         summaries = Collections.unmodifiableMap(new EnumMap<>(summaries));
     }
 
