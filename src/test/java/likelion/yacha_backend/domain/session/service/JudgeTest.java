@@ -19,6 +19,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
+import likelion.yacha_backend.domain.ai.AiException;
 import likelion.yacha_backend.domain.ai.AiMessage;
 import likelion.yacha_backend.domain.ai.JudgeCriterion;
 import likelion.yacha_backend.domain.ai.JudgeRequest;
@@ -225,6 +226,30 @@ class JudgeTest extends TimerTestSupport {
 
         assertThat(judgeStatusOf(room.hostUserId(), room)).isEqualTo("PENDING");
         waitUntil(() -> game(room).judgeStatus() == JudgeStatus.READY);
+    }
+
+    @Test
+    @DisplayName("다시 시도할 수 없는 실패(AiException retryable=false)면 한 번만 부르고 FAILED")
+    void stopsOnNonRetryableFailure() {
+        Room room = finished(fixture.memberVsGuest(IN_CHAT));
+        doThrow(new AiException("LINER_HTTP_ERROR_401", false)).when(judge).judge(any());
+
+        judgeService.start(room.sessionId());
+
+        waitUntil(() -> game(room).judgeStatus() == JudgeStatus.FAILED);
+        verify(judge, times(1)).judge(any());
+    }
+
+    @Test
+    @DisplayName("다시 시도할 수 있는 실패(AiException retryable=true)면 3번까지 다시 부른다")
+    void retriesRetryableFailure() {
+        Room room = finished(fixture.memberVsGuest(IN_CHAT));
+        doThrow(new AiException("LINER_HTTP_ERROR_503", true)).when(judge).judge(any());
+
+        judgeService.start(room.sessionId());
+
+        waitUntil(() -> game(room).judgeStatus() == JudgeStatus.FAILED);
+        verify(judge, times(3)).judge(any());
     }
 
     @Test

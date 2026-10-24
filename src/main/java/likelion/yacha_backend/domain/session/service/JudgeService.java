@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.Executor;
+import likelion.yacha_backend.domain.ai.AiException;
 import likelion.yacha_backend.domain.ai.AiMessage;
 import likelion.yacha_backend.domain.ai.AiTopic;
 import likelion.yacha_backend.domain.ai.Judge;
@@ -47,8 +48,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p><b>승패 기록</b> — 회원과 AI 참가자는 기록하고, 게스트는 기록하지 않습니다(NULL). 게스트도 보관 시간 안에는
  * 메모리의 결과로 결과 화면을 봅니다.
  *
- * <p><b>재시도</b> — 어떤 예외든 다시 시도합니다. 명세 2-9 는 타임아웃 · 5xx · 429 만 재시도하라고 하지만,
- * 지금은 AI 구현이 실패 종류를 구분해 알려 주지 않습니다. 시도당 시간은 AI 구현의 HTTP 타임아웃이 정합니다.
+ * <p><b>재시도</b> — 명세 2-9 대로 타임아웃 · 5xx · 429 만 다시 시도합니다. AI 구현이 {@link AiException} 으로
+ * 다시 시도할 수 없다고 알리면(설정 누락 · 4xx 등) 남은 시도 없이 바로 실패로 끝냅니다. 그 밖의 예외는 실패 종류를
+ * 알 수 없으므로 다시 시도합니다. 시도당 시간은 AI 구현의 HTTP 타임아웃이 정합니다.
  * 429 · 5xx 는 보통 몇 초 이어지므로 시도 사이에 {@code game.judge.retry-backoff} 부터 두 배씩 기다립니다.
  *
  * <p>대화 내용은 로그에 남기지 않습니다 (명세 1-5).
@@ -131,13 +133,25 @@ public class JudgeService {
             }
             try {
                 return judge.judge(request);
+            } catch (AiException e) {
+                if (!e.isRetryable()) {
+                    log.warn("[판정] 다시 시도할 수 없는 실패라 판정을 멈춥니다. sessionId={}, error={}",
+                            sessionId, e.getMessage());
+                    throw e;
+                }
+                last = e;
+                logFailedAttempt(sessionId, attempt, e);
             } catch (RuntimeException e) {
                 last = e;
-                log.warn("[판정] {}/{}번째 시도가 실패했습니다. sessionId={}, error={}",
-                        attempt, properties.maxAttempts(), sessionId, e.getClass().getSimpleName());
+                logFailedAttempt(sessionId, attempt, e);
             }
         }
         throw last;
+    }
+
+    private void logFailedAttempt(Long sessionId, int attempt, RuntimeException e) {
+        log.warn("[판정] {}/{}번째 시도가 실패했습니다. sessionId={}, error={}",
+                attempt, properties.maxAttempts(), sessionId, e.getClass().getSimpleName());
     }
 
     /** 재시도 전 대기. 서버 종료로 끊기면 남은 시도를 하지 않고 실패로 끝냅니다. */
