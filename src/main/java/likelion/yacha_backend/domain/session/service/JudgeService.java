@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.session.service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -48,6 +49,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p><b>재시도</b> — 어떤 예외든 다시 시도합니다. 명세 2-9 는 타임아웃 · 5xx · 429 만 재시도하라고 하지만,
  * 지금은 AI 구현이 실패 종류를 구분해 알려 주지 않습니다. 시도당 시간은 AI 구현의 HTTP 타임아웃이 정합니다.
+ * 429 · 5xx 는 보통 몇 초 이어지므로 시도 사이에 {@code game.judge.retry-backoff} 부터 두 배씩 기다립니다.
  *
  * <p>대화 내용은 로그에 남기지 않습니다 (명세 1-5).
  */
@@ -121,7 +123,12 @@ public class JudgeService {
 
     private JudgeResult judgeWithRetry(Long sessionId, JudgeRequest request) {
         RuntimeException last = null;
+        Duration backoff = properties.retryBackoff();
         for (int attempt = 1; attempt <= properties.maxAttempts(); attempt++) {
+            if (attempt > 1) {
+                sleep(backoff);
+                backoff = backoff.multipliedBy(2);
+            }
             try {
                 return judge.judge(request);
             } catch (RuntimeException e) {
@@ -131,6 +138,16 @@ public class JudgeService {
             }
         }
         throw last;
+    }
+
+    /** 재시도 전 대기. 서버 종료로 끊기면 남은 시도를 하지 않고 실패로 끝냅니다. */
+    private static void sleep(Duration backoff) {
+        try {
+            Thread.sleep(backoff.toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("판정 재시도 대기 중 중단됐습니다.", e);
+        }
     }
 
     /** 판정 입력의 주제와 두 참가자. 엔티티는 트랜잭션 밖으로 내보내지 않습니다. */
