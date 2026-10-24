@@ -3,6 +3,7 @@ package likelion.yacha_backend.domain.session.service;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import likelion.yacha_backend.domain.session.dto.FinalNoticeEvent;
 import likelion.yacha_backend.domain.session.dto.PhaseChangedEvent;
@@ -10,6 +11,7 @@ import likelion.yacha_backend.domain.session.dto.SessionFinishedEvent;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.game.Game;
+import likelion.yacha_backend.domain.session.game.GameMessage;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.game.GameTimers;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
@@ -118,6 +120,8 @@ public class PhaseScheduler {
      * 종료는 조건부 UPDATE 라 여러 번 불러도 알림은 한 번만 나갑니다.
      *
      * <p>끝난 게임은 보관 시간 뒤 메모리에서 지웁니다. 메모리에만 있는 일이라 DB 가 끊겨도 실패하지 않습니다.
+     * 쓰기 막기 · 삭제 예약을 전송보다 먼저 해서, 전송이 예외로 끝나도 게임이 열린 채 메모리에 남지 않게 합니다
+     * (DB 는 이미 {@code FINISHED} 라 주기 정리가 다시 잡지 못합니다).
      */
     void finish(Long sessionId) {
         LocalDateTime now = LocalDateTime.now(clock);
@@ -127,18 +131,19 @@ public class PhaseScheduler {
             return;
         }
         gameTimers.cancelAll(sessionId);
+        gameTimers.schedule(sessionId, now.plus(properties.finishedRetention()), () -> gameRegistry.remove(sessionId));
         gameRegistry.find(sessionId).ifPresent(game -> {
             synchronized (game) {
                 // 반론 공개(143초)가 아직 안 됐다면(타이머 지연 등) 판정 입력에서 빠지지 않게 마지막으로 공개합니다.
-                gameMessageService.broadcastAll(sessionId, game.revealArguments(now));
+                List<GameMessage> revealed = game.revealArguments(now);
                 game.finish();
+                gameMessageService.broadcastAll(sessionId, revealed);
                 ZoneId zone = clock.getZone();
                 gameMessageService.broadcastEvent(sessionId,
                         PhaseChangedEvent.of(DebatePhase.JUDGING, null, DateTimes.withOffset(now, zone)));
                 gameMessageService.broadcastEvent(sessionId, SessionFinishedEvent.of(FinishReason.COMPLETED));
             }
         });
-        gameTimers.schedule(sessionId, now.plus(properties.finishedRetention()), () -> gameRegistry.remove(sessionId));
     }
 
     /** 메모리에 있고 아직 끝나지 않은 게임. 없으면 시작 전 · 종료 · 서버 재시작입니다. */
