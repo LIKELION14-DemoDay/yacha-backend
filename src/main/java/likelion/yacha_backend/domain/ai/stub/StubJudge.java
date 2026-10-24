@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.ai.stub;
 
+import jakarta.annotation.PostConstruct;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.random.RandomGenerator;
@@ -7,6 +8,7 @@ import likelion.yacha_backend.domain.ai.Judge;
 import likelion.yacha_backend.domain.ai.JudgeCriterion;
 import likelion.yacha_backend.domain.ai.JudgeRequest;
 import likelion.yacha_backend.domain.ai.JudgeResult;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -15,7 +17,11 @@ import org.springframework.stereotype.Component;
  * {@code ai.mode=stub}(기본값)일 때 등록됩니다.
  *
  * <p>대화 내용은 보지 않습니다. 결과 화면 막대가 너무 비지 않도록 0점부터가 아니라 {@value #MIN_SCORE}점부터 뽑습니다.
+ *
+ * <p>{@code ai.mode} 가 없어도 등록되므로, 배포에서 값을 빠뜨리면 운영 판정이 무작위 점수로 나갑니다.
+ * 그래서 등록될 때 기동 로그에 경고를 남깁니다.
  */
+@Slf4j
 @Component
 @ConditionalOnProperty(prefix = "ai", name = "mode", havingValue = "stub", matchIfMissing = true)
 public class StubJudge implements Judge {
@@ -33,6 +39,11 @@ public class StubJudge implements Judge {
 
     public StubJudge(RandomGenerator random) {
         this.random = random;
+    }
+
+    @PostConstruct
+    void warnStub() {
+        log.warn("[AI] 임시 판정 구현(StubJudge)이 등록됐습니다. 점수가 무작위입니다. 운영이면 AI_MODE 를 확인하세요.");
     }
 
     @Override

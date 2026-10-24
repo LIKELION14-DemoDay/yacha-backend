@@ -3,6 +3,7 @@ package likelion.yacha_backend.domain.session.service;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import likelion.yacha_backend.domain.session.dto.FinalNoticeEvent;
 import likelion.yacha_backend.domain.session.dto.PhaseChangedEvent;
@@ -10,6 +11,7 @@ import likelion.yacha_backend.domain.session.dto.SessionFinishedEvent;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.game.Game;
+import likelion.yacha_backend.domain.session.game.GameMessage;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.game.GameTimers;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
@@ -129,8 +131,9 @@ public class PhaseScheduler {
         gameRegistry.find(sessionId).ifPresent(game -> {
             synchronized (game) {
                 // 반론 공개(143초)가 아직 안 됐다면(타이머 지연 등) 판정 입력에서 빠지지 않게 마지막으로 공개합니다.
-                gameMessageService.broadcastAll(sessionId, game.revealArguments(now));
+                List<GameMessage> revealed = game.revealArguments(now);
                 game.finish();
+                gameMessageService.broadcastAll(sessionId, revealed);
                 ZoneId zone = clock.getZone();
                 gameMessageService.broadcastEvent(sessionId,
                         PhaseChangedEvent.of(DebatePhase.JUDGING, null, DateTimes.withOffset(now, zone)));

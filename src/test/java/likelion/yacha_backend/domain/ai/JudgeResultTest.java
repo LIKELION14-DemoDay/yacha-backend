@@ -59,11 +59,27 @@ class JudgeResultTest {
     }
 
     @Test
+    @DisplayName("두 참가자가 한 번씩 채점되지 않으면 만들 수 없다 — 없음 · 한 명 · 세 명 · 같은 참가자 두 번")
+    void wrongParticipants() {
+        JudgeResult.ParticipantScore first = new JudgeResult.ParticipantScore(7L, scores(20, 18, 15, 19));
+        JudgeResult.ParticipantScore second = new JudgeResult.ParticipantScore(8L, scores(15, 14, 16, 13));
+        JudgeResult.ParticipantScore third = new JudgeResult.ParticipantScore(9L, scores(10, 10, 10, 10));
+        JudgeResult.ParticipantScore firstAgain = new JudgeResult.ParticipantScore(7L, scores(10, 10, 10, 10));
+
+        for (List<JudgeResult.ParticipantScore> scores : List.of(List.<JudgeResult.ParticipantScore>of(),
+                List.of(first), List.of(first, second, third), List.of(first, firstAgain))) {
+            assertThatThrownBy(() -> new JudgeResult(scores, SUMMARIES))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
     @DisplayName("기준은 선언 순서로 유지되고, 결과는 바꿀 수 없다")
     void criteriaOrderAndImmutable() {
         // SUMMARIES 는 Map.of 라 순서가 섞인 입력이다
         JudgeResult result = new JudgeResult(List.of(
-                new JudgeResult.ParticipantScore(7L, scores(20, 18, 15, 19))), SUMMARIES);
+                new JudgeResult.ParticipantScore(7L, scores(20, 18, 15, 19)),
+                new JudgeResult.ParticipantScore(8L, scores(15, 14, 16, 13))), SUMMARIES);
 
         assertThat(result.summaries().keySet()).containsExactly(JudgeCriterion.values());
         assertThat(result.scoreOf(7L).scores().keySet()).containsExactly(JudgeCriterion.values());
