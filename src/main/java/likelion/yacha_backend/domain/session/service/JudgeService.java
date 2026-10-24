@@ -96,6 +96,9 @@ public class JudgeService {
         if (game == null || !game.startJudging(1 + properties.maxRejudges())) {
             return false;
         }
+        // 재판정이면 앞선 판정이 걸어 둔 삭제 타이머가 있습니다. 판정 도중에 게임이 지워지지 않게 먼저 지우고,
+        // 판정이 끝나면 그때부터 보관 시간을 다시 셉니다.
+        gameTimers.cancelAll(sessionId);
         try {
             judgeExecutor.execute(() -> run(sessionId, game));
         } catch (TaskRejectedException e) {

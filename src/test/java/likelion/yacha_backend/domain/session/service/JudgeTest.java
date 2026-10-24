@@ -257,6 +257,29 @@ class JudgeTest extends TimerTestSupport {
     }
 
     @Test
+    @DisplayName("재판정이 이전 보관 시간(2초)을 넘겨 끝나도 게임은 지워지지 않고 점수 · 요약을 준다")
+    void rejudgeOutlivesPreviousRetention() throws Exception {
+        Room room = finished(fixture.memberVsGuest(IN_CHAT));
+        Game game = game(room);
+        doThrow(new AiException("LINER_HTTP_ERROR_503", true)).when(judge).judge(any());
+        judgeService.start(room.sessionId());
+        waitUntil(() -> game.judgeStatus() == JudgeStatus.FAILED);
+
+        doAnswer(invocation -> {
+            Thread.sleep(3_000);
+            JudgeRequest request = invocation.getArgument(0);
+            return new JudgeResult(request.participants().stream()
+                    .map(p -> new JudgeResult.ParticipantScore(p.participantId(), each(20)))
+                    .toList(), summaries());
+        }).when(judge).judge(any());
+        assertThat(judgeStatusOf(room.hostUserId(), room)).isEqualTo("PENDING");
+
+        waitUntil(() -> game.judgeStatus() == JudgeStatus.READY);
+        assertThat(gameRegistry.find(room.sessionId())).isPresent();
+        assertThat(judgeStatusOf(room.hostUserId(), room)).isEqualTo("READY");
+    }
+
+    @Test
     @DisplayName("3번 모두 실패하면 FAILED, 결과를 다시 조회하면 다시 판정한다")
     void retriesAfterFailure() throws Exception {
         Room room = finished(fixture.memberVsGuest(IN_CHAT));
