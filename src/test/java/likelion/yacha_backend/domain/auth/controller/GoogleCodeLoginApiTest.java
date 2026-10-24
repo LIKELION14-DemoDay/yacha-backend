@@ -96,6 +96,7 @@ class GoogleCodeLoginApiTest {
                         .content(body("code-1", REDIRECT_URI)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.data.isNewUser").value(true))
                 .andExpect(jsonPath("$.data.nickname").value("구글수민"))
                 .andExpect(cookie().exists("refreshToken"));
 

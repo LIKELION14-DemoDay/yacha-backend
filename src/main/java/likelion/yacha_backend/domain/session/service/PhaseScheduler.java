@@ -113,8 +113,12 @@ public class PhaseScheduler {
     /**
      * 260초 — 세션을 끝내고 판정 화면으로 넘긴 뒤 판정을 시작합니다. 이미 다른 이유로 끝났으면 아무것도 하지 않습니다.
      * 판정은 판정 실행기에서 돌므로 이 타이머 스레드는 기다리지 않습니다.
+     *
+     * <p>타이머는 한 번만 돌아서, 여기서 DB 가 실패하면 세션이 {@code IN_PROGRESS} 로 남습니다. 그런 세션은
+     * 주기 정리({@link InProgressSessionCleaner#sweepOverdue})가 이 메서드를 다시 불러 끝냅니다.
+     * 종료는 조건부 UPDATE 라 여러 번 불러도 알림은 한 번만 나갑니다.
      */
-    private void finish(Long sessionId) {
+    void finish(Long sessionId) {
         LocalDateTime now = LocalDateTime.now(clock);
         Integer finished = transactionTemplate.execute(
                 status -> sessionRepository.finishIfInProgress(sessionId, FinishReason.COMPLETED, now));

@@ -52,9 +52,10 @@ public class SecurityConfig {
             "/actuator/health",
     };
 
-    /** 인증 없이 GET만 허용할 경로. 카테고리 목록 */
+    /** 인증 없이 GET만 허용할 경로. 카테고리 목록 · 회원가입 이메일 중복 확인 */
     private static final String[] PUBLIC_GET_ENDPOINTS = {
             "/api/v1/categories",
+            "/api/v1/auth/email/availability",
     };
 
     /**

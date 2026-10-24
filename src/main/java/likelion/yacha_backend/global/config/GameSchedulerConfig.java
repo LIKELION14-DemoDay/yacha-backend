@@ -16,6 +16,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
  *
  * <p>타이머 작업은 짧게 끝나야 합니다. LLM 호출(판정)처럼 오래 걸리는 일은 이 스레드에서 하지 않고
  * 별도 실행기로 넘깁니다. 그래서 스레드 수는 작게 둡니다.
+ *
+ * <p>대기 타이머(팝업의 행 잠금 · 만료)와 구간 타이머(공개 · 종료)가 같은 스레드를 씁니다. DB 가 잠깐 느려져
+ * DB 를 치는 작업이 스레드를 모두 잡으면, 63 · 143초 공개처럼 시각이 중요한 작업이 모든 게임에서 밀립니다.
+ * 그래서 2개가 아니라 4개로 둡니다.
  */
 @Configuration
 public class GameSchedulerConfig {
@@ -26,7 +30,7 @@ public class GameSchedulerConfig {
     public static final String JUDGE_EXECUTOR = "judgeExecutor";
 
     /** 타이머 작업은 상태 확인 · 전송 정도라 짧습니다. 명세에서 정할 값이 아니라 상수로 둡니다. */
-    private static final int POOL_SIZE = 2;
+    private static final int POOL_SIZE = 4;
 
     @Bean(name = GAME_TASK_SCHEDULER)
     public ThreadPoolTaskScheduler gameTaskScheduler() {

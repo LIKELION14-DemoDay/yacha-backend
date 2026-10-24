@@ -1,13 +1,16 @@
 package likelion.yacha_backend.domain.session.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -59,6 +62,9 @@ class PhaseSchedulerTest extends TimerTestSupport {
     @Autowired
     private SessionMatchFacade sessionMatchFacade;
 
+    @Autowired
+    private Clock clock;
+
     private final List<Room> rooms = new ArrayList<>();
     private final List<Long> sessionIds = new ArrayList<>();
 
@@ -96,7 +102,7 @@ class PhaseSchedulerTest extends TimerTestSupport {
     void revealsWithoutChat() {
         Room room = startedRoom(57);
         Game game = game(room);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         game.saveMemo(room.hostUserId(), "거짓말은 신뢰를 무너뜨린다", now);
         game.saveMemo(room.opponentUserId(), "선의의 거짓말도 있다", now);
 
@@ -176,6 +182,21 @@ class PhaseSchedulerTest extends TimerTestSupport {
         for (Long sessionId : List.of(joined, bot, converted)) {
             verify(phaseScheduler).register(sessionId, session(sessionId).getStartedAt());
         }
+    }
+
+    @Test
+    @DisplayName("입장 뒤 시간표 등록이 실패해도 입장은 성공하고, 방장은 MATCHED 를 받는다")
+    void joinSucceedsWhenRegisterFails() {
+        Long hostId = fixture.newUser();
+        Long sessionId = sessionMatchFacade.create(hostId,
+                new SessionCreateRequest(RoomType.RANDOM, fixture.topic().getId(), Stance.AGREE));
+        sessionIds.add(sessionId);
+        doThrow(new IllegalStateException("등록 실패")).when(phaseScheduler).register(eq(sessionId), any());
+
+        assertThat(sessionMatchFacade.join(fixture.newUser(), sessionId)).isEqualTo(sessionId);
+
+        verify(matchNotifier).matched(hostId, sessionId);
+        assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.IN_PROGRESS);
     }
 
     /** 조건이 맞을 때까지 잠깐씩 기다립니다. 시간 안에 맞지 않으면 실패합니다. */

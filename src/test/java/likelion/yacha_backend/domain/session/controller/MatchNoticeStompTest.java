@@ -3,7 +3,6 @@ package likelion.yacha_backend.domain.session.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Type;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -101,26 +100,26 @@ class MatchNoticeStompTest {
         assertThat(((Number) notice.get("sessionId")).longValue()).isEqualTo(room.sessionId());
         assertThat(toJoiner.poll(500, TimeUnit.MILLISECONDS)).isNull();
         // MATCHED 에는 대기 팝업 필드가 없습니다.
-        assertThat(notice).doesNotContainKeys("waitedSeconds", "expiresAt");
+        assertThat(notice).doesNotContainKeys("waitedSeconds");
     }
 
     @Test
-    @DisplayName("WAIT_PROMPT 는 기다린 초와 상한 시각(+09:00)을, WAIT_EXPIRED 는 방 id 만 담는다")
+    @DisplayName("WAIT_PROMPT 는 기다린 초만 담고(상한 시각 없음), WAIT_EXPIRED 는 방 id 만 담는다")
     void waitNotices() throws Exception {
         Long hostId = fixture.newUser();
         BlockingQueue<Map<String, Object>> toHost = subscribeMatch(hostId);
 
-        matchNotifier.waitPrompt(hostId, 31L, 30, LocalDateTime.of(2026, 10, 31, 12, 5));
+        matchNotifier.waitPrompt(hostId, 31L, 30);
         matchNotifier.waitExpired(hostId, 31L);
 
         Map<String, Object> prompt = toHost.poll(TIMEOUT_SECONDS, TimeUnit.SECONDS);
         assertThat(prompt).containsEntry("type", "WAIT_PROMPT");
         assertThat(((Number) prompt.get("sessionId")).longValue()).isEqualTo(31L);
         assertThat(((Number) prompt.get("waitedSeconds")).longValue()).isEqualTo(30L);
-        assertThat(prompt).containsEntry("expiresAt", "2026-10-31T12:05:00+09:00");
+        assertThat(prompt).doesNotContainKey("expiresAt");
         Map<String, Object> expired = toHost.poll(TIMEOUT_SECONDS, TimeUnit.SECONDS);
         assertThat(expired).containsEntry("type", "WAIT_EXPIRED")
-                .doesNotContainKeys("waitedSeconds", "expiresAt");
+                .doesNotContainKeys("waitedSeconds");
     }
 
     /** 구독은 비동기로 등록되므로, 서버에서 탐침 메시지를 보내 받을 때까지 기다린 뒤 돌려줍니다. */
