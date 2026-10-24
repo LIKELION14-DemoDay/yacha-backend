@@ -8,6 +8,8 @@ import likelion.yacha_backend.domain.session.entity.Stance;
  *
  * <p>매칭 직후 양쪽 것을 만듭니다. PREP 60초 안에 끝내는 것이 목표입니다.
  * 실패하면 예외를 던지세요. 재시도 · {@code FAILED} 처리는 부르는 쪽이 합니다.
+ *
+ * <p>개수 · 글자 수 상한은 구현체가 지킵니다. AI 응답이 넘으면 구현체가 자르거나 고른 뒤 돌려주세요.
  */
 public interface HintGenerator {
 
