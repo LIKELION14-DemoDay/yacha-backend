@@ -26,4 +26,10 @@ public record InProgressSweepProperties(
     public boolean isSweepIntervalPositive() {
         return sweepInterval == null || (!sweepInterval.isZero() && !sweepInterval.isNegative());
     }
+
+    /** 0 이하면 260초에 끝나자마자 게임(채팅 · 주장)이 지워집니다. */
+    @AssertTrue(message = "game.in-progress.finished-retention 은 0 보다 커야 합니다.")
+    public boolean isFinishedRetentionPositive() {
+        return finishedRetention == null || (!finishedRetention.isZero() && !finishedRetention.isNegative());
+    }
 }

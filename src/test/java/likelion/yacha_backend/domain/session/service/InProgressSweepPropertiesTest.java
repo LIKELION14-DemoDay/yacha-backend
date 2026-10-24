@@ -48,4 +48,12 @@ class InProgressSweepPropertiesTest {
         runner.withPropertyValues("game.in-progress.sweep-interval=" + interval, "game.in-progress.finished-retention=10m")
                 .run(context -> assertThat(context).hasFailed());
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0s", "-1m"})
+    @DisplayName("끝난 게임 보관 시간이 0 이하면 기동이 실패한다")
+    void nonPositiveRetention(String retention) {
+        runner.withPropertyValues("game.in-progress.sweep-interval=1m", "game.in-progress.finished-retention=" + retention)
+                .run(context -> assertThat(context).hasFailed());
+    }
 }
