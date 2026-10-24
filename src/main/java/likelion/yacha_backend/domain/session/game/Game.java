@@ -37,6 +37,9 @@ import lombok.Getter;
  * 양쪽 글을 {@link MessageType#ARGUMENT} 메시지로 기록합니다 (주장 63초, 반론 143초). 채팅은 반론이 공개된 뒤에만
  * 받고, 기록하기 전에 공개부터 하므로 스케줄러보다 채팅이 먼저 와도 반론이 앞 {@code seqNo} 를 받습니다.
  *
+ * <p><b>힌트</b> — 사람 참가자마다 매칭 직후 만들기 시작한 힌트({@link GameHints})를 둡니다. 본인만 조회하고,
+ * 게임이 끝난 뒤 늦게 도착한 결과는 버립니다.
+ *
  * <p><b>채팅 · 주장 본문을 로그 · 예외 메시지에 넣지 마세요</b> (명세 1-5).
  */
 public class Game {
@@ -86,6 +89,8 @@ public class Game {
     private Verdict verdict;
     /** 판정을 시작한 횟수. 처음 판정 + 재판정입니다. */
     private int judgeRuns;
+    /** 사람 참가자의 userId → 힌트. 만들기 시작하기 전이면 들어 있지 않습니다. */
+    private final Map<Long, GameHints> hintsByUserId = new HashMap<>();
 
     Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId, Long aiParticipantId,
          int chatMaxLength, int maxChatsPerParticipant, int argumentMaxLength, int rebuttalMaxLength) {
@@ -221,6 +226,38 @@ public class Game {
 
     public boolean isParticipant(Long userId) {
         return participantIdByUserId.containsKey(userId);
+    }
+
+    /** 사람 참가자의 userId. 봇은 들어 있지 않습니다. */
+    public Set<Long> humanUserIds() {
+        return participantIdByUserId.keySet();
+    }
+
+    /** 이 참가자의 힌트를 만들기 시작합니다 ({@code PENDING}). */
+    public synchronized void startHints(Long userId) {
+        if (!isParticipant(userId)) {
+            throw new IllegalArgumentException("사람 참가자가 아닙니다. sessionId=" + sessionId);
+        }
+        hintsByUserId.put(userId, GameHints.PENDING);
+    }
+
+    /** 만든 힌트를 저장합니다. 게임이 이미 끝났으면 버립니다. */
+    public synchronized void completeHints(Long userId, List<String> hints) {
+        if (!finished) {
+            hintsByUserId.put(userId, GameHints.ready(hints));
+        }
+    }
+
+    /** 힌트를 만들지 못했습니다. 다시 만들지 않습니다. 게임이 이미 끝났으면 아무것도 하지 않습니다. */
+    public synchronized void failHints(Long userId) {
+        if (!finished) {
+            hintsByUserId.put(userId, GameHints.FAILED);
+        }
+    }
+
+    /** 이 참가자의 힌트. 아직 만들기 시작하기 전(매칭 직후 아주 짧은 사이)이면 곧 시작하므로 {@code PENDING} 입니다. */
+    public synchronized GameHints hintsOf(Long userId) {
+        return hintsByUserId.getOrDefault(userId, GameHints.PENDING);
     }
 
     /**
