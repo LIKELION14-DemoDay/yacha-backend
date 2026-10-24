@@ -64,7 +64,15 @@ public class SessionResultService {
                 return judged(finishReason, game.get().verdict(), participants, userId);
             }
             if (status == JudgeStatus.FAILED && !judgeService.start(sessionId)) {
-                return SessionResultResponse.failed(finishReason);
+                // 시작하지 못한 이유가 횟수 소진만은 아닙니다. 두 참가자가 동시에 조회하면 다른 쪽이 먼저 재판정을
+                // 시작했을 수 있으므로 상태를 다시 읽어, 여전히 FAILED 일 때만 실패로 응답합니다.
+                JudgeStatus current = game.get().judgeStatus();
+                if (current == JudgeStatus.READY) {
+                    return judged(finishReason, game.get().verdict(), participants, userId);
+                }
+                if (current == JudgeStatus.FAILED) {
+                    return SessionResultResponse.failed(finishReason);
+                }
             }
             // 판정 시작 전(260초 종료 처리 직후의 아주 짧은 사이)도 곧 판정이 시작되므로 PENDING 입니다.
             return SessionResultResponse.pending();
