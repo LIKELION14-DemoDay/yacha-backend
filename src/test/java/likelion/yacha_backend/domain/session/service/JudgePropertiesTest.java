@@ -43,6 +43,17 @@ class JudgePropertiesTest {
     }
 
     @Test
+    @DisplayName("재판정 횟수가 빠지면 기동이 실패하고, 0 은 재판정을 끄는 값으로 받는다")
+    void maxRejudges() {
+        new ApplicationContextRunner().withUserConfiguration(Config.class)
+                .withPropertyValues("game.judge.max-attempts=3", "game.judge.retry-backoff=1s",
+                        "game.judge.result-retention=10m")
+                .run(context -> assertThat(context).hasFailed());
+        runner.withPropertyValues("game.judge.max-rejudges=0").run(context -> assertThat(context).hasNotFailed());
+        runner.withPropertyValues("game.judge.max-rejudges=-1").run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
     @DisplayName("재시도 대기는 0 이면 기동하고, 음수면 실패한다")
     void retryBackoff() {
         runner.withPropertyValues("game.judge.retry-backoff=0s").run(context -> assertThat(context).hasNotFailed());
