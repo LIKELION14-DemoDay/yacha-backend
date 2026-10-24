@@ -58,6 +58,21 @@ class JudgeResultTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    @DisplayName("기준은 선언 순서로 유지되고, 결과는 바꿀 수 없다")
+    void criteriaOrderAndImmutable() {
+        // SUMMARIES 는 Map.of 라 순서가 섞인 입력이다
+        JudgeResult result = new JudgeResult(List.of(
+                new JudgeResult.ParticipantScore(7L, scores(20, 18, 15, 19))), SUMMARIES);
+
+        assertThat(result.summaries().keySet()).containsExactly(JudgeCriterion.values());
+        assertThat(result.scoreOf(7L).scores().keySet()).containsExactly(JudgeCriterion.values());
+        assertThatThrownBy(() -> result.summaries().put(JudgeCriterion.LOGIC, "x"))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> result.scoreOf(7L).scores().put(JudgeCriterion.LOGIC, 0))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
     private static Map<JudgeCriterion, Integer> scores(int logic, int evidence, int rebuttal, int consistency) {
         Map<JudgeCriterion, Integer> scores = new EnumMap<>(JudgeCriterion.class);
         scores.put(JudgeCriterion.LOGIC, logic);
