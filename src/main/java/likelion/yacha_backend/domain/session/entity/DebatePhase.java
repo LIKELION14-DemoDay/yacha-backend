@@ -39,6 +39,9 @@ public enum DebatePhase {
      */
     public static final Duration SUBMIT_GRACE = Duration.ofSeconds(3);
 
+    /** {@link #CHAT} 이 끝나기 이만큼 전에 "최종반론" 안내({@code FINAL_NOTICE})를 보냅니다 (230초). */
+    public static final Duration FINAL_NOTICE_BEFORE_END = Duration.ofSeconds(30);
+
     /** 구간 길이. {@link #JUDGING} 은 끝이 없어 null 입니다. */
     private final Duration duration;
     private final boolean chatAllowed;
@@ -108,8 +111,25 @@ public enum DebatePhase {
         return at(startedAt, now).phase().chatAllowed && !now.isBefore(REBUTTAL.revealAt(startedAt));
     }
 
+    /** 이 구간이 시작하는 시각. {@link #JUDGING} 의 시작이 토론이 끝나는 시각(260초)입니다. */
+    public LocalDateTime startAt(LocalDateTime startedAt) {
+        Duration start = Duration.ZERO;
+        for (DebatePhase phase : values()) {
+            if (phase == this) {
+                return startedAt.plus(start);
+            }
+            start = start.plus(phase.duration);
+        }
+        throw new IllegalStateException("알 수 없는 구간입니다. phase=" + this);
+    }
+
+    /** "최종반론" 안내 시각 — {@link #CHAT} 이 끝나기 {@link #FINAL_NOTICE_BEFORE_END} 전 (230초). */
+    public static LocalDateTime finalNoticeAt(LocalDateTime startedAt) {
+        return CHAT.endAt(startedAt).minus(FINAL_NOTICE_BEFORE_END);
+    }
+
     /** 이 구간이 끝나는 시각. {@link #JUDGING} 은 끝이 없어 쓰지 않습니다. */
-    private LocalDateTime endAt(LocalDateTime startedAt) {
+    public LocalDateTime endAt(LocalDateTime startedAt) {
         Duration end = Duration.ZERO;
         for (DebatePhase phase : values()) {
             end = end.plus(phase.duration);

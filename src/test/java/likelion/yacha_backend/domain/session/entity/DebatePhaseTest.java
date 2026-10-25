@@ -86,6 +86,23 @@ class DebatePhaseTest {
     }
 
     @Test
+    @DisplayName("구간 시작 · 끝 시각 — 스케줄러가 60 · 80 · 140 · 260초에 구간 전환을 보낸다")
+    void startAndEnd() {
+        assertThat(DebatePhase.PREP.startAt(STARTED_AT)).isEqualTo(STARTED_AT);
+        assertThat(DebatePhase.REVEAL.startAt(STARTED_AT)).isEqualTo(STARTED_AT.plusSeconds(60));
+        assertThat(DebatePhase.REBUTTAL.startAt(STARTED_AT)).isEqualTo(STARTED_AT.plusSeconds(80));
+        assertThat(DebatePhase.CHAT.startAt(STARTED_AT)).isEqualTo(STARTED_AT.plusSeconds(140));
+        assertThat(DebatePhase.JUDGING.startAt(STARTED_AT)).isEqualTo(STARTED_AT.plusSeconds(260));
+        assertThat(DebatePhase.CHAT.endAt(STARTED_AT)).isEqualTo(STARTED_AT.plusSeconds(260));
+    }
+
+    @Test
+    @DisplayName("최종반론 안내는 채팅이 끝나기 30초 전인 230초다")
+    void finalNoticeAt() {
+        assertThat(DebatePhase.finalNoticeAt(STARTED_AT)).isEqualTo(STARTED_AT.plusSeconds(230));
+    }
+
+    @Test
     @DisplayName("주장은 63초, 반론은 143초에 공개한다 (작성 구간 끝 + 3초)")
     void revealAt() {
         assertThat(DebatePhase.PREP.revealAt(STARTED_AT)).isEqualTo(STARTED_AT.plusSeconds(63));
