@@ -16,6 +16,7 @@ import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.service.GameMemoService;
+import likelion.yacha_backend.domain.session.service.SessionMatchFacade;
 import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
 import likelion.yacha_backend.global.security.jwt.Role;
 import org.junit.jupiter.api.AfterEach;
@@ -71,6 +72,9 @@ class GameStompTest {
 
     @Autowired
     private GameMemoService gameMemoService;
+
+    @Autowired
+    private SessionMatchFacade sessionMatchFacade;
 
     private WebSocketStompClient stompClient;
     private ThreadPoolTaskScheduler clientScheduler;
@@ -353,6 +357,22 @@ class GameStompTest {
             assertThat(next(toOpponent, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS)))
                     .containsEntry("type", "OPPONENT_RECONNECTED");
             assertThat(next(toOpponent, 1_500)).isNull();
+        }
+
+        @Test
+        @DisplayName("대기 중에 미리 구독한 방장이 그 구독을 유지한 채 매칭된 뒤 끊겨도 상대가 OPPONENT_DISCONNECTED 를 받는다")
+        void detectsSubscriptionBeforeGame() throws Exception {
+            Room waiting = track(fixture.waitingRandom());
+            Client host = connect(waiting.hostUserId());
+            host.subscribeTopic(waiting.sessionId());
+            Long opponentUserId = fixture.newUser();
+            sessionMatchFacade.join(opponentUserId, waiting.sessionId());
+            BlockingQueue<Map<String, Object>> toOpponent = connect(opponentUserId).subscribeTopic(waiting.sessionId());
+
+            host.session.disconnect();
+
+            assertThat(next(toOpponent, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS)))
+                    .containsEntry("type", "OPPONENT_DISCONNECTED");
         }
 
         @Test
