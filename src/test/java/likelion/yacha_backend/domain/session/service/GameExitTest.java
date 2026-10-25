@@ -248,6 +248,23 @@ class GameExitTest extends TimerTestSupport {
     }
 
     @Test
+    @DisplayName("대기 중에 두 연결로 구독했으면 매칭 뒤 가장 최근 연결만 인정 — 예전 연결이 끊기면 무시, 최근 연결이 끊기면 유예")
+    void latestSubscriptionBeforeGame() {
+        Room waiting = track(fixture.waitingRandom());
+        gameConnectionService.subscribed(waiting.sessionId(), waiting.hostUserId(), "host-1");
+        gameConnectionService.subscribed(waiting.sessionId(), waiting.hostUserId(), "host-2");
+        sessionMatchFacade.join(fixture.newUser(), waiting.sessionId());
+
+        gameConnectionService.disconnected(waiting.sessionId(), waiting.hostUserId(), "host-1");
+        verify(gameMessageService, after(300).never()).broadcastEvent(eq(waiting.sessionId()),
+                argThat(event -> event instanceof OpponentDisconnectedEvent));
+
+        gameConnectionService.disconnected(waiting.sessionId(), waiting.hostUserId(), "host-2");
+        verify(gameMessageService).broadcastEvent(eq(waiting.sessionId()),
+                argThat(event -> event instanceof OpponentDisconnectedEvent));
+    }
+
+    @Test
     @DisplayName("유예가 끝날 때 상대도 끊겨 있으면 ABORTED — 승패 NULL")
     void bothDisconnectedAborts() {
         Room room = track(fixture.members(IN_CHAT));
