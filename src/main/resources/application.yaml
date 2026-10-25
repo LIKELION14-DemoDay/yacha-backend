@@ -143,6 +143,12 @@ game:
   in-progress:
     # 주기 정리 간격. 시간표(260초)보다 이만큼 더 지났는데도 진행 중인 게임(종료 작업 · 게임 생성 실패)을 끝냄
     sweep-interval: 1m
+  # 힌트 (매칭 직후 사람 참가자마다 만듦, PREP 60초 안이 목표)
+  hint:
+    # 최대 시도 횟수. 모두 실패하면 FAILED 로 두고 힌트 없이 진행
+    max-attempts: 2
+    # 재시도 전 대기 시간
+    retry-backoff: 1s
   # 게임 중 연결 끊김
   disconnect:
     # 이탈 유예. 이 안에 토론방을 다시 구독하면 복귀하고, 지나면 몰수패 (FORFEIT)

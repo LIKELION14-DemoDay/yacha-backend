@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
+import likelion.yacha_backend.domain.session.dto.HintResponse;
 import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
 import likelion.yacha_backend.domain.session.dto.CurrentSessionResponse;
 import likelion.yacha_backend.domain.session.dto.GameMessageResponse;
@@ -15,6 +16,7 @@ import likelion.yacha_backend.domain.session.dto.SessionResultResponse;
 import likelion.yacha_backend.domain.session.dto.SessionStateResponse;
 import likelion.yacha_backend.domain.session.service.GameExitService;
 import likelion.yacha_backend.domain.session.service.GameMemoService;
+import likelion.yacha_backend.domain.session.service.HintService;
 import likelion.yacha_backend.domain.session.service.SessionMatchFacade;
 import likelion.yacha_backend.domain.session.service.SessionQueryService;
 import likelion.yacha_backend.domain.session.service.SessionResultService;
@@ -42,6 +44,7 @@ public class SessionController {
     private final SessionQueryService sessionQueryService;
     private final GameMemoService gameMemoService;
     private final SessionResultService sessionResultService;
+    private final HintService hintService;
     private final GameExitService gameExitService;
 
     @Operation(
@@ -124,6 +127,23 @@ public class SessionController {
             @PathVariable Long sessionId) {
         sessionMatchFacade.cancel(authUser.getUserId(), sessionId);
         return ApiResponse.success(new SessionIdResponse(sessionId));
+    }
+
+    @Operation(
+            summary = "내 힌트",
+            description = """
+                    주장 작성 화면의 "힌트 보기" 에 쓸, 내 입장에 맞는 20자 이내 문장 3개
+                    매칭 직후 서버가 만들기 시작함. 만드는 중이면 `{ "status": "PENDING" }` (1.5초마다 다시 조회),
+                    끝나면 `READY` + `hints`, 만들지 못했으면 `FAILED` (힌트 없이 진행, 다시 만들지 않음)
+                    `READY` · `FAILED` 가 오면 조회를 멈춤. `FAILED` 면 "힌트 보기" 버튼을 비활성화하고 "힌트 불러오기를 실패했어요" 로 표시
+
+                    참가자 본인 것만 (`NOT_PARTICIPANT`), 게임 중에만 (`SESSION_NOT_IN_PROGRESS`)
+                    """)
+    @GetMapping("/{sessionId}/hints")
+    public ApiResponse<HintResponse> getMyHints(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long sessionId) {
+        return ApiResponse.success(hintService.getMyHints(sessionId, authUser.getUserId()));
     }
 
     @Operation(

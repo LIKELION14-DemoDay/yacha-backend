@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * 방 생성 · 입장 · 취소 · 봇전 시작의 진입점. DB 작업은 {@link SessionCommandService} 의 트랜잭션에서 하고,
- * <b>커밋이 끝난 뒤에</b> 대기 타이머 등록 · 정리, 게임 생성 · 구간 타이머 등록, 방장 알림을 합니다.
+ * <b>커밋이 끝난 뒤에</b> 대기 타이머 등록 · 정리, 게임 생성 · 구간 타이머 등록, 힌트 생성 시작, 방장 알림을 합니다.
  *
  * <p>트랜잭션 안에서 하면 두 가지 문제가 생깁니다.
  * <ul>
@@ -30,6 +30,7 @@ public class SessionMatchFacade {
     private final MatchNotifier matchNotifier;
     private final WaitTimerService waitTimerService;
     private final PhaseScheduler phaseScheduler;
+    private final HintService hintService;
     private final GameConnectionService gameConnectionService;
 
     /**
@@ -95,12 +96,17 @@ public class SessionMatchFacade {
             phaseScheduler.register(matched.sessionId(), matched.startedAt());
         } catch (RuntimeException e) {
             log.error("[게임 생성] 게임 · 시간표를 만들지 못했습니다. sessionId={}", matched.sessionId(), e);
-            return;
         }
         try {
             gameConnectionService.connectSubscribed(matched.sessionId());
         } catch (RuntimeException e) {
             log.error("[게임 생성] 미리 구독한 연결을 인정하지 못했습니다. sessionId={}", matched.sessionId(), e);
+        }
+        // 힌트는 시간표와 따로 시작합니다. 힌트가 실패해도 게임은 이어지고, 시간표 등록이 실패해도 힌트는 만듭니다.
+        try {
+            hintService.start(matched.sessionId());
+        } catch (RuntimeException e) {
+            log.error("[힌트] 만들기 시작하지 못했습니다. sessionId={}", matched.sessionId(), e);
         }
     }
 }

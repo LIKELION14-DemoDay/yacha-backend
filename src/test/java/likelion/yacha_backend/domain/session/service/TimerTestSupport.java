@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.session.service;
 
+import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.ai.Judge;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,14 +16,15 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
  * <p>설정 · 모의 빈이 같으면 스프링 테스트 컨텍스트를 함께 씁니다. 클래스마다 컨텍스트가 따로 뜨면
  * 컨텍스트마다 DB 연결 풀을 잡아, 로컬 MySQL 로 전체 테스트를 돌릴 때 연결 수 상한(151)을 넘습니다.
  *
- * <p>대기 타이머는 간격 1초 · 상한 3초 · 정리 간격 1초, 판정 재시도 대기는 10ms, 결과 보관 시간은 2초, 이탈 유예는 1초로 줄입니다. 타이머 작업은 커밋된 데이터를
+ * <p>대기 타이머는 간격 1초 · 상한 3초 · 정리 간격 1초, 판정 · 힌트 재시도 대기는 10ms, 결과 보관 시간은 2초, 이탈 유예는 1초로 줄입니다. 타이머 작업은 커밋된 데이터를
  * 읽으므로 테스트 트랜잭션을 쓰지 않습니다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(SessionFixture.class)
 @TestPropertySource(properties = {"game.wait.prompt-interval=1s", "game.wait.limit=3s", "game.wait.sweep-interval=1s",
-        "game.judge.retry-backoff=10ms", "game.judge.result-retention=2s", "game.disconnect.grace=1s"})
+        "game.judge.retry-backoff=10ms", "game.judge.result-retention=2s", "game.hint.retry-backoff=10ms",
+        "game.disconnect.grace=1s"})
 abstract class TimerTestSupport {
 
     @MockitoBean
@@ -36,6 +38,9 @@ abstract class TimerTestSupport {
 
     @MockitoSpyBean
     protected Judge judge;
+
+    @MockitoSpyBean
+    protected HintGenerator hintGenerator;
 
     @MockitoSpyBean
     protected WaitTimerService waitTimerService;

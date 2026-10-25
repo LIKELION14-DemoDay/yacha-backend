@@ -38,6 +38,9 @@ import lombok.Getter;
  * 양쪽 글을 {@link MessageType#ARGUMENT} 메시지로 기록합니다 (주장 63초, 반론 143초). 채팅은 반론이 공개된 뒤에만
  * 받고, 기록하기 전에 공개부터 하므로 스케줄러보다 채팅이 먼저 와도 반론이 앞 {@code seqNo} 를 받습니다.
  *
+ * <p><b>힌트</b> — 사람 참가자마다 매칭 직후 만들기 시작한 힌트({@link GameHints})를 둡니다. 본인만 조회하고,
+ * 게임이 끝난 뒤 늦게 도착한 결과는 버립니다.
+ *
  * <p><b>연결</b> — 사람 참가자마다 지금 인정하는 연결(토론방을 마지막으로 구독한 STOMP 세션)을 둡니다.
  * 새로고침처럼 새 연결이 먼저 붙고 예전 연결이 늦게 끊기면 그 끊김은 무시합니다. 인정하는 연결이 끊기면
  * 이탈 유예가 시작되고({@link #disconnect}), 유예 안에 다시 구독하면 복귀합니다({@link #connect}).
@@ -91,6 +94,8 @@ public class Game {
     private Verdict verdict;
     /** 판정을 시작한 횟수. 처음 판정 + 재판정입니다. */
     private int judgeRuns;
+    /** 사람 참가자의 userId → 힌트. 만들기 시작하기 전이면 들어 있지 않습니다. */
+    private final Map<Long, GameHints> hintsByUserId = new HashMap<>();
     /** 사람 참가자의 userId → 지금 인정하는 연결(STOMP 세션 id). 토론방을 마지막으로 구독한 연결입니다. */
     private final Map<Long, String> connectionByUserId = new HashMap<>();
     /** 연결이 끊겨 이탈 유예 중인 userId → 몇 번째 끊김인지. 유예 타이머가 자기 끊김인지 확인합니다. */
@@ -231,6 +236,38 @@ public class Game {
 
     public boolean isParticipant(Long userId) {
         return participantIdByUserId.containsKey(userId);
+    }
+
+    /** 사람 참가자의 userId. 봇은 들어 있지 않습니다. */
+    public Set<Long> humanUserIds() {
+        return participantIdByUserId.keySet();
+    }
+
+    /** 이 참가자의 힌트를 만들기 시작합니다 ({@code PENDING}). */
+    public synchronized void startHints(Long userId) {
+        if (!isParticipant(userId)) {
+            throw new IllegalArgumentException("사람 참가자가 아닙니다. sessionId=" + sessionId);
+        }
+        hintsByUserId.put(userId, GameHints.PENDING);
+    }
+
+    /** 만든 힌트를 저장합니다. 게임이 이미 끝났으면 버립니다. */
+    public synchronized void completeHints(Long userId, List<String> hints) {
+        if (!finished) {
+            hintsByUserId.put(userId, GameHints.ready(hints));
+        }
+    }
+
+    /** 힌트를 만들지 못했습니다. 다시 만들지 않습니다. 게임이 이미 끝났으면 아무것도 하지 않습니다. */
+    public synchronized void failHints(Long userId) {
+        if (!finished) {
+            hintsByUserId.put(userId, GameHints.FAILED);
+        }
+    }
+
+    /** 이 참가자의 힌트. 아직 만들기 시작하기 전(매칭 직후 아주 짧은 사이)이면 곧 시작하므로 {@code PENDING} 입니다. */
+    public synchronized GameHints hintsOf(Long userId) {
+        return hintsByUserId.getOrDefault(userId, GameHints.PENDING);
     }
 
     /**
