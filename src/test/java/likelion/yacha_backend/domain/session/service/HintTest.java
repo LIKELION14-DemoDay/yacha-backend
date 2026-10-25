@@ -14,6 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import likelion.yacha_backend.domain.ai.AiException;
 import likelion.yacha_backend.domain.session.SessionFixture;
@@ -123,8 +125,12 @@ class HintTest extends TimerTestSupport {
     @Test
     @DisplayName("만드는 중이면 PENDING")
     void pendingWhileGenerating() throws Exception {
+        // 생성 작업을 붙잡아 두고 조회한 뒤 풀어 줍니다. 조회가 늦어도 먼저 끝나지 않습니다.
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
         doAnswer(invocation -> {
-            Thread.sleep(1_500);
+            started.countDown();
+            release.await(WAIT_MILLIS, TimeUnit.MILLISECONDS);
             return HINTS;
         }).when(hintGenerator).generate(any(), any());
         Long userId = fixture.newUser();
@@ -132,9 +138,14 @@ class HintTest extends TimerTestSupport {
         Long sessionId = sessionMatchFacade.startBot(userId, new BotMatchRequest(fixture.topic().getId(), Stance.AGREE));
         sessionIds.add(sessionId);
 
-        hints(userId, sessionId)
-                .andExpect(jsonPath("$.data.status").value("PENDING"))
-                .andExpect(jsonPath("$.data.hints").doesNotExist());
+        try {
+            assertThat(started.await(WAIT_MILLIS, TimeUnit.MILLISECONDS)).isTrue();
+            hints(userId, sessionId)
+                    .andExpect(jsonPath("$.data.status").value("PENDING"))
+                    .andExpect(jsonPath("$.data.hints").doesNotExist());
+        } finally {
+            release.countDown();
+        }
         waitForStatus(userId, sessionId, HintStatus.READY);
     }
 
