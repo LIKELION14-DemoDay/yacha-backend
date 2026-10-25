@@ -38,6 +38,19 @@ class BotProgressTest {
     }
 
     @Test
+    @DisplayName("만드는 중에 걸린 '한 번 더' 는 사람이 또 말하면 지워져, 그 말의 차례가 와야 다음 대답을 만든다")
+    void newMessageClearsPendingReply() {
+        BotProgress progress = new BotProgress();
+        assertThat(progress.startReply(progress.humanSpoke())).isTrue();
+        assertThat(progress.startReply(progress.humanSpoke())).isFalse();
+
+        long third = progress.humanSpoke();
+
+        assertThat(progress.finishReply()).isFalse();
+        assertThat(progress.startReply(third)).isTrue();
+    }
+
+    @Test
     @DisplayName("첫마디는 사람이 한 번도 말하지 않았을 때만")
     void firstMessageOnlyWhenSilent() {
         BotProgress silent = new BotProgress();

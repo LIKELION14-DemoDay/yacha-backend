@@ -39,8 +39,12 @@ public class BotProgress {
         return draft.take();
     }
 
-    /** 사람이 채팅했습니다. 대답 타이머가 자기 차례인지 확인할 번호를 돌려줍니다. */
+    /**
+     * 사람이 채팅했습니다. 대답 타이머가 자기 차례인지 확인할 번호를 돌려줍니다.
+     * 앞선 말 때문에 걸어 둔 "끝나면 한 번 더" 는 지웁니다 — 이 말의 타이머(3초 뒤)만 다음 대답을 정합니다.
+     */
     public synchronized long humanSpoke() {
+        replyPending = false;
         return ++humanChatNo;
     }
 
