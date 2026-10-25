@@ -40,10 +40,31 @@ jwt:
 
 auth:
   password-reset:
-    # 재설정 링크 유효시간. 길면 메일함이 털렸을 때 위험 구간이 길어짐 (팀 결정)
-    token-ttl: 30m
+    # 인증번호 확인 뒤 받는 재설정 토큰의 유효시간. 새 비밀번호를 정하는 화면 하나만 남아서 짧게 둠 (10/5)
+    token-ttl: 10m
     # 같은 이메일로 다시 보낼 수 있을 때까지의 간격. 남의 메일함에 계속 보내는 것을 막음 (팀 결정)
     send-interval: 1m
+    # 메일로 보낸 인증번호 유효시간. 화면 타이머와 같음 (와이어프레임 10/5)
+    code-ttl: 3m
+    # 인증번호를 틀릴 수 있는 횟수. 넘기면 다시 요청해야 함. 6자리 + 5번이면 맞힐 확률 0.0005%
+    max-code-attempts: 5
+    # 틀린 횟수를 failure-window 동안 두 단계로 셈. 인증번호를 새로 받아도 이어서 셈
+    # 위 5번만으로는 1분마다 새로 요청해 하루 수천 번 대입할 수 있어서 둠
+    #   ip-failure-limit    이메일 하나를 한 IP가 틀릴 수 있는 횟수 (인증번호 2개 분량)
+    #                       IP마다 따로 세서, 남이 일부러 틀려도 본인(다른 IP)은 막히지 않음
+    #   email-failure-limit 이메일 하나를 모든 IP가 합쳐서 틀릴 수 있는 횟수. IP를 바꿔 가며 대입하는 것을 막음
+    ip-failure-limit: 10
+    email-failure-limit: 100
+    failure-window: 24h
+    # 한 IP가 인증번호 메일을 요청할 수 있는 횟수
+    # 이메일별 간격(send-interval)만 있으면 이메일을 바꿔 가며 대량으로 요청해 Redis · DB 에 부하를 줄 수 있어서 둠
+    request-ip-limit:
+      max-requests: 10
+      window: 10m
+    # 한 IP가 인증번호를 확인할 수 있는 횟수. 한 IP에서 여러 이메일을 돌아가며 대입하는 것을 늦춤
+    verify-ip-limit:
+      max-requests: 30
+      window: 10m
 
   email-check:
     # 회원가입 이메일 중복 확인을 한 IP가 window 안에 부를 수 있는 횟수
@@ -100,13 +121,6 @@ oauth:
     client-secret: ${GOOGLE_CLIENT_SECRET:}
     token-uri: https://oauth2.googleapis.com/token
 
-mail:
-  # 비밀번호 재설정 메일에 넣을 링크. 재설정 페이지는 프론트가 그리고, 서버는 주소만 만들어 보냄
-  # 배포에서는 FRONTEND_BASE_URL 로 실제 도메인을 넘김
-  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
-  # 프론트와 맞춰야 하는 값. 경로가 정해지면 여기만 바꾸면 됨
-  reset-path: /reset-password
-
 game:
   # 토론 중 채팅 · 주장 · 반론은 서버 메모리에만 둡니다 (명세 1-5)
   # 채팅 한 건의 글자 수 상한 (이모지도 한 글자)
@@ -140,6 +154,16 @@ game:
     # 주장 · 반론의 최대 시도 횟수와 재시도 대기 (채팅 대답은 다시 시도하지 않음)
     max-attempts: 2
     retry-backoff: 1s
+  # 힌트 (매칭 직후 사람 참가자마다 만듦, PREP 60초 안이 목표)
+  hint:
+    # 최대 시도 횟수. 모두 실패하면 FAILED 로 두고 힌트 없이 진행
+    max-attempts: 2
+    # 재시도 전 대기 시간
+    retry-backoff: 1s
+  # 게임 중 연결 끊김
+  disconnect:
+    # 이탈 유예. 이 안에 토론방을 다시 구독하면 복귀하고, 지나면 몰수패 (FORFEIT)
+    grace: 10s
   # 판정 (260초에 채팅이 끝나면 시작)
   judge:
     # 판정 한 번의 최대 시도 횟수. 모두 실패하면 FAILED

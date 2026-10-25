@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * 방 생성 · 입장 · 취소 · 봇전 시작의 진입점. DB 작업은 {@link SessionCommandService} 의 트랜잭션에서 하고,
- * <b>커밋이 끝난 뒤에</b> 대기 타이머 등록 · 정리, 게임 생성 · 구간 타이머 등록, 봇 일정 등록, 방장 알림을 합니다.
+ * <b>커밋이 끝난 뒤에</b> 대기 타이머 등록 · 정리, 게임 생성 · 구간 타이머 등록, 힌트 생성 시작, 봇 일정 등록, 방장 알림을 합니다.
  *
  * <p>트랜잭션 안에서 하면 두 가지 문제가 생깁니다.
  * <ul>
@@ -31,6 +31,8 @@ public class SessionMatchFacade {
     private final WaitTimerService waitTimerService;
     private final PhaseScheduler phaseScheduler;
     private final BotService botService;
+    private final HintService hintService;
+    private final GameConnectionService gameConnectionService;
 
     /**
      * 방 생성 → (커밋) → 대기 타이머 등록 (30초마다 팝업, 5분이면 취소).
@@ -81,7 +83,8 @@ public class SessionMatchFacade {
     }
 
     /**
-     * 게임을 만들고 시간표(60~260초) 타이머를 등록합니다. 봇전도 같은 시간표입니다.
+     * 게임을 만들고 시간표(60~260초) 타이머를 등록합니다. 봇전도 같은 시간표입니다. 대기 중에 토론방을 미리
+     * 구독해 둔 참가자 연결도 이때 인정합니다 ({@link GameConnectionService#connectSubscribed}).
      *
      * <p>세션은 이미 {@code IN_PROGRESS} 로 커밋됐으므로 여기서 실패해도 입장 · 봇전 · AI 전환은 성공으로 응답합니다
      * ({@link #create} 와 같은 이유). 게임이나 타이머 없이 남은 세션은 주기 정리
@@ -94,6 +97,17 @@ public class SessionMatchFacade {
             phaseScheduler.register(matched.sessionId(), matched.startedAt());
         } catch (RuntimeException e) {
             log.error("[게임 생성] 게임 · 시간표를 만들지 못했습니다. sessionId={}", matched.sessionId(), e);
+        }
+        try {
+            gameConnectionService.connectSubscribed(matched.sessionId());
+        } catch (RuntimeException e) {
+            log.error("[게임 생성] 미리 구독한 연결을 인정하지 못했습니다. sessionId={}", matched.sessionId(), e);
+        }
+        // 힌트는 시간표와 따로 시작합니다. 힌트가 실패해도 게임은 이어지고, 시간표 등록이 실패해도 힌트는 만듭니다.
+        try {
+            hintService.start(matched.sessionId());
+        } catch (RuntimeException e) {
+            log.error("[힌트] 만들기 시작하지 못했습니다. sessionId={}", matched.sessionId(), e);
         }
         // 봇 일정은 시간표와 따로 등록합니다. 봇이 실패해도 게임은 이어집니다 (사람전이면 아무것도 하지 않음).
         try {

@@ -31,6 +31,8 @@ public class GameSchedulerConfig {
 
     /** 봇 글(LLM 호출) 전용 실행기. 타이머 스레드에서 봇 글을 기다리지 않도록 이쪽으로 넘깁니다. */
     public static final String BOT_EXECUTOR = "botExecutor";
+    /** 힌트(LLM 호출) 전용 실행기. 입장 요청 · 타이머 스레드에서 힌트를 기다리지 않도록 이쪽으로 넘깁니다. */
+    public static final String HINT_EXECUTOR = "hintExecutor";
 
     /** 타이머 작업은 상태 확인 · 전송 정도라 짧습니다. 명세에서 정할 값이 아니라 상수로 둡니다. */
     private static final int POOL_SIZE = 4;
@@ -74,6 +76,24 @@ public class GameSchedulerConfig {
     public ThreadPoolTaskExecutor botExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setThreadNamePrefix("bot-");
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(100);
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        return executor;
+    }
+
+    /**
+     * 힌트 실행기. 매칭마다 사람 참가자 수만큼(최대 2개) 작업이 들어오고, 한 작업이 재시도까지 20초 넘게 걸릴 수 있어
+     * 판정과도 나눕니다. 판정이 몰려도 PREP 60초 안에 끝내야 하는 힌트가 밀리지 않게 하기 위해서입니다.
+     *
+     * <p>큐가 가득 차면 넘기는 쪽에서 예외가 나고, 그 참가자의 힌트는 {@code FAILED} 가 됩니다 (힌트 없이 진행).
+     * 종료할 때 기다리지 않습니다 — 재시작하면 진행 중인 게임은 어차피 {@code ABORTED} 로 정리됩니다.
+     */
+    @Bean(name = HINT_EXECUTOR)
+    public ThreadPoolTaskExecutor hintExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setThreadNamePrefix("hint-");
         executor.setCorePoolSize(4);
         executor.setMaxPoolSize(4);
         executor.setQueueCapacity(100);

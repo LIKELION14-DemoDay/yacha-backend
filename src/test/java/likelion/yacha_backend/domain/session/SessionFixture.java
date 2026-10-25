@@ -83,6 +83,11 @@ public class SessionFixture {
         return randomHuman(elapsedSeconds, this::user, this::user);
     }
 
+    /** 둘 다 회원인 랜덤 사람전. 양쪽 승패가 모두 기록됩니다. */
+    public Room members(long elapsedSeconds) {
+        return randomHuman(elapsedSeconds, this::member, this::member);
+    }
+
     /** 방장은 회원, 상대는 게스트인 랜덤 사람전. 승패 기록을 확인할 때 씁니다. */
     public Room memberVsGuest(long elapsedSeconds) {
         return randomHuman(elapsedSeconds, this::member, this::user);

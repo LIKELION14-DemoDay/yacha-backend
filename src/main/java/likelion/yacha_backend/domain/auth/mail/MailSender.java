@@ -5,7 +5,7 @@ import likelion.yacha_backend.domain.user.entity.Provider;
 /**
  * 메일 발송
  *
- * 아직 메일 인프라가 없어서 인터페이스로 두고, 지금은 링크를 로그에 남기는 구현만 사용
+ * 아직 메일 인프라가 없어서 인터페이스로 두고, 지금은 인증번호를 로그에 남기는 구현만 사용
  * 인프라가 준비되면 구현체만 갈아끼우면 서비스 코드는 그대로임
  *
  * 발송은 메일 서버 응답을 기다리는 외부 호출임
@@ -17,12 +17,12 @@ import likelion.yacha_backend.domain.user.entity.Provider;
  */
 public interface MailSender {
 
-    /** 비밀번호를 재설정할 수 있는 링크를 보냄 */
-    void sendPasswordReset(String email, String resetUrl);
+    /** 비밀번호 재설정 인증번호(6자리)를 보냄. 3분 동안 유효하다고 안내 */
+    void sendPasswordResetCode(String email, String code);
 
     /**
      * 소셜로만 가입한 계정에 보냄
-     * 비밀번호가 없어 재설정할 대상이 없으므로 링크 대신 "카카오로 로그인하세요" 같은 안내를 보냄
+     * 비밀번호가 없어 재설정할 대상이 없으므로 인증번호 대신 "카카오로 로그인하세요"같은 안내를 보냄
      *
      * 이 경우에도 메일은 보냄
      */
