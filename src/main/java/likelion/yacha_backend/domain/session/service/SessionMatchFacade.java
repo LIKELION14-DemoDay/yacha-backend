@@ -96,7 +96,6 @@ public class SessionMatchFacade {
             phaseScheduler.register(matched.sessionId(), matched.startedAt());
         } catch (RuntimeException e) {
             log.error("[게임 생성] 게임 · 시간표를 만들지 못했습니다. sessionId={}", matched.sessionId(), e);
-            return;
         }
         try {
             gameConnectionService.connectSubscribed(matched.sessionId());
