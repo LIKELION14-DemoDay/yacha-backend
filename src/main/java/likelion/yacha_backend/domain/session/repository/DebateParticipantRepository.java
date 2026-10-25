@@ -4,6 +4,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
+import likelion.yacha_backend.domain.session.entity.DebateResult;
 import likelion.yacha_backend.domain.session.entity.ParticipantRole;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,6 +20,9 @@ public interface DebateParticipantRepository extends JpaRepository<DebatePartici
     Optional<DebateParticipant> findBySession_IdAndUser_Id(Long sessionId, Long userId);
 
     List<DebateParticipant> findAllBySession_Id(Long sessionId);
+
+    /** 전투 기록: 이 사용자의 참가 기록 중 결과가 {@code result} 인 것의 수. */
+    long countByUser_IdAndResult(Long userId, DebateResult result);
 
     /** 방장 · 상대 참가자. 방장은 세션마다 한 명입니다. */
     Optional<DebateParticipant> findBySession_IdAndRole(Long sessionId, ParticipantRole role);
