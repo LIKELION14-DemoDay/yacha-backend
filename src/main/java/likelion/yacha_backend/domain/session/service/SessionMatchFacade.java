@@ -88,7 +88,8 @@ public class SessionMatchFacade {
      *
      * <p>세션은 이미 {@code IN_PROGRESS} 로 커밋됐으므로 여기서 실패해도 입장 · 봇전 · AI 전환은 성공으로 응답합니다
      * ({@link #create} 와 같은 이유). 게임이나 타이머 없이 남은 세션은 주기 정리
-     * ({@link InProgressSessionCleaner#sweepOverdue}) 가 시간표가 끝난 뒤에 끝냅니다.
+     * ({@link InProgressSessionCleaner#sweepOverdue}) 가 시간표가 끝난 뒤에 끝냅니다. 게임 · 시간표를 만들지 못하면
+     * 연결 인정 · 힌트 · 봇도 하지 않습니다 (게임이 없거나, 같은 세션에 게임이 이미 있는 버그 상황).
      */
     private void createGame(Matched matched) {
         try {
@@ -97,13 +98,14 @@ public class SessionMatchFacade {
             phaseScheduler.register(matched.sessionId(), matched.startedAt());
         } catch (RuntimeException e) {
             log.error("[게임 생성] 게임 · 시간표를 만들지 못했습니다. sessionId={}", matched.sessionId(), e);
+            return;
         }
         try {
             gameConnectionService.connectSubscribed(matched.sessionId());
         } catch (RuntimeException e) {
             log.error("[게임 생성] 미리 구독한 연결을 인정하지 못했습니다. sessionId={}", matched.sessionId(), e);
         }
-        // 힌트는 시간표와 따로 시작합니다. 힌트가 실패해도 게임은 이어지고, 시간표 등록이 실패해도 힌트는 만듭니다.
+        // 힌트는 시간표와 따로 시작합니다. 힌트가 실패해도 게임은 이어집니다.
         try {
             hintService.start(matched.sessionId());
         } catch (RuntimeException e) {
