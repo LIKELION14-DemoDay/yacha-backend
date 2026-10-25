@@ -10,16 +10,20 @@ import likelion.yacha_backend.domain.session.dto.CurrentSessionResponse;
 import likelion.yacha_backend.domain.session.dto.GameMessageResponse;
 import likelion.yacha_backend.domain.session.dto.MemoResponse;
 import likelion.yacha_backend.domain.session.dto.MemoSaveRequest;
+import likelion.yacha_backend.domain.session.dto.ProposalResponse;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
 import likelion.yacha_backend.domain.session.dto.SessionIdResponse;
 import likelion.yacha_backend.domain.session.dto.SessionResultResponse;
 import likelion.yacha_backend.domain.session.dto.SessionStateResponse;
+import likelion.yacha_backend.domain.session.dto.WaitingRoomsResponse;
 import likelion.yacha_backend.domain.session.service.GameExitService;
 import likelion.yacha_backend.domain.session.service.GameMemoService;
 import likelion.yacha_backend.domain.session.service.HintService;
 import likelion.yacha_backend.domain.session.service.SessionMatchFacade;
+import likelion.yacha_backend.domain.session.service.SessionProposalService;
 import likelion.yacha_backend.domain.session.service.SessionQueryService;
 import likelion.yacha_backend.domain.session.service.SessionResultService;
+import likelion.yacha_backend.domain.topic.entity.Category;
 import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
@@ -34,13 +38,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "토론 세션", description = "방 생성 · 입장 · 취소 · 봇전, 토론방 조회 — 현재 상태 · 놓친 메시지 · 내 주장 작성 · 결과")
+@Tag(name = "토론 세션", description = "방 생성 · 자동 제안 · 방 찾기 · 입장 · 취소 · 봇전, 토론방 조회 — 현재 상태 · 놓친 메시지 · 내 주장 작성 · 결과")
 @RestController
 @RequestMapping("/api/v1/sessions")
 @RequiredArgsConstructor
 public class SessionController {
 
     private final SessionMatchFacade sessionMatchFacade;
+    private final SessionProposalService sessionProposalService;
     private final SessionQueryService sessionQueryService;
     private final GameMemoService gameMemoService;
     private final SessionResultService sessionResultService;
@@ -63,6 +68,64 @@ public class SessionController {
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody SessionCreateRequest request) {
         return ApiResponse.success(new SessionIdResponse(sessionMatchFacade.create(authUser.getUserId(), request)));
+    }
+
+    @Operation(
+            summary = "자동 제안",
+            description = """
+                    "랜덤 주제로 시작하기". 고른 카테고리부터 8개 카테고리를 순서대로 돌며 대기 방을 하나씩 제안
+                    (인간 → 관계 → 윤리 → 사회 → 삶과 죽음 → 기술과 미래 → 돈과 성공 → 진실과 믿음 → 처음으로)
+
+                    - `PROPOSAL`: 그 카테고리에서 가장 오래 기다린 방. `myStance` 는 들어가면 맡을 입장(방장의 반대)
+                      승낙은 `POST /sessions/{id}/join`, 거절은 `POST /sessions/{id}/reject`
+                      제안된 방의 카테고리가 고른 카테고리와 달라도 그 방의 주제로 토론
+                    - `NEW_TOPIC`: 한 바퀴를 다 돌았거나 대기 방이 없음. 고른 카테고리의 새 주제 → 주제 화면(내 방 만들기 · 봇전)
+                    - 다시 부르면 처음부터 다시 돎. 방을 잡아 두지 않으므로, 입장이 `SESSION_NOT_WAITING` 이면 다시 부르면 됨
+
+                    로그인 필요 (게스트 가능)
+                    카테고리 값이 잘못되면 `BINDING_ERROR`, `NEW_TOPIC` 인데 뽑을 주제가 없으면 `TOPIC_NOT_FOUND`
+                    """)
+    @GetMapping("/proposal")
+    public ApiResponse<ProposalResponse> propose(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam Category category) {
+        return ApiResponse.success(sessionProposalService.propose(authUser.getUserId(), category));
+    }
+
+    @Operation(
+            summary = "제안 거절",
+            description = """
+                    제안받은 방을 거절하고 다음 카테고리의 방을 받음. 응답은 자동 제안과 같음 (`PROPOSAL` / `NEW_TOPIC`)
+                    한 바퀴를 다 돌았으면 `NEW_TOPIC`. 10분 넘게 지나 위치가 사라졌으면 거절한 방의 카테고리 다음부터 새로 돎
+
+                    로그인 필요 (게스트 가능)
+                    없는 방이면 `SESSION_NOT_FOUND`
+                    """)
+    @PostMapping("/{sessionId}/reject")
+    public ApiResponse<ProposalResponse> reject(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long sessionId) {
+        return ApiResponse.success(sessionProposalService.reject(authUser.getUserId(), sessionId));
+    }
+
+    @Operation(
+            summary = "방 찾기",
+            description = """
+                    "야차 상대 찾기". 카테고리의 대기 방을 오래 기다린 순으로 한 페이지 20개씩 (`page` 는 0 부터)
+                    자동 제안과 같은 대기열이고, 내 방은 빠짐. 입장은 `POST /sessions/{id}/join`
+
+                    카드: 방장(닉네임 · 철학자 유형) · 주제 · `wantedStance`(찾는 입장 = 들어가면 맡을 입장)
+                    `philosopherType` 은 아직 null. `hasNext` 가 true 면 다음 페이지가 있음
+
+                    로그인 필요 (게스트 가능)
+                    카테고리 값이 잘못되면 `BINDING_ERROR`, `page` 가 음수면 `VALIDATION_FAILED`
+                    """)
+    @GetMapping("/waiting")
+    public ApiResponse<WaitingRoomsResponse> findWaiting(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam Category category,
+            @RequestParam(defaultValue = "0") int page) {
+        return ApiResponse.success(sessionProposalService.findWaiting(authUser.getUserId(), category, page));
     }
 
     @Operation(
