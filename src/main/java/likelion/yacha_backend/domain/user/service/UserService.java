@@ -4,6 +4,7 @@ import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
 import likelion.yacha_backend.domain.user.dto.MyInfoResponse;
 import likelion.yacha_backend.domain.user.dto.MyInfoResponse.StatsResponse;
 import likelion.yacha_backend.domain.user.dto.NicknameUpdateRequest;
+import likelion.yacha_backend.domain.user.entity.PhilosopherType;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.exception.BusinessException;
@@ -33,6 +34,18 @@ public class UserService {
         user.changeNickname(request.nickname());
 
         return MyInfoResponse.from(user, StatsResponse.empty());
+    }
+
+    /** 밸런스 게임 결과 저장. 다시 하면 덮어씀 */
+    @Transactional
+    public void completeBalanceGame(Long userId, PhilosopherType philosopherType) {
+        findById(userId).completeBalanceGame(philosopherType);
+    }
+
+    /** 밸런스 게임 건너뛰기. 이미 결과가 있으면 그대로 둠 */
+    @Transactional
+    public void skipBalanceGame(Long userId) {
+        findById(userId).skipBalanceGame();
     }
 
     /**

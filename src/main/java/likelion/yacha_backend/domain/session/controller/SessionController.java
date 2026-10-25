@@ -251,7 +251,7 @@ public class SessionController {
                     판정이 실패하면 다시 부를 때 판정을 다시 시작하고 `PENDING`
                     점수 · 요약은 10분 동안만 있고, 그 뒤에는 승패만 (`criteria` · `scores` · `total` null, 게스트는 승패도 없음)
                     결과를 낼 수 없으면 `FAILED` (판정 중 서버 재시작 · 무효 게임 `ABORTED`)
-                    `philosopherType` 은 아직 null, 봇은 `nickname` 도 null
+                    `philosopherType` 은 밸런스 게임 결과 (안 했으면 null = "일반인"), 봇은 `nickname` · `philosopherType` 모두 null
 
                     참가자만 (`NOT_PARTICIPANT`), 아직 끝나지 않은 토론이면 `SESSION_NOT_FINISHED`
                     """)
