@@ -42,7 +42,12 @@ public class GameMessageController {
     public void chat(@DestinationVariable Long sessionId, @Payload ChatSendRequest request, Principal principal) {
         gameMessageService.sendChat(sessionId, AuthUser.from(principal).getUserId(), request.content());
         // 봇전이면 마지막 말 3초 뒤 봇이 대답합니다. 채팅이 거부되면 위에서 예외가 나 여기까지 오지 않습니다.
-        botService.humanSpoke(sessionId);
+        // 채팅은 이미 보냈으므로 대답 예약이 실패해도 에러로 응답하지 않고, 그 대답만 건너뜁니다.
+        try {
+            botService.humanSpoke(sessionId);
+        } catch (RuntimeException e) {
+            log.error("[봇] 대답 일정을 등록하지 못했습니다. sessionId={}", sessionId, e);
+        }
     }
 
     @MessageExceptionHandler(BusinessException.class)
