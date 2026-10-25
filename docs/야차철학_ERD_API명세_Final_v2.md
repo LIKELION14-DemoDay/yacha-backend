@@ -768,7 +768,7 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 | `CONTENT_TOO_LONG` | 400 | 🔶 글자 수 초과 (🟢 채팅 100자 · 주장 200자 · 반론 250자) |
 | `MESSAGE_LIMIT_EXCEEDED` | 409 | 🟢 참가자 한 명당 채팅 200건 초과 |
 | `GUEST_NOT_ALLOWED` | 403 | 🟠 비회원이 회원 전용 기능을 부름. 프론트는 가입 안내를 띄운다 |
-| `TOO_MANY_REQUESTS` | 429 | 🟢 같은 IP 에서 짧은 시간에 너무 많이 부름 (지금은 이메일 중복 확인) |
+| `TOO_MANY_REQUESTS` | 429 | 🟢 같은 IP 에서 짧은 시간에 너무 많이 부름 (이메일 중복 확인, 비밀번호 찾기 ① 요청 · ② 확인) |
 
 > 🔶 `EVIDENCE_LIMIT_EXCEEDED` 는 근거 검색이 사라져 제거했다. 🟢 `FINAL_ALREADY_SUBMITTED` 는 최종변론이 사라져 제거했다.
 > 🟣 `NOT_PARTICIPANT` 는 참가자가 아닌 사용자가 SEND 하거나 🟢 토론방 상태 · 메시지 · 힌트 · 주장 · 결과를 조회할 때 쓴다.
