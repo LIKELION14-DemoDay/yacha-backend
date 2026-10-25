@@ -150,6 +150,17 @@ public class DebateParticipant {
     }
 
     /**
+     * 승패를 DB 에 남기는 참가자인가. 회원과 AI 참가자는 남기고, 게스트와 계정이 정리된 참가자는 남기지 않습니다(NULL).
+     * 판정 · 몰수패가 같은 규칙을 씁니다.
+     */
+    public boolean keepsRecord() {
+        if (isAi()) {
+            return true;
+        }
+        return user != null && !user.isGuest();
+    }
+
+    /**
      * 이 사용자의 참가 기록인가
      * {@code user}가 없는 참가 기록도 있으므로 {@code getUser()} 대신 이것으로 비교합니다
      * AI 참가자, 정리된 게스트 계정, 승격 전 게스트 때 끝난 경기는 {@code user}가 null입니다

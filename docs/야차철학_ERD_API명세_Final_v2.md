@@ -596,6 +596,7 @@ flowchart TD
 { "type": "PHASE_CHANGED", "phase": "REBUTTAL", "endsAt": "2026-10-31T12:02:20+09:00", "serverNow": "2026-10-31T12:01:20+09:00" }
 { "type": "FINAL_NOTICE", "endsAt": "2026-10-31T12:04:20+09:00" }
 { "type": "OPPONENT_DISCONNECTED", "graceEndsAt": "2026-10-31T12:03:10+09:00" }
+{ "type": "OPPONENT_RECONNECTED" }
 { "type": "SESSION_FINISHED", "reason": "COMPLETED" }
 ```
 
@@ -884,8 +885,11 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 **이탈 처리 — 유예 후 몰수패**
 
 1. WebSocket 연결이 끊기면 `disconnected_at` 을 기록하고 상대에게 `OPPONENT_DISCONNECTED` 를 보낸다.
-2. 유예 시간(🟢 **10초**) 안에 재접속하면 `disconnected_at` 을 NULL 로 되돌린다.
-3. 유예가 지나면 세션을 `FINISHED`, `finish_reason = FORFEIT` 로 종료한다. 이탈자 `LOSE`, 남은 사람 `WIN`.
+2. 유예 시간(🟢 **10초**) 안에 재접속하면 `disconnected_at` 을 NULL 로 되돌린다. 🟢 재접속은 CONNECT 가 아니라 **토론방(`/topic/sessions/{id}`)을 다시 구독할 때**로 보고, 상대에게 `OPPONENT_RECONNECTED` 를 보낸다. 🟢 새 연결이 먼저 구독한 뒤 예전 연결이 늦게 끊기면(새로고침) 그 끊김은 무시한다 (최신 연결만 인정). 🟢 대기 중에 토론방을 미리 구독한 채 매칭돼도, 게임이 시작될 때 그 구독을 연결로 인정해 끊김을 감지한다.
+3. 유예가 지나면 세션을 `FINISHED`, `finish_reason = FORFEIT` 로 종료한다. 이탈자 `LOSE`, 남은 사람 `WIN`. 🟢 그때 상대도 끊겨 있으면(양쪽 동시 이탈) `ABORTED` 로 끝내고 승패는 NULL 이다.
+- 🟢 게임 화면으로 다시 들어오는 경로는 없다. 나가거나 앱을 끄면 다시 열어도 홈으로 간다. 유예는 같은 화면에서 소켓이 자동으로 다시 붙는 짧은 끊김만 살린다. 앱을 끈 뒤 유예 안에 새 게임을 시작하면 이전 게임이 아직 진행 중이라 `ALREADY_IN_SESSION` 이다 (최대 10초).
+- 🟢 승패 기록은 판정과 같다 — 회원 · AI 는 기록, 게스트는 NULL. 봇전에서 사람이 나가거나 끊기면 AI 가 `WIN` 이다.
+
 4. 🔷 대기(`WAITING`) 중에 연결이 끊겨도 방은 바로 취소하지 않는다. 5분 상한(랜덤) · 10분 만료(친구)로 정리한다. 방장이 나가려면 `DELETE /sessions/{id}` 를 호출한다.
 
 ## 2-12. WebSocket(STOMP) 규약 (🔶 신규)
@@ -1037,6 +1041,6 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 - [ ] **`evidence_mode` 유지 여부** — 🟢 근거 검색이 없어지고 힌트만 남았으므로 `NONE` / `ENABLED` 구분이 필요한지.
 - [ ] **신고 · 차단 범위** — `report`, `user_block` 을 MVP 에 포함할지.
 - [x] **이탈 유예 시간** — 🟢 10초. 나가기는 유예 없이 즉시 몰수패.
-- [ ] **양쪽 동시 이탈** — 둘 다 끊긴 경우의 처리.
+- [x] **양쪽 동시 이탈** — 🟢 먼저 끊긴 쪽의 유예가 끝날 때 상대도 끊겨 있으면 `ABORTED`, 승패 NULL.
 - [x] **채팅 제한** — 🟢 한 건 100자(봇 50자), 참가자 한 명당 200건.
 - [ ] **일정 · 담당 재조정** — 매칭 · 스케줄러 · WebSocket 채팅 · 봇전을 A 의 시험 기간 전에 끝낼 수 있는지.
