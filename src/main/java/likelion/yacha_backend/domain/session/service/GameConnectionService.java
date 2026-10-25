@@ -21,6 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.simp.user.SimpSubscription;
+import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -44,6 +46,10 @@ import org.springframework.web.socket.messaging.SessionSubscribeEvent;
  * <p><b>최신 연결만 인정</b> — 새로고침처럼 새 연결이 먼저 구독하고 예전 연결이 늦게 끊기면 그 끊김은 무시합니다
  * ({@link Game#disconnect}). 구독 이벤트는 구독 권한 검사({@code StompAuthChannelInterceptor})를 통과한 뒤에만 옵니다.
  *
+ * <p><b>게임이 생기기 전의 구독</b> — 토론방은 대기 중에도 구독할 수 있지만, 그때는 게임이 없어 연결을 인정하지
+ * 못합니다. 그 구독을 유지한 채 매칭되면 다시 구독할 일이 없으므로, 게임을 만들 때 이미 구독 중인 연결을
+ * 찾아 인정합니다 ({@link #connectSubscribed}).
+ *
  * <p>유예 타이머는 따로 취소하지 않습니다. 실행될 때 "그 끊김 뒤로 아직 안 돌아왔는지" 를 게임에서 다시 확인하고,
  * 게임이 끝나면 {@link GameTimers#cancelAll} 로 같이 지워집니다. 봇은 연결이 없으므로 사람만 감지합니다.
  */
@@ -60,6 +66,7 @@ public class GameConnectionService {
     private final GameExitService gameExitService;
     private final DebateParticipantRepository participantRepository;
     private final DisconnectProperties properties;
+    private final SimpUserRegistry simpUserRegistry;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
@@ -69,13 +76,15 @@ public class GameConnectionService {
     public GameConnectionService(GameRegistry gameRegistry, GameTimers gameTimers,
                                  GameMessageService gameMessageService, GameExitService gameExitService,
                                  DebateParticipantRepository participantRepository, DisconnectProperties properties,
-                                 PlatformTransactionManager transactionManager, Clock clock) {
+                                 SimpUserRegistry simpUserRegistry, PlatformTransactionManager transactionManager,
+                                 Clock clock) {
         this.gameRegistry = gameRegistry;
         this.gameTimers = gameTimers;
         this.gameMessageService = gameMessageService;
         this.gameExitService = gameExitService;
         this.participantRepository = participantRepository;
         this.properties = properties;
+        this.simpUserRegistry = simpUserRegistry;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -101,6 +110,21 @@ public class GameConnectionService {
             return;
         }
         sessionIds.forEach(sessionId -> disconnected(sessionId, userId, event.getSessionId()));
+    }
+
+    /**
+     * 게임을 막 만들었습니다. 그 전부터(대기 중에) 토론방을 구독하고 있던 참가자 연결을 인정합니다.
+     * 구독 이벤트는 게임이 있을 때만 연결을 인정해서, 이게 없으면 그 사람이 끊겨도 감지하지 못합니다.
+     */
+    public void connectSubscribed(Long sessionId) {
+        String destination = "/topic/sessions/" + sessionId;
+        for (SimpSubscription subscription
+                : simpUserRegistry.findSubscriptions(candidate -> destination.equals(candidate.getDestination()))) {
+            Long userId = userIdOf(subscription.getSession().getUser().getPrincipal());
+            if (userId != null) {
+                subscribed(sessionId, userId, subscription.getSession().getId());
+            }
+        }
     }
 
     /** 참가자가 토론방을 구독했습니다. 관전자 · 끝난 게임이면 아무것도 하지 않습니다. */
