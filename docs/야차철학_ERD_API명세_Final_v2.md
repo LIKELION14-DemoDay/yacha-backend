@@ -432,15 +432,20 @@ erDiagram
 ```
 
 - `PROPOSAL` — 이 방을 보여준다. `myStance` 는 방장의 반대다.
+- 🟢 `topic` 은 주제 응답(2-2)과 같은 모양이다 (`category` · `subcategory` 포함). 없는 값(`NEW_TOPIC` 의 `sessionId` · `myStance`)은 보내지 않는다.
 - 🟢 `NEW_TOPIC` — 카테고리 8개를 한 바퀴 돌았다 (또는 대기 방이 하나도 없다). **고른 카테고리**에서 뽑은 새 주제다. 프론트는 주제 화면(예 / 아니오, 다음 주제로 넘어가기)으로 넘어가 내 방을 만들거나 바로 봇전을 시작한다.
 - 🟢 `EMPTY` · `BOT_MATCHED` 는 없앴다.
 
-🟢 **방 찾기 응답 (카드 한 장)** — 방장 프로필 · 방 주제 · 찾는 입장
+🟢 **방 찾기 응답** — 카드(방장 프로필 · 방 주제 · 찾는 입장)를 오래된 순으로 **한 페이지 20개**. `page` 는 0 부터, 음수면 `VALIDATION_FAILED`
 
 ```json
-{ "sessionId": 31, "host": { "nickname": "...", "philosopherType": "KANT" },
-  "topic": { "id": 12, "statement": "..." }, "wantedStance": "DISAGREE" }
+{ "rooms": [
+    { "sessionId": 31, "host": { "nickname": "...", "philosopherType": "KANT" },
+      "topic": { "id": 12, "statement": "..." }, "wantedStance": "DISAGREE" } ],
+  "hasNext": false }
 ```
+
+- 🟢 `philosopherType` 은 users 에 컬럼이 생기기 전까지 null 이다 (결과 화면과 같음).
 
 - `wantedStance` 는 방장의 반대다. 프론트는 "반대입장인 사람을 찾아요!" / "찬성입장인 사람을 찾아요!" 를 띄운다.
 
@@ -499,7 +504,8 @@ flowchart TD
 - **거절** → `POST /sessions/{id}/reject`. 다음 카테고리의 방을 제안한다.
 - **8개를 한 바퀴 돌면** `NEW_TOPIC` 을 돌려준다. 처음부터 모든 카테고리에 대기 방이 없으면 곧바로 `NEW_TOPIC` 이다.
 - **자동 봇전은 없다.** 봇전은 사용자가 고를 때만 시작한다 (위 표).
-- 순환 상태(시작 카테고리, 지금 위치)는 **사용자별로 Redis 에 짧은 TTL** 로 둔다. 매칭되거나 새로 시작(`/proposal` 다시 호출)하면 지운다.
+- 순환 상태(시작 카테고리, 지금 위치)는 **사용자별로 Redis 에 짧은 TTL**(🟢 **10분**)로 둔다. 매칭되거나 새로 시작(`/proposal` 다시 호출)하면 지운다.
+- 🟢 순환 상태가 만료된 뒤 거절하면, **거절한 방의 카테고리 다음부터** 새로 돈다 (시작 카테고리도 그 방의 카테고리).
 
 **방 찾기**
 
