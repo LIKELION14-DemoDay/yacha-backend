@@ -14,6 +14,7 @@ import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
 import likelion.yacha_backend.domain.session.dto.SessionIdResponse;
 import likelion.yacha_backend.domain.session.dto.SessionResultResponse;
 import likelion.yacha_backend.domain.session.dto.SessionStateResponse;
+import likelion.yacha_backend.domain.session.service.GameExitService;
 import likelion.yacha_backend.domain.session.service.GameMemoService;
 import likelion.yacha_backend.domain.session.service.HintService;
 import likelion.yacha_backend.domain.session.service.SessionMatchFacade;
@@ -44,6 +45,7 @@ public class SessionController {
     private final GameMemoService gameMemoService;
     private final SessionResultService sessionResultService;
     private final HintService hintService;
+    private final GameExitService gameExitService;
 
     @Operation(
             summary = "방 생성",
@@ -142,6 +144,23 @@ public class SessionController {
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long sessionId) {
         return ApiResponse.success(hintService.getMyHints(sessionId, authUser.getUserId()));
+    }
+
+    @Operation(
+            summary = "게임 중 나가기",
+            description = """
+                    진행 중인 토론에서 나감. 유예 없이 바로 몰수패 (`FINISHED` · `FORFEIT`)
+                    나간 사람 `LOSE`, 남은 사람 `WIN` (판정 없음, 게스트는 승패 기록 안 함). 남은 사람에게 `SESSION_FINISHED { reason: FORFEIT }`
+                    나간 사람은 홈 화면으로. 결과는 `GET /sessions/{id}/result` 로 승패만 볼 수 있음
+
+                    참가자만 (`NOT_PARTICIPANT`), 대기 중이거나 이미 끝난 토론이면 `SESSION_NOT_IN_PROGRESS` (대기 취소는 `DELETE /sessions/{id}`)
+                    """)
+    @PostMapping("/{sessionId}/leave")
+    public ApiResponse<SessionIdResponse> leave(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long sessionId) {
+        gameExitService.leave(authUser.getUserId(), sessionId);
+        return ApiResponse.success(new SessionIdResponse(sessionId));
     }
 
     @Operation(

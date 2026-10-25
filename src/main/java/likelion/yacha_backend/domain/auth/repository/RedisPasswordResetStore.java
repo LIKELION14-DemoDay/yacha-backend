@@ -1,19 +1,29 @@
 package likelion.yacha_backend.domain.auth.repository;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Repository;
 
 /**
  * Redis 구현
  * 두 값 모두 TTL 로 알아서 사라지므로 정리 작업이 필요 없음
  *
- *   password-reset:{토큰}        → userId   (30분)
- *   password-reset-user:{userId}  → 토큰     (30분)  사용자당 마지막 토큰
- *   password-reset-send:{이메일} → "1"      (1분)
+ *   password-reset:<토큰>        → userId   (10분)
+ *   password-reset-user:<userId>  → 토큰     (10분)  사용자당 마지막 토큰
+ *   password-reset-send:<이메일> → "1"      (1분)
+ *   password-reset-code:{<이메일>} → { code, attempts }  (3분)  해시
+ *   password-reset-fail:{<이메일>}         → 모든 IP가 틀린 횟수  (처음 틀린 때부터 24시간)
+ *   password-reset-fail-ip:{<이메일>}:<IP> → 그 IP가 틀린 횟수    (처음 틀린 때부터 24시간)
+ *
+ * 아래 세 키는 이메일을 중괄호로 감쌈 (Redis 해시 태그. 키에 실제로 { } 가 들어감)
+ * 인증번호 확인 스크립트가 세 키를 한 번에 다루는데, Redis 클러스터에서는 한 스크립트의 키가 모두 같은 슬롯에 있어야 함
+ * 해시 태그가 있으면 중괄호 안의 값(이메일)만으로 슬롯을 정하므로 세 키가 같은 슬롯에 놓임
+ * 지금은 Redis 한 대라 없어도 동작하지만, 클러스터로 바꿀 때 CROSSSLOT 오류로 인증번호 확인이 전부 실패하는 것을 미리 막음
  */
 @Repository
 @Profile("!test")
@@ -23,6 +33,63 @@ public class RedisPasswordResetStore implements PasswordResetStore {
     private static final String TOKEN_PREFIX = "password-reset:";
     private static final String USER_PREFIX = "password-reset-user:";
     private static final String SEND_PREFIX = "password-reset-send:";
+    private static final String CODE_PREFIX = "password-reset-code:";
+    private static final String FAIL_PREFIX = "password-reset-fail:";
+    private static final String IP_FAIL_PREFIX = "password-reset-fail-ip:";
+
+    /**
+     * 이전 인증번호를 지우고 새로 저장. 틀린 횟수도 0부터
+     * KEYS[1] 키, ARGV[1] 인증번호, ARGV[2] 유효시간(밀리초)
+     */
+    private static final RedisScript<Long> SAVE_CODE = RedisScript.of("""
+            redis.call('DEL', KEYS[1])
+            redis.call('HSET', KEYS[1], 'code', ARGV[1], 'attempts', 0)
+            redis.call('PEXPIRE', KEYS[1], ARGV[2])
+            return 1
+            """, Long.class);
+
+    /**
+     * 확인 · 횟수 증가 · 삭제를 한 번에 실행
+     * 0 = EXPIRED, 1 = MATCHED, 2 = MISMATCHED, 3 = LOCKED
+     *
+     * 하루 실패 한도를 넘겼으면(이 IP가 넘겼거나 이메일 전체가 넘김) 인증번호를 보지도 않고 LOCKED
+     *   인증번호의 시도 횟수도 쓰지 않으므로, 잠긴 IP가 남의 인증번호를 계속 소진시킬 수 없음
+     * 횟수를 넘긴 요청은 맞는 번호여도 EXPIRED. 이때 지워서 다시 요청하게 함
+     * 맞으면 바로 지워서 같은 번호로 두 번 통과하지 못하게 함. 하루 실패 횟수도 둘 다 지움 (본인 확인이 끝났으므로)
+     * 틀리면 하루 실패 횟수를 둘 다 늘리고, 처음 틀린 것이면 기간을 잡음
+     * HINCRBY · INCR 는 만료 시간을 바꾸지 않음
+     *
+     * KEYS[1] 인증번호 키, KEYS[2] 이메일 + IP 실패 횟수 키, KEYS[3] 이메일 전체 실패 횟수 키
+     * ARGV[1] 입력한 인증번호, ARGV[2] 틀릴 수 있는 횟수
+     * ARGV[3] 이메일 + IP 한도, ARGV[4] 이메일 전체 한도, ARGV[5] 실패 기간(밀리초)
+     */
+    private static final RedisScript<Long> CHECK_CODE = RedisScript.of("""
+            local ipFailures = tonumber(redis.call('GET', KEYS[2]) or '0')
+            local emailFailures = tonumber(redis.call('GET', KEYS[3]) or '0')
+            if ipFailures >= tonumber(ARGV[3]) or emailFailures >= tonumber(ARGV[4]) then
+              return 3
+            end
+            local code = redis.call('HGET', KEYS[1], 'code')
+            if not code then
+              return 0
+            end
+            local attempts = redis.call('HINCRBY', KEYS[1], 'attempts', 1)
+            if attempts > tonumber(ARGV[2]) then
+              redis.call('DEL', KEYS[1])
+              return 0
+            end
+            if code == ARGV[1] then
+              redis.call('DEL', KEYS[1], KEYS[2], KEYS[3])
+              return 1
+            end
+            if redis.call('INCR', KEYS[2]) == 1 then
+              redis.call('PEXPIRE', KEYS[2], ARGV[5])
+            end
+            if redis.call('INCR', KEYS[3]) == 1 then
+              redis.call('PEXPIRE', KEYS[3], ARGV[5])
+            end
+            return 2
+            """, Long.class);
 
     private final StringRedisTemplate redisTemplate;
     private final PasswordResetProperties properties;
@@ -47,7 +114,7 @@ public class RedisPasswordResetStore implements PasswordResetStore {
     @Override
     public Optional<Long> consume(String token) {
         // GETDEL — 값을 읽으면서 같은 동작으로 삭제
-        // 조회와 삭제를 나누면 같은 링크를 동시에 두 번 눌렀을 때 둘 다 통과
+        // 조회와 삭제를 나누면 같은 토큰으로 동시에 두 번 보냈을 때 둘 다 통과
         String userId = redisTemplate.opsForValue().getAndDelete(TOKEN_PREFIX + token);
         return Optional.ofNullable(userId).map(Long::valueOf);
     }
@@ -59,5 +126,45 @@ public class RedisPasswordResetStore implements PasswordResetStore {
         Boolean acquired = redisTemplate.opsForValue()
                 .setIfAbsent(SEND_PREFIX + email, "1", properties.sendInterval());
         return Boolean.TRUE.equals(acquired);
+    }
+
+    @Override
+    public void saveCode(String email, String code) {
+        redisTemplate.execute(SAVE_CODE, List.of(codeKey(email)),
+                code, String.valueOf(properties.codeTtl().toMillis()));
+    }
+
+    @Override
+    public CodeCheck checkCode(String email, String clientIp, String code) {
+        Long result = redisTemplate.execute(CHECK_CODE,
+                List.of(codeKey(email), ipFailKey(email, clientIp), failKey(email)),
+                code, String.valueOf(properties.maxCodeAttempts()),
+                String.valueOf(properties.ipFailureLimit()), String.valueOf(properties.emailFailureLimit()),
+                String.valueOf(properties.failureWindow().toMillis()));
+        if (result == null || result == 0L) {
+            return CodeCheck.EXPIRED;
+        }
+        if (result == 3L) {
+            return CodeCheck.LOCKED;
+        }
+        return result == 1L ? CodeCheck.MATCHED : CodeCheck.MISMATCHED;
+    }
+
+    // 인증번호 확인 스크립트가 함께 다루는 세 키. 이메일을 해시 태그로 감싸 같은 슬롯에 놓음 (클래스 주석 참고)
+
+    static String codeKey(String email) {
+        return CODE_PREFIX + hashTag(email);
+    }
+
+    static String failKey(String email) {
+        return FAIL_PREFIX + hashTag(email);
+    }
+
+    static String ipFailKey(String email, String clientIp) {
+        return IP_FAIL_PREFIX + hashTag(email) + ":" + clientIp;
+    }
+
+    private static String hashTag(String email) {
+        return "{" + email + "}";
     }
 }

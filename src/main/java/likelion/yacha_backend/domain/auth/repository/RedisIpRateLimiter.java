@@ -1,8 +1,8 @@
 package likelion.yacha_backend.domain.auth.repository;
 
+import java.time.Duration;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -12,17 +12,14 @@ import org.springframework.stereotype.Repository;
  * Redis 구현체
  *
  * 저장 형태:
- *   key   email-check:203.0.113.7
+ *   key   {용도}:{IP}  (예: email-check:203.0.113.7)
  *   value 호출 횟수
- *   TTL   auth.email-check.window (처음 부른 때부터)
+ *   TTL   넘겨받은 window (처음 부른 때부터)
  */
 @Repository
 @Profile("!test")
 @RequiredArgsConstructor
-@EnableConfigurationProperties(EmailCheckProperties.class)
-public class RedisEmailCheckLimiter implements EmailCheckLimiter {
-
-    private static final String KEY_PREFIX = "email-check:";
+public class RedisIpRateLimiter implements IpRateLimiter {
 
     /**
      * INCR과 만료 설정을 한 번에 실행
@@ -39,13 +36,12 @@ public class RedisEmailCheckLimiter implements EmailCheckLimiter {
             """, Long.class);
 
     private final StringRedisTemplate redisTemplate;
-    private final EmailCheckProperties properties;
 
     @Override
-    public boolean tryAcquire(String clientIp) {
+    public boolean tryAcquire(String purpose, String clientIp, int maxRequests, Duration window) {
         Long count = redisTemplate.execute(
-                INCREMENT_IN_WINDOW, List.of(KEY_PREFIX + clientIp),
-                String.valueOf(properties.window().toMillis()));
-        return count != null && count <= properties.maxRequests();
+                INCREMENT_IN_WINDOW, List.of(purpose + ":" + clientIp),
+                String.valueOf(window.toMillis()));
+        return count != null && count <= maxRequests;
     }
 }
