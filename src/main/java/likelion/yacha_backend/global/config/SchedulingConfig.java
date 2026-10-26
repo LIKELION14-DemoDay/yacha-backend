@@ -23,8 +23,9 @@ public class SchedulingConfig {
     @Bean
     public ThreadPoolTaskScheduler taskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        // 하루 한 번 도는 게스트 정리와 1분마다 도는 대기 방 · 진행 중 게임 정리뿐이고 모두 금방 끝나서 하나면 충분함
-        scheduler.setPoolSize(1);
+        // 게스트 정리 · 대기 방 · 진행 중 게임 정리는 금방 끝나지만, 주 1회 1분 철학 글 생성은 AI 응답을 기다려 몇 분까지 걸림 (5편)
+        // 하나뿐이면 그동안 1분마다 도는 정리가 밀려서 둘로 둠
+        scheduler.setPoolSize(2);
         scheduler.setThreadNamePrefix("scheduled-");
         return scheduler;
     }
