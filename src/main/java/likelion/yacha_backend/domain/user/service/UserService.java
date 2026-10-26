@@ -1,6 +1,8 @@
 package likelion.yacha_backend.domain.user.service;
 
 import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
+import likelion.yacha_backend.domain.session.service.BattleRecordService;
+import likelion.yacha_backend.domain.session.service.BattleRecordService.BattleRecord;
 import likelion.yacha_backend.domain.user.dto.MyInfoResponse;
 import likelion.yacha_backend.domain.user.dto.MyInfoResponse.StatsResponse;
 import likelion.yacha_backend.domain.user.dto.NicknameUpdateRequest;
@@ -18,12 +20,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final BattleRecordService battleRecordService;
 
     /** 게스트도 호출 가능 (게스트는 email이 null로 내려감) */
     public MyInfoResponse getMyInfo(Long userId) {
-        // TODO: 판정 도메인(debate_result)이 생기면 그 도메인의 service 를 통해 실제 전적을 채웁니다.
-        //       다른 도메인의 데이터는 repository 가 아니라 service 로 가져오는 것이 팀 규칙입니다.
-        return MyInfoResponse.from(findById(userId), StatsResponse.empty());
+        return MyInfoResponse.from(findById(userId), stats(userId));
     }
 
     @Transactional
@@ -33,7 +34,13 @@ public class UserService {
         // 변경 감지: 트랜잭션이 끝날 때 Hibernate가 UPDATE를 만듦
         user.changeNickname(request.nickname());
 
-        return MyInfoResponse.from(user, StatsResponse.empty());
+        return MyInfoResponse.from(user, stats(userId));
+    }
+
+    /** 전적은 세션 도메인의 승패 기록입니다. 다른 도메인의 데이터는 repository 가 아니라 service 로 가져오는 것이 팀 규칙입니다. */
+    private StatsResponse stats(Long userId) {
+        BattleRecord record = battleRecordService.recordOf(userId);
+        return new StatsResponse(record.wins(), record.losses());
     }
 
     /** 밸런스 게임 결과 저장. 다시 하면 덮어씀 */

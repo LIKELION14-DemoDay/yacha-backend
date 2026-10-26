@@ -29,6 +29,8 @@ public class GameSchedulerConfig {
     /** 판정(LLM 호출) 전용 실행기. 타이머 스레드에서 판정을 기다리지 않도록 이쪽으로 넘깁니다. */
     public static final String JUDGE_EXECUTOR = "judgeExecutor";
 
+    /** 봇 글(LLM 호출) 전용 실행기. 타이머 스레드에서 봇 글을 기다리지 않도록 이쪽으로 넘깁니다. */
+    public static final String BOT_EXECUTOR = "botExecutor";
     /** 힌트(LLM 호출) 전용 실행기. 입장 요청 · 타이머 스레드에서 힌트를 기다리지 않도록 이쪽으로 넘깁니다. */
     public static final String HINT_EXECUTOR = "hintExecutor";
 
@@ -57,6 +59,23 @@ public class GameSchedulerConfig {
     public ThreadPoolTaskExecutor judgeExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setThreadNamePrefix("judge-");
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(100);
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        return executor;
+    }
+
+    /**
+     * 봇 실행기. 봇전마다 주장 · 반론 한 번씩과 채팅 대답(게임당 한 번에 하나)이 들어옵니다. 시각이 중요한 공개 ·
+     * 대답이 판정 몰림에 밀리지 않게 판정과 나눕니다.
+     *
+     * <p>큐가 가득 차면 넘기는 쪽에서 예외가 나고, 그 글 · 대답은 건너뜁니다. 종료할 때 기다리지 않습니다.
+     */
+    @Bean(name = BOT_EXECUTOR)
+    public ThreadPoolTaskExecutor botExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setThreadNamePrefix("bot-");
         executor.setCorePoolSize(4);
         executor.setMaxPoolSize(4);
         executor.setQueueCapacity(100);

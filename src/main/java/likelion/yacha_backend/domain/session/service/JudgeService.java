@@ -6,20 +6,16 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.Executor;
 import likelion.yacha_backend.domain.ai.AiException;
-import likelion.yacha_backend.domain.ai.AiMessage;
 import likelion.yacha_backend.domain.ai.AiTopic;
 import likelion.yacha_backend.domain.ai.Judge;
 import likelion.yacha_backend.domain.ai.JudgeRequest;
 import likelion.yacha_backend.domain.ai.JudgeResult;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
-import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.DebateResult;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.game.Game;
-import likelion.yacha_backend.domain.session.game.GameMessage;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.game.GameTimers;
-import likelion.yacha_backend.domain.session.game.MessageType;
 import likelion.yacha_backend.domain.session.game.Verdict;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
@@ -113,7 +109,7 @@ public class JudgeService {
         try {
             Participants participants = transactionTemplate.execute(status -> participants(sessionId));
             JudgeResult judgeResult = judgeWithRetry(sessionId, new JudgeRequest(
-                    participants.topic(), participants.judged(), conversation(game)));
+                    participants.topic(), participants.judged(), AiConversation.of(game)));
             Verdict verdict = Verdict.of(
                     participants.judged().stream().map(JudgeRequest.Participant::participantId).toList(), judgeResult);
             transactionTemplate.executeWithoutResult(status -> recordResults(sessionId, verdict));
@@ -176,20 +172,6 @@ public class JudgeService {
                 .map(p -> new JudgeRequest.Participant(p.getId(), p.getStance()))
                 .toList();
         return new Participants(new AiTopic(topic.getStatement(), topic.getAgreeText(), topic.getDisagreeText()), judged);
-    }
-
-    /** 공개된 주장 · 반론과 채팅 전체를 {@code seqNo} 순서대로. 공개되지 않은 글(빈 글)은 들어가지 않습니다. */
-    private static List<AiMessage> conversation(Game game) {
-        return game.messagesAfter(0).stream()
-                .map(message -> new AiMessage(message.participantId(), kindOf(message), message.content()))
-                .toList();
-    }
-
-    private static AiMessage.Kind kindOf(GameMessage message) {
-        if (message.type() == MessageType.CHAT) {
-            return AiMessage.Kind.CHAT;
-        }
-        return message.phase() == DebatePhase.PREP ? AiMessage.Kind.ARGUMENT : AiMessage.Kind.REBUTTAL;
     }
 
     /** 회원 · AI 참가자의 승패를 기록합니다. 게스트와 계정이 정리된 참가자는 건너뜁니다. */

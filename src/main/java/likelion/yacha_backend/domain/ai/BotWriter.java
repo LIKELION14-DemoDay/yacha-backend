@@ -32,7 +32,9 @@ public interface BotWriter {
     String writeRebuttal(AiTopic topic, Stance botStance, String opponentArgument);
 
     /**
-     * 채팅 대답. 사람이 말할 때마다 3초 뒤에 부르고, 봇이 먼저 말을 걸지는 않습니다.
+     * 채팅 대답. 사람의 마지막 말 3초 뒤에 부릅니다 (3초 안에 여러 번 말하면 마지막 말 뒤 한 번).
+     * 채팅이 열리고 10초 동안 사람이 말이 없으면 첫마디로 한 번 먼저 부르므로, 대화의 마지막이 사람 말이 아닐 수 있습니다
+     * (그때는 공개된 주장 · 반론까지만 있음).
      *
      * @param topic            주제
      * @param botStance        봇의 입장

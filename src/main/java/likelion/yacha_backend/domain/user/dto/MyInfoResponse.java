@@ -47,10 +47,10 @@ public record MyInfoResponse(
         }
     }
 
-    public record StatsResponse(int total, int wins, int losses, int draws) {
-
-        public static StatsResponse empty() {
-            return new StatsResponse(0, 0, 0, 0);
-        }
+    /**
+     * 전투 기록 — 마이페이지의 승리 · 패배 수. 무승부는 세지 않습니다.
+     * 게스트는 승패를 기록하지 않으므로 0 / 0 입니다.
+     */
+    public record StatsResponse(long wins, long losses) {
     }
 }
