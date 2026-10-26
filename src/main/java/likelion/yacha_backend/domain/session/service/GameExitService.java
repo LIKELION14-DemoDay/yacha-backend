@@ -22,7 +22,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <pre>
  * 나가기 (POST /leave)     ─┐
  * 이탈 유예 10초 경과       ─┴▶ forfeit: FINISHED · FORFEIT, 나간 사람 LOSE · 남은 사람 WIN (판정 없음)
- * 유예가 끝날 때 상대도 끊김 ──▶ abort  : FINISHED · ABORTED, 승패 NULL
+ * 유예가 끝날 때 상대도 끊김 ─┐
+ * 봇이 글을 끝내 못 씀       ─┴▶ abort  : FINISHED · ABORTED, 승패 NULL
  * </pre>
  *
  * <p>종료는 {@code finishIfInProgress} 조건부 UPDATE 라 260초 종료 · 나가기 · 끊김 몰수가 겹쳐도 한쪽만 끝냅니다.
@@ -98,7 +99,10 @@ public class GameExitService {
         return true;
     }
 
-    /** 양쪽 모두 끊긴 게임을 무효로 끝냅니다. 승패는 NULL 입니다. 이미 끝난 세션이면 false 입니다. */
+    /**
+     * 게임을 무효로 끝냅니다 — 양쪽 모두 끊김 · 봇전에서 봇이 글을 끝내 못 씀 ({@link BotService}).
+     * 승패는 NULL 입니다. 이미 끝난 세션이면 false 입니다.
+     */
     boolean abort(Long sessionId) {
         LocalDateTime now = LocalDateTime.now(clock);
         Integer finished = transactionTemplate.execute(
