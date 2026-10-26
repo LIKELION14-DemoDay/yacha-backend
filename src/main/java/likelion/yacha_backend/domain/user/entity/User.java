@@ -157,11 +157,4 @@ public class User extends BaseTimeEntity {
         this.philosopherType = Objects.requireNonNull(philosopherType, "philosopherType");
         this.balanceGameStatus = BalanceGameStatus.DONE;
     }
-
-    /** 밸런스 게임 건너뛰기. 이미 결과가 있으면(다시 하다 건너뜀) 이전 유형을 그대로 둠 */
-    public void skipBalanceGame() {
-        if (balanceGameStatus != BalanceGameStatus.DONE) {
-            this.balanceGameStatus = BalanceGameStatus.SKIPPED;
-        }
-    }
 }
