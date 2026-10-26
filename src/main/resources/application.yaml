@@ -143,6 +143,20 @@ game:
   in-progress:
     # 주기 정리 간격. 시간표(260초)보다 이만큼 더 지났는데도 진행 중인 게임(종료 작업 · 게임 생성 실패)을 끝냄
     sweep-interval: 1m
+  # 봇전의 봇 발언 (주장 · 반론 제출, 채팅 대답)
+  bot:
+    # 한 게임에서 봇이 보내는 채팅 수 상한 (첫마디 포함)
+    max-replies: 30
+    # 사람의 마지막 말 뒤 대답까지
+    reply-delay: 3s
+    # 채팅이 열린 뒤(143초) 사람이 조용하면 봇이 먼저 한 번 말하기까지
+    first-message-delay: 10s
+    # 주장 · 반론 재시도 대기. 실패할 때마다 두 배(상한 retry-backoff-max)로 늘리며 작성 구간이 끝날 때까지 다시 시도
+    # (채팅 대답은 다시 시도하지 않음)
+    retry-backoff: 1s
+    retry-backoff-max: 8s
+    # 주장 · 반론을 끝내 못 써 실패 글이 공개된 뒤 게임을 무효(ABORTED)로 끝내기까지
+    failure-end-delay: 5s
   # 힌트 (매칭 직후 사람 참가자마다 만듦, PREP 60초 안이 목표)
   hint:
     # 최대 시도 횟수. 모두 실패하면 FAILED 로 두고 힌트 없이 진행
