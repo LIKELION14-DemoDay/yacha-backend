@@ -15,11 +15,15 @@ import likelion.yacha_backend.global.security.jwt.Role;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 
 @Entity
+// 바뀐 칼럼만 UPDATE 함. 한 사용자 행을 여러 요청이 각자 읽어 고치므로(밸런스 게임 결과 · 회원 승격 · 닉네임 변경),
+// 행 전체를 쓰면 그 사이 커밋된 다른 요청의 칼럼을 읽어 둔 낡은 값으로 되돌림
+@DynamicUpdate
 @Table(
         name = "users",
         // 같은 소셜 계정으로 두 번 가입되지 않게 함
