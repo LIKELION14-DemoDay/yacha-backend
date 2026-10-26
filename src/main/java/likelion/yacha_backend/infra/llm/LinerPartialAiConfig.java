@@ -1,10 +1,9 @@
-
 package likelion.yacha_backend.infra.llm;
 
 import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.ai.Judge;
+import likelion.yacha_backend.infra.liner.LinerProperties;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,7 +17,7 @@ import org.springframework.context.annotation.Configuration;
  * HintGenerator -> LinerHintGenerator
  * Judge         -> LinerJudge
  *
- * LinerBotWriter는 @Component로 자동 등록된다.
+ * LinerBotWriter는 @Component로 자동 등록한다.
  * 힌트와 판정은 이 설정 클래스에서 등록한다.
  */
 @Configuration(proxyBeanMethods = false)
@@ -30,36 +29,28 @@ import org.springframework.context.annotation.Configuration;
 public class LinerPartialAiConfig {
 
     /**
-     * 실제 Liner 힌트 생성기 등록.
+     * Liner 기반 힌트 생성기를 등록한다.
      *
-     * 힌트 3개를 생성하며
-     * 각 힌트는 20자 이내로 제한한다.
+     * 공통 LinerProperties에서
+     * API 주소, API 키, 모델 정보를 가져온다.
      */
     @Bean
     public HintGenerator linerHintGenerator(
-            @Value("${LINER_API_KEY:}") String apiKey,
-            @Value("${LINER_MODEL:liner-mark}") String model
+            LinerProperties properties
     ) {
-        return new LinerHintGenerator(
-                apiKey,
-                model
-        );
+        return new LinerHintGenerator(properties);
     }
 
     /**
-     * 실제 Liner AI 판정기 등록.
+     * Liner 기반 AI 판정기를 등록한다.
      *
-     * 두 참가자를 한 번의 API 호출로 평가하고
-     * 네 가지 기준별 점수와 요약을 반환한다.
+     * 공통 LinerProperties에서
+     * API 주소, API 키, 모델 정보를 가져온다.
      */
     @Bean
     public Judge linerJudge(
-            @Value("${LINER_API_KEY:}") String apiKey,
-            @Value("${LINER_MODEL:liner-mark}") String model
+            LinerProperties properties
     ) {
-        return new LinerJudge(
-                apiKey,
-                model
-        );
+        return new LinerJudge(properties);
     }
 }

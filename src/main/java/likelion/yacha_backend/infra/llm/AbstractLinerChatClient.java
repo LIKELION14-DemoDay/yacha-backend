@@ -5,6 +5,8 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
 
+import likelion.yacha_backend.domain.ai.AiException;
+import likelion.yacha_backend.infra.liner.LinerProperties;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -16,15 +18,13 @@ import org.springframework.web.client.RestClientResponseException;
 /**
  * Liner Model API의 Chat Completions를 호출하는 공통 클라이언트.
  *
- * 기존 코드 및 테스트와의 호환성을 위해 클래스 이름은 유지한다.
  * 실제 요청은 OpenAI가 아닌 Liner API로 전송한다.
- *
  * 재시도 및 최종 실패 처리는 호출하는 서비스가 담당한다.
  */
 public abstract class AbstractLinerChatClient {
 
-    private static final String BASE_URL =
-            "https://platform.liner.com/api/v1";
+    private static final String DEFAULT_BASE_URL =
+            "https://platform.liner.com";
 
     private static final Duration CONNECT_TIMEOUT =
             Duration.ofSeconds(3);
@@ -36,6 +36,7 @@ public abstract class AbstractLinerChatClient {
     private final String model;
     private final boolean enabled;
 
+    /** 기존 호출부와 테스트에서 사용하는 생성자. */
     protected AbstractLinerChatClient(
             String apiKey,
             String model
@@ -43,11 +44,41 @@ public abstract class AbstractLinerChatClient {
         this(apiKey, model, DEFAULT_READ_TIMEOUT);
     }
 
+    /** LinerProperties 설정을 사용하는 생성자. */
+    protected AbstractLinerChatClient(
+            LinerProperties properties,
+            Duration readTimeout
+    ) {
+        this(
+                properties.baseUrl(),
+                properties.apiKey(),
+                properties.model(),
+                readTimeout
+        );
+    }
+
+    /** 기존 호출부와 테스트에서 사용하는 생성자. */
     protected AbstractLinerChatClient(
             String apiKey,
             String model,
             Duration readTimeout
     ) {
+        this(DEFAULT_BASE_URL, apiKey, model, readTimeout);
+    }
+
+    /** 모든 생성자에서 공통으로 실행하는 초기화. */
+    private AbstractLinerChatClient(
+            String baseUrl,
+            String apiKey,
+            String model,
+            Duration readTimeout
+    ) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Liner API 주소가 설정되지 않았습니다."
+            );
+        }
+
         if (model == null || model.isBlank()) {
             throw new IllegalArgumentException(
                     "Liner 모델이 설정되지 않았습니다."
@@ -76,7 +107,7 @@ public abstract class AbstractLinerChatClient {
 
         RestClient.Builder builder = RestClient.builder()
                 .requestFactory(factory)
-                .baseUrl(BASE_URL);
+                .baseUrl(baseUrl.replaceFirst("/+$", "") + "/api/v1");
 
         if (enabled) {
             builder.defaultHeader(
@@ -161,19 +192,17 @@ public abstract class AbstractLinerChatClient {
         } catch (RestClientResponseException e) {
             int status = e.getStatusCode().value();
 
-            // 타임아웃 외에 HTTP 429 및 5xx만 재시도 대상.
-            boolean retryable =
-                    status == 429 || status >= 500;
+            // HTTP 429 및 5xx만 재시도 대상.
+            boolean retryable = status == 429 || status >= 500;
 
             throw new LinerChatException(
-                    "LINER_HTTP_ERROR_" + status
-                            + ": " + logLabel,
+                    "LINER_HTTP_ERROR_" + status + ": " + logLabel,
                     retryable,
                     e
             );
 
         } catch (ResourceAccessException e) {
-            // 연결 실패 및 네트워크 타임아웃.
+            // 네트워크 장애 및 타임아웃은 재시도 대상.
             throw new LinerChatException(
                     "LINER_NETWORK_ERROR: " + logLabel,
                     true,
@@ -181,7 +210,6 @@ public abstract class AbstractLinerChatClient {
             );
 
         } catch (RestClientException e) {
-            // 응답 변환 오류 등 기타 클라이언트 예외.
             throw new LinerChatException(
                     "LINER_CLIENT_ERROR: " + logLabel,
                     false,
@@ -190,22 +218,14 @@ public abstract class AbstractLinerChatClient {
         }
     }
 
-    /**
-     * Liner 호출 실패를 표현하는 예외.
-     *
-     * 기존 테스트 호환성을 위해 예외 클래스 이름은 유지한다.
-     */
-    public static class LinerChatException
-            extends RuntimeException {
-
-        private final boolean retryable;
+    /** 재시도 가능 여부를 상위 AI 서비스에 전달하는 예외. */
+    public static class LinerChatException extends AiException {
 
         public LinerChatException(
                 String message,
                 boolean retryable
         ) {
-            super(message);
-            this.retryable = retryable;
+            super(message, retryable);
         }
 
         public LinerChatException(
@@ -213,18 +233,10 @@ public abstract class AbstractLinerChatClient {
                 boolean retryable,
                 Throwable cause
         ) {
-            super(message, cause);
-            this.retryable = retryable;
-        }
-
-        public boolean isRetryable() {
-            return retryable;
+            super(message, retryable, cause);
         }
     }
 
-    /**
-     * Liner Chat Completions 요청 형식.
-     */
     private record ChatRequest(
             String model,
             List<ChatMessage> messages
@@ -237,9 +249,6 @@ public abstract class AbstractLinerChatClient {
     ) {
     }
 
-    /**
-     * Liner Chat Completions 응답 형식.
-     */
     private record ChatResponse(
             List<Choice> choices
     ) {

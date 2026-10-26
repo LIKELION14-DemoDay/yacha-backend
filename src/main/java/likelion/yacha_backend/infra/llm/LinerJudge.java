@@ -15,7 +15,7 @@ import likelion.yacha_backend.domain.ai.Judge;
 import likelion.yacha_backend.domain.ai.JudgeCriterion;
 import likelion.yacha_backend.domain.ai.JudgeRequest;
 import likelion.yacha_backend.domain.ai.JudgeResult;
-
+import likelion.yacha_backend.infra.liner.LinerProperties;
 import org.springframework.beans.factory.annotation.Value;
 
 import tools.jackson.core.JacksonException;
@@ -45,7 +45,7 @@ public class LinerJudge
         implements Judge {
 
     private static final Duration READ_TIMEOUT =
-            Duration.ofSeconds(10);
+            Duration.ofSeconds(30);
 
     private static final ObjectMapper OBJECT_MAPPER =
             new ObjectMapper();
@@ -109,10 +109,13 @@ public class LinerJudge
             두 참가자의 점수와 요약을 반드시 함께 반환하세요.
             """;
 
-    public LinerJudge(
-            @Value("${LINER_API_KEY:}") String apiKey,
-            @Value("${LINER_MODEL:liner-mark}") String model
-    ) {
+        // 실제 Spring 환경에서 공통 Liner 설정 사용
+    public LinerJudge(LinerProperties properties) {
+        super(properties, READ_TIMEOUT);
+    }
+
+    // 기존 단위 테스트 및 실제 API 테스트 호환성 유지
+    public LinerJudge(String apiKey, String model) {
         super(apiKey, model, READ_TIMEOUT);
     }
 

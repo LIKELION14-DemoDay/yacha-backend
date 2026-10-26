@@ -4,12 +4,11 @@ package likelion.yacha_backend.infra.llm;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-
+import likelion.yacha_backend.infra.liner.LinerProperties;
 import likelion.yacha_backend.domain.ai.AiTopic;
 import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.session.entity.Stance;
 
-import org.springframework.beans.factory.annotation.Value;
 
 /**
  * Liner Model API를 사용해 토론 힌트 3개를 생성한다.
@@ -43,10 +42,13 @@ public class LinerHintGenerator
             반드시 힌트 3줄만 출력하세요.
             """;
 
-    public LinerHintGenerator(
-            @Value("${LINER_API_KEY:}") String apiKey,
-            @Value("${LINER_MODEL:liner-mark}") String model
-    ) {
+        // 실제 Spring 환경에서 공통 Liner 설정 사용
+    public LinerHintGenerator(LinerProperties properties) {
+        super(properties, READ_TIMEOUT);
+    }
+
+    // 기존 단위 테스트 및 실제 API 테스트 호환성 유지
+    public LinerHintGenerator(String apiKey, String model) {
         super(apiKey, model, READ_TIMEOUT);
     }
 

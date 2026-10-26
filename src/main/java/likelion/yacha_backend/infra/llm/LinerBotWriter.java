@@ -9,9 +9,9 @@ import likelion.yacha_backend.domain.ai.AiMessage;
 import likelion.yacha_backend.domain.ai.AiTopic;
 import likelion.yacha_backend.domain.ai.BotWriter;
 import likelion.yacha_backend.domain.session.entity.Stance;
+import likelion.yacha_backend.infra.liner.LinerProperties;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -55,31 +55,48 @@ public class LinerBotWriter implements BotWriter {
     /**
      * 실제 Spring 실행 시 사용하는 생성자.
      *
-     * Liner API 키는 LINER_API_KEY 환경변수로 전달한다.
-     * 기본 모델은 liner-mark이다.
+     * 공통 LinerProperties에서 API 주소, API 키,
+     * 모델 설정을 가져온다.
      *
-     * 주장과 반론은 10초, 채팅 응답은 5초로 제한한다.
+     * 주장과 반론은 10초,
+     * 채팅 응답은 5초로 제한한다.
      */
     @Autowired
-    public LinerBotWriter(
-            @Value("${LINER_API_KEY:}") String apiKey,
-            @Value("${LINER_MODEL:liner-mark}") String model
-    ) {
-        this.normalClient = new LinerRequestClient(
-                apiKey,
-                model,
-                Duration.ofSeconds(10)
-        );
-
-        this.fastClient = new LinerRequestClient(
-                apiKey,
-                model,
-                Duration.ofSeconds(5)
+    public LinerBotWriter(LinerProperties properties) {
+        this(
+                new LinerRequestClient(
+                        properties,
+                        Duration.ofSeconds(10)
+                ),
+                new LinerRequestClient(
+                        properties,
+                        Duration.ofSeconds(5)
+                )
         );
     }
 
     /**
-     * 단위 테스트에서 가짜 클라이언트를 주입하기 위한 생성자.
+     * 기존 단위 테스트 및 실제 API 테스트와의
+     * 호환성을 유지하기 위한 생성자.
+     */
+    public LinerBotWriter(String apiKey, String model) {
+        this(
+                new LinerRequestClient(
+                        apiKey,
+                        model,
+                        Duration.ofSeconds(10)
+                ),
+                new LinerRequestClient(
+                        apiKey,
+                        model,
+                        Duration.ofSeconds(5)
+                )
+        );
+    }
+
+    /**
+     * 단위 테스트에서 가짜 클라이언트를
+     * 주입하기 위한 생성자.
      */
     LinerBotWriter(
             ChatRequester normalClient,
@@ -130,7 +147,8 @@ public class LinerBotWriter implements BotWriter {
     }
 
     /**
-     * REBUTTAL 단계에서 상대방의 주장을 참고해 반론을 생성한다.
+     * REBUTTAL 단계에서 상대방의 주장을
+     * 참고해 반론을 생성한다.
      *
      * @return 250자 이내의 반론
      */
@@ -142,7 +160,10 @@ public class LinerBotWriter implements BotWriter {
     ) {
         Objects.requireNonNull(topic, "topic");
         Objects.requireNonNull(botStance, "botStance");
-        Objects.requireNonNull(opponentArgument, "opponentArgument");
+        Objects.requireNonNull(
+                opponentArgument,
+                "opponentArgument"
+        );
 
         String systemPrompt = COMMON_RULES + """
 
@@ -177,13 +198,16 @@ public class LinerBotWriter implements BotWriter {
     }
 
     /**
-     * CHAT 단계에서 기존 대화를 참고해 AI 채팅 응답을 생성한다.
+     * CHAT 단계에서 기존 대화를 참고해
+     * AI 채팅 발언을 생성한다.
      *
-     * 봇이 먼저 말을 걸지는 않는다.
-     * 사람의 채팅 이후 호출하는 시점과 3초 지연은
-     * 게임 서비스에서 담당한다.
+     * 사람이 이미 채팅했다면 최근 발언에 응답한다.
+     * 사람이 아직 채팅하지 않았다면 먼저 말을 건다.
      *
-     * @return 50자 이내의 채팅 응답
+     * 호출 시점, 지연 시간 및 재시도 여부는
+     * BotService에서 담당한다.
+     *
+     * @return 50자 이내의 채팅 발언
      */
     @Override
     public String reply(
@@ -194,16 +218,51 @@ public class LinerBotWriter implements BotWriter {
     ) {
         Objects.requireNonNull(topic, "topic");
         Objects.requireNonNull(botStance, "botStance");
-        Objects.requireNonNull(botParticipantId, "botParticipantId");
-        Objects.requireNonNull(conversation, "conversation");
+        Objects.requireNonNull(
+                botParticipantId,
+                "botParticipantId"
+        );
+        Objects.requireNonNull(
+                conversation,
+                "conversation"
+        );
 
-        String systemPrompt = COMMON_RULES + """
+        /*
+         * 사람이 실제로 CHAT 메시지를 보냈는지 확인한다.
+         *
+         * 최초 주장(ARGUMENT)과 반론(REBUTTAL)은
+         * 채팅으로 간주하지 않는다.
+         *
+         * 채팅 기록이 없다면 봇이 먼저 말을 시작한다.
+         */
+        boolean hasHumanChat = conversation.stream()
+                .anyMatch(message ->
+                        message.kind() == AiMessage.Kind.CHAT
+                                && !botParticipantId.equals(
+                                        message.participantId()
+                                )
+                );
+
+        /*
+         * 일반 채팅 응답과 첫마디를 구분한다.
+         */
+        String systemPrompt = COMMON_RULES + (hasHumanChat
+                ? """
 
                 지금은 실시간 채팅 토론 단계입니다.
-                상대방의 최근 발언에 직접 응답하세요.
-                대화를 반복하거나 불필요하게 길게 설명하지 마세요.
+                상대방의 최근 채팅 발언에 직접 응답하세요.
+                같은 말을 반복하거나 불필요하게 길게 설명하지 마세요.
                 반드시 50자 이내로 작성하세요.
-                """;
+                """
+                : """
+
+                지금은 실시간 채팅 토론 단계입니다.
+                상대방이 아직 채팅으로 발언하지 않았습니다.
+                공개된 주장과 반론을 참고하여 먼저 자연스럽게 말을 거세요.
+                상대방의 의견을 묻거나 논점을 제시하면서 대화를 시작하세요.
+                이미 상대방이 채팅한 것처럼 꾸미지 마세요.
+                반드시 50자 이내로 작성하세요.
+                """);
 
         String userContent = """
                 [토론 주제]
@@ -233,7 +292,8 @@ public class LinerBotWriter implements BotWriter {
     }
 
     /**
-     * 기존 대화 기록을 AI가 이해할 수 있는 문자열로 변환한다.
+     * 기존 대화 기록을 AI가 이해할 수 있는
+     * 문자열로 변환한다.
      *
      * 최근 40개의 공개 메시지만 전달한다.
      */
@@ -282,7 +342,8 @@ public class LinerBotWriter implements BotWriter {
     }
 
     /**
-     * 유니코드 코드 포인트 기준으로 글자 수를 제한한다.
+     * 유니코드 코드 포인트 기준으로
+     * 글자 수를 제한한다.
      *
      * 일부 이모지는 String.length()에서
      * 두 글자로 계산되므로 codePointCount()를 사용한다.
@@ -342,6 +403,19 @@ public class LinerBotWriter implements BotWriter {
             extends AbstractLinerChatClient
             implements ChatRequester {
 
+        /**
+         * 실제 Spring 환경에서 사용하는 생성자.
+         */
+        private LinerRequestClient(
+                LinerProperties properties,
+                Duration readTimeout
+        ) {
+            super(properties, readTimeout);
+        }
+
+        /**
+         * 기존 테스트 호환성을 위한 생성자.
+         */
         private LinerRequestClient(
                 String apiKey,
                 String model,

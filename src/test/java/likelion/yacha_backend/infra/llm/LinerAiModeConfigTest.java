@@ -12,6 +12,7 @@ import likelion.yacha_backend.domain.ai.Judge;
 import likelion.yacha_backend.domain.ai.stub.StubBotWriter;
 import likelion.yacha_backend.domain.ai.stub.StubHintGenerator;
 import likelion.yacha_backend.domain.ai.stub.StubJudge;
+import likelion.yacha_backend.infra.liner.LinerProperties;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,14 @@ class LinerAiModeConfigTest {
                             RandomGenerator.class,
                             () -> new SplittableRandom(1)
                     )
+                    .withBean(
+                            LinerProperties.class,
+                            () -> new LinerProperties(
+                                    "https://platform.liner.com",
+                                    "test-api-key",
+                                    "liner-mark"
+                            )
+                    )
                     .withUserConfiguration(
                             LinerPartialAiConfig.class,
                             LinerBotWriter.class,
@@ -37,9 +46,7 @@ class LinerAiModeConfigTest {
     @Test
     @DisplayName("기본 stub 모드에서는 임시 AI 구현 3개가 등록된다")
     void defaultStubMode() {
-
         runner.run(context -> {
-
             assertThat(context)
                     .hasSingleBean(BotWriter.class)
                     .hasSingleBean(HintGenerator.class)
@@ -47,10 +54,8 @@ class LinerAiModeConfigTest {
 
             assertThat(context.getBean(BotWriter.class))
                     .isInstanceOf(StubBotWriter.class);
-
             assertThat(context.getBean(HintGenerator.class))
                     .isInstanceOf(StubHintGenerator.class);
-
             assertThat(context.getBean(Judge.class))
                     .isInstanceOf(StubJudge.class);
 
@@ -64,13 +69,11 @@ class LinerAiModeConfigTest {
     @Test
     @DisplayName("liner 모드에서는 실제 Liner 구현 3개가 등록된다")
     void linerMode() {
-
         runner.withPropertyValues(
                 "ai.mode=liner",
                 "LINER_API_KEY=",
                 "LINER_MODEL=liner-mark"
         ).run(context -> {
-
             assertThat(context)
                     .hasSingleBean(BotWriter.class)
                     .hasSingleBean(HintGenerator.class)
@@ -78,10 +81,8 @@ class LinerAiModeConfigTest {
 
             assertThat(context.getBean(BotWriter.class))
                     .isInstanceOf(LinerBotWriter.class);
-
             assertThat(context.getBean(HintGenerator.class))
                     .isInstanceOf(LinerHintGenerator.class);
-
             assertThat(context.getBean(Judge.class))
                     .isInstanceOf(LinerJudge.class);
 
