@@ -122,6 +122,14 @@ public class PhilosophyArticle extends BaseTimeEntity {
         return status == PhilosophyStatus.APPROVED;
     }
 
+    /**
+     * 사용자에게 보이는 글인지. 승인됐고 그 주가 시작됐으면 공개된 것
+     * 공개된 글은 다시 생성하거나 뺄 수 없음 (메모 · 북마크가 달려 있을 수 있어서)
+     */
+    public boolean isPublished(LocalDate today) {
+        return isApproved() && !weekStart.isAfter(today);
+    }
+
     public List<PhilosopherContent> getContents() {
         return Collections.unmodifiableList(contents);
     }

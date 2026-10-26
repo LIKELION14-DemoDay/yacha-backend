@@ -120,6 +120,38 @@ public class PhilosophyGenerationService {
     }
 
     /**
+     * 같은 주제로 글을 다시 만들어 바꾸고 검토 전으로 되돌림
+     * 새 글이 만들어진 뒤에 바꾸므로, 실패하면 이전 글이 그대로 남음
+     *
+     * @throws BusinessException 글이 없으면 {@code ARTICLE_NOT_FOUND}, 공개된 글이면 {@code ARTICLE_ALREADY_PUBLISHED}
+     * @throws RuntimeException  AI로 글을 만들지 못하면 마지막 시도의 실패
+     */
+    public void regenerate(Long articleId) {
+        PickedTopic topic = transactionTemplate.execute(status -> {
+            Topic picked = findEditable(articleId).getTopic();
+            return new PickedTopic(picked.getId(), aiTopic(picked));
+        });
+        List<PhilosopherWriting> writings = writeWithRetry(topic);
+        transactionTemplate.executeWithoutResult(status -> {
+            // AI를 기다리는 사이 공개 · 삭제됐을 수 있어 다시 확인
+            PhilosophyArticle article = findEditable(articleId);
+            article.clearContents();
+            addWritings(article, writings);
+            articleRepository.flush();
+        });
+    }
+
+    /** 다시 생성할 수 있는 글. 공개된 글은 메모 · 북마크가 달려 있을 수 있어 바꾸지 않음 */
+    private PhilosophyArticle findEditable(Long articleId) {
+        PhilosophyArticle article = articleRepository.findById(articleId)
+                .orElseThrow(() -> new BusinessException(PhilosophyErrorCode.ARTICLE_NOT_FOUND));
+        if (article.isPublished(LocalDate.now(clock))) {
+            throw new BusinessException(PhilosophyErrorCode.ARTICLE_ALREADY_PUBLISHED);
+        }
+        return article;
+    }
+
+    /**
      * 그 주에 쓸 주제를 {@code count}개까지, 서로 겹치지 않게 랜덤으로 고름
      * 아직 1분 철학에 쓰지 않은 활성 주제를 먼저 쓰고, 모자라면 그 주에 없는 활성 주제에서 채움
      * 활성 주제가 모자라면 고를 수 있는 만큼만 돌려줌
@@ -141,12 +173,12 @@ public class PhilosophyGenerationService {
             throw new BusinessException(TopicErrorCode.TOPIC_NOT_FOUND);
         }
         return picked.stream()
-                .map(id -> {
-                    Topic topic = topicRepository.findById(id).orElseThrow();
-                    return new PickedTopic(id,
-                            new AiTopic(topic.getStatement(), topic.getAgreeText(), topic.getDisagreeText()));
-                })
+                .map(id -> new PickedTopic(id, aiTopic(topicRepository.findById(id).orElseThrow())))
                 .toList();
+    }
+
+    private static AiTopic aiTopic(Topic topic) {
+        return new AiTopic(topic.getStatement(), topic.getAgreeText(), topic.getDisagreeText());
     }
 
     /** 후보에서 겹치지 않게 {@code count}개까지 고름 */
@@ -198,12 +230,16 @@ public class PhilosophyGenerationService {
             return null;
         }
         PhilosophyArticle article = PhilosophyArticle.createPending(topicRepository.getReferenceById(topicId), weekStart);
+        addWritings(article, writings);
+        return articleRepository.saveAndFlush(article).getId();
+    }
+
+    private static void addWritings(PhilosophyArticle article, List<PhilosopherWriting> writings) {
         for (PhilosopherWriting writing : writings) {
             article.addContent(writing.philosopherName(), writing.sections().stream()
                     .map(section -> new PhilosophySection(section.subtitle(), section.body()))
                     .toList());
         }
-        return articleRepository.saveAndFlush(article).getId();
     }
 
     /** 재시도 전 대기. 서버 종료로 끊기면 남은 시도를 하지 않고 실패로 끝냄 */

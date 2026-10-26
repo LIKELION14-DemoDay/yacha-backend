@@ -341,6 +341,66 @@ class PhilosophyGenerationServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("다시 생성")
+    class Regenerate {
+
+        private PhilosophyArticle approvedArticle() {
+            PhilosophyArticle article = PhilosophyArticle.createPending(topic("주제"), NEXT_MONDAY);
+            article.addContent("니체", List.of(new PhilosophySection("옛 소제목", "옛 내용")));
+            article.approve(TODAY.atStartOfDay());
+            return articleRepository.saveAndFlush(article);
+        }
+
+        @Test
+        @DisplayName("같은 주제로 글을 바꾸고 검토 전으로 되돌린다")
+        void replaces() {
+            PhilosophyArticle article = approvedArticle();
+            ScriptedWriter writer = new ScriptedWriter();
+
+            service(writer, 5).regenerate(article.getId());
+
+            PhilosophyArticle found = articleRepository.findById(article.getId()).orElseThrow();
+            assertThat(found.getStatus()).isEqualTo(PhilosophyStatus.PENDING);
+            assertThat(found.getContents()).extracting(PhilosopherContent::getPhilosopherName)
+                    .containsExactly("아리스토텔레스", "플라톤");
+            assertThat(writer.lastTopic.statement()).isEqualTo("주제");
+        }
+
+        @Test
+        @DisplayName("AI가 끝내 실패하면 이전 글과 승인이 그대로 남는다")
+        void keepsOldOnFailure() {
+            PhilosophyArticle article = approvedArticle();
+            ScriptedWriter writer = new ScriptedWriter().thenFail(3);
+
+            assertThatThrownBy(() -> service(writer, 5).regenerate(article.getId()))
+                    .isInstanceOf(IllegalStateException.class);
+
+            PhilosophyArticle found = articleRepository.findById(article.getId()).orElseThrow();
+            assertThat(found.getStatus()).isEqualTo(PhilosophyStatus.APPROVED);
+            assertThat(found.getContents()).extracting(PhilosopherContent::getPhilosopherName)
+                    .containsExactly("니체");
+        }
+
+        @Test
+        @DisplayName("공개된 글이면 ARTICLE_ALREADY_PUBLISHED이고 AI를 부르지 않는다")
+        void publishedIsLocked() {
+            PhilosophyArticle article = approvedArticle();
+            ScriptedWriter writer = new ScriptedWriter();
+
+            assertErrorCode(() -> service(writer, 5, NEXT_MONDAY).regenerate(article.getId()),
+                    PhilosophyErrorCode.ARTICLE_ALREADY_PUBLISHED);
+            assertThat(writer.calls).isZero();
+        }
+
+        @Test
+        @DisplayName("없는 글이면 ARTICLE_NOT_FOUND")
+        void notFound() {
+            assertErrorCode(() -> service(new ScriptedWriter(), 5).regenerate(999_999L),
+                    PhilosophyErrorCode.ARTICLE_NOT_FOUND);
+        }
+    }
+
     private static void assertErrorCode(Runnable call, Object errorCode) {
         assertThatThrownBy(call::run).isInstanceOfSatisfying(BusinessException.class,
                 e -> assertThat(e.getErrorCode()).isEqualTo(errorCode));

@@ -11,6 +11,8 @@ public interface PhilosophyArticleRepository extends JpaRepository<PhilosophyArt
 
     long countByWeekStart(LocalDate weekStart);
 
+    List<PhilosophyArticle> findAllByWeekStartOrderByIdAsc(LocalDate weekStart);
+
     /** 그 주에 이미 쓴 주제 id */
     @Query("select a.topic.id from PhilosophyArticle a where a.weekStart = :weekStart")
     List<Long> findTopicIdsByWeekStart(@Param("weekStart") LocalDate weekStart);
