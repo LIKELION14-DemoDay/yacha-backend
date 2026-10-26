@@ -33,6 +33,7 @@ public class SessionMatchFacade {
     private final BotService botService;
     private final HintService hintService;
     private final GameConnectionService gameConnectionService;
+    private final SessionProposalService sessionProposalService;
 
     /**
      * 방 생성 → (커밋) → 대기 타이머 등록 (30초마다 팝업, 5분이면 취소).
@@ -58,6 +59,12 @@ public class SessionMatchFacade {
         waitTimerService.cancel(sessionId);
         createGame(matched);
         matchNotifier.matched(matched.hostUserId(), matched.sessionId());
+        // 입장했으니 다음 자동 제안은 처음부터 돕니다. 지우지 못해도 TTL 로 사라지고 다음 /proposal 이 덮어씁니다.
+        try {
+            sessionProposalService.forget(userId);
+        } catch (RuntimeException e) {
+            log.error("[자동 제안] 순환 위치를 지우지 못했습니다. userId={}", userId, e);
+        }
         return matched.sessionId();
     }
 
