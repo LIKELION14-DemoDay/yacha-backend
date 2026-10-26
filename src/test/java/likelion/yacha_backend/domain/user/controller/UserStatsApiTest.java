@@ -89,4 +89,16 @@ class UserStatsApiTest {
                 .andExpect(jsonPath("$.data.stats.total").doesNotExist())
                 .andExpect(jsonPath("$.data.stats.draws").doesNotExist());
     }
+
+    @Test
+    @DisplayName("기록이 하나도 없으면 0 / 0")
+    void zeroWithoutRecords() throws Exception {
+        User me = member();
+
+        mockMvc.perform(get("/api/v1/users/me").header(HttpHeaders.AUTHORIZATION,
+                        "Bearer " + jwtTokenProvider.createAccessToken(me.getId(), Role.USER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stats.wins").value(0))
+                .andExpect(jsonPath("$.data.stats.losses").value(0));
+    }
 }

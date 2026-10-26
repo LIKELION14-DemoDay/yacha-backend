@@ -26,8 +26,23 @@ public interface DebateParticipantRepository extends JpaRepository<DebatePartici
 
     List<DebateParticipant> findAllBySession_Id(Long sessionId);
 
-    /** 전투 기록: 이 사용자의 참가 기록 중 결과가 {@code result} 인 것의 수. */
-    long countByUser_IdAndResult(Long userId, DebateResult result);
+    /**
+     * 전투 기록 — 이 사용자의 승리 · 패배 수를 한 번에 셉니다. 기록이 없어도 0 / 0 으로 한 줄이 옵니다.
+     * 호출할 때 {@code WIN}, {@code LOSE} 를 넘깁니다 ({@link #countWinsAndLosses(Long)}).
+     */
+    @Query("""
+            select new likelion.yacha_backend.domain.session.repository.WinLossCount(
+                    coalesce(sum(case when p.result = :win then 1 else 0 end), 0),
+                    coalesce(sum(case when p.result = :lose then 1 else 0 end), 0))
+              from DebateParticipant p
+             where p.user.id = :userId
+            """)
+    WinLossCount countWinsAndLosses(@Param("userId") Long userId,
+                                    @Param("win") DebateResult win, @Param("lose") DebateResult lose);
+
+    default WinLossCount countWinsAndLosses(Long userId) {
+        return countWinsAndLosses(userId, DebateResult.WIN, DebateResult.LOSE);
+    }
 
     /**
      * 대기열 — 카테고리의 대기 중인 랜덤 사람전 방을 오래된 순으로, 방장 참가자로 읽습니다 (자동 제안 · 방 찾기).

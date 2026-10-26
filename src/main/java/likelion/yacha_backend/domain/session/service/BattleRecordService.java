@@ -1,7 +1,7 @@
 package likelion.yacha_backend.domain.session.service;
 
-import likelion.yacha_backend.domain.session.entity.DebateResult;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
+import likelion.yacha_backend.domain.session.repository.WinLossCount;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,8 +23,9 @@ public class BattleRecordService {
     public record BattleRecord(long wins, long losses) {
     }
 
+    /** 승리 · 패배 수. 쿼리 한 번으로 셉니다. */
     public BattleRecord recordOf(Long userId) {
-        return new BattleRecord(participantRepository.countByUser_IdAndResult(userId, DebateResult.WIN),
-                participantRepository.countByUser_IdAndResult(userId, DebateResult.LOSE));
+        WinLossCount count = participantRepository.countWinsAndLosses(userId);
+        return new BattleRecord(count.wins(), count.losses());
     }
 }
