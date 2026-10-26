@@ -2,16 +2,25 @@ package likelion.yacha_backend.domain.philosophy.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import likelion.yacha_backend.domain.philosophy.dto.PhilosophyBookmarkResponse;
 import likelion.yacha_backend.domain.philosophy.dto.PhilosophyCardsResponse;
 import likelion.yacha_backend.domain.philosophy.dto.PhilosophyDetailResponse;
+import likelion.yacha_backend.domain.philosophy.dto.PhilosophyMemoRequest;
+import likelion.yacha_backend.domain.philosophy.dto.PhilosophyMemoResponse;
 import likelion.yacha_backend.domain.philosophy.dto.ThisWeekPhilosophyResponse;
+import likelion.yacha_backend.domain.philosophy.service.PhilosophyBookmarkService;
+import likelion.yacha_backend.domain.philosophy.service.PhilosophyMemoService;
 import likelion.yacha_backend.domain.philosophy.service.PhilosophyService;
 import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,6 +36,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class PhilosophyController {
 
     private final PhilosophyService philosophyService;
+    private final PhilosophyMemoService memoService;
+    private final PhilosophyBookmarkService bookmarkService;
 
     @Operation(
             summary = "이번 주 글 목록",
@@ -75,5 +86,70 @@ public class PhilosophyController {
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
         return ApiResponse.success(philosophyService.getDetail(authUser.getUserId(), id));
+    }
+
+    @Operation(
+            summary = "메모 저장",
+            description = """
+                    상세 화면의 MEMO. 글마다 하나이고, 다시 저장하면 덮어씀
+                    앞뒤 공백은 지우고 저장. 빈 문자열(공백만 있어도)이면 메모를 지움 → 응답의 `memo`가 null
+                    응답의 `memo`는 실제로 저장된 내용
+
+                    에러
+                    - `VALIDATION_FAILED` (400): `content`가 없거나 1000자 초과
+                    - `ARTICLE_NOT_FOUND` (404): 없는 글이거나 아직 공개되지 않은 글
+                    """)
+    @PutMapping("/{id}/memo")
+    public ApiResponse<PhilosophyMemoResponse> saveMemo(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long id,
+            @Valid @RequestBody PhilosophyMemoRequest request) {
+        return ApiResponse.success(memoService.save(authUser.getUserId(), id, request.content()));
+    }
+
+    @Operation(
+            summary = "북마크 추가",
+            description = """
+                    상세 화면 우측 상단. 이미 돼 있어도 200 (여러 번 불러도 같음)
+
+                    에러
+                    - `ARTICLE_NOT_FOUND` (404): 없는 글이거나 아직 공개되지 않은 글
+                    """)
+    @PutMapping("/{id}/bookmark")
+    public ApiResponse<PhilosophyBookmarkResponse> addBookmark(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long id) {
+        return ApiResponse.success(bookmarkService.add(authUser.getUserId(), id));
+    }
+
+    @Operation(
+            summary = "북마크 해제",
+            description = """
+                    안 돼 있어도 200 (여러 번 불러도 같음)
+
+                    에러
+                    - `ARTICLE_NOT_FOUND` (404): 없는 글이거나 아직 공개되지 않은 글
+                    """)
+    @DeleteMapping("/{id}/bookmark")
+    public ApiResponse<PhilosophyBookmarkResponse> removeBookmark(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long id) {
+        return ApiResponse.success(bookmarkService.remove(authUser.getUserId(), id));
+    }
+
+    @Operation(
+            summary = "내 북마크 목록",
+            description = """
+                    마이페이지. 북마크한 글 카드, 북마크한 순서 최신부터 한 페이지 20개씩 (`page`는 0부터)
+                    카드 모양은 이번 주 · 지난 글과 같음. 누르면 `GET /philosophy/{id}`
+                    `hasNext`가 true면 다음 페이지가 있음
+
+                    회원 전용. `page`가 음수면 `VALIDATION_FAILED` (400)
+                    """)
+    @GetMapping("/bookmarks")
+    public ApiResponse<PhilosophyCardsResponse> getMyBookmarks(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam(defaultValue = "0") int page) {
+        return ApiResponse.success(bookmarkService.getMine(authUser.getUserId(), page));
     }
 }
