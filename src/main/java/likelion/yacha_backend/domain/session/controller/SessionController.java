@@ -148,7 +148,7 @@ public class SessionController {
     @Operation(
             summary = "바로 봇전",
             description = """
-                    대기 방 없이 봇전을 만들고 바로 시작 (`IN_PROGRESS`). 카테고리 화면 · 자동 제안 `NEW_TOPIC` 화면에서 "봇전으로 시작"
+                    대기 방 없이 봇전을 만들고 바로 시작 (`IN_PROGRESS`). 자동 제안이 한 바퀴 끝난 `NEW_TOPIC` 화면에서 "봇전으로 시작"
                     `topicId` 는 주제 화면에서 고른 주제, `stance` 는 내 입장 (봇은 반대)
                     `MATCHED` 는 오지 않음. 응답을 받으면 토론방을 구독하고 `/state` 로 구간을 맞춤
 
