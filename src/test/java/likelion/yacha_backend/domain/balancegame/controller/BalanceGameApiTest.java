@@ -79,8 +79,9 @@ class BalanceGameApiTest {
                 .andExpect(jsonPath("$.data.type").value("HOBBES"))
                 .andExpect(jsonPath("$.data.name").value("홉스"))
                 .andExpect(jsonPath("$.data.alias").value("질서를 세우는 자"))
-                .andExpect(jsonPath("$.data.standard").isNotEmpty())
-                .andExpect(jsonPath("$.data.challenge").isNotEmpty());
+                .andExpect(jsonPath("$.data.sections.length()").value(3))
+                .andExpect(jsonPath("$.data.sections[0].title").value("■ 질서를 위한 규칙"))
+                .andExpect(jsonPath("$.data.sections[2].content").isNotEmpty());
 
         me(guest)
                 .andExpect(jsonPath("$.data.philosopher.type").value("HOBBES"))
@@ -138,7 +139,9 @@ class BalanceGameApiTest {
         mockMvc.perform(get("/api/v1/balance-game/philosophers/NIETZSCHE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("니체"))
-                .andExpect(jsonPath("$.data.alias").value("기존의 답을 부수는 자"));
+                .andExpect(jsonPath("$.data.alias").value("기존의 답을 부수는 자"))
+                .andExpect(jsonPath("$.data.sections[0].title").value("■ 나만의 기준"))
+                .andExpect(jsonPath("$.data.sections[1].title").value("■ 성장을 위한 도전"));
         mockMvc.perform(get("/api/v1/balance-game/philosophers/PLATO"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("BINDING_ERROR"));
