@@ -4,8 +4,14 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
+import likelion.yacha_backend.domain.session.entity.DebateResult;
 import likelion.yacha_backend.domain.session.entity.ParticipantRole;
+import likelion.yacha_backend.domain.session.entity.RoomType;
+import likelion.yacha_backend.domain.session.entity.SessionMode;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
+import likelion.yacha_backend.domain.topic.entity.Category;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -19,6 +25,47 @@ public interface DebateParticipantRepository extends JpaRepository<DebatePartici
     Optional<DebateParticipant> findBySession_IdAndUser_Id(Long sessionId, Long userId);
 
     List<DebateParticipant> findAllBySession_Id(Long sessionId);
+
+    /**
+     * 전투 기록 — 이 사용자의 승리 · 패배 수를 한 번에 셉니다. 기록이 없어도 0 / 0 으로 한 줄이 옵니다.
+     * 호출할 때 {@code WIN}, {@code LOSE} 를 넘깁니다 ({@link #countWinsAndLosses(Long)}).
+     */
+    @Query("""
+            select new likelion.yacha_backend.domain.session.repository.WinLossCount(
+                    coalesce(sum(case when p.result = :win then 1 else 0 end), 0),
+                    coalesce(sum(case when p.result = :lose then 1 else 0 end), 0))
+              from DebateParticipant p
+             where p.user.id = :userId
+            """)
+    WinLossCount countWinsAndLosses(@Param("userId") Long userId,
+                                    @Param("win") DebateResult win, @Param("lose") DebateResult lose);
+
+    default WinLossCount countWinsAndLosses(Long userId) {
+        return countWinsAndLosses(userId, DebateResult.WIN, DebateResult.LOSE);
+    }
+
+    /**
+     * 대기열 — 카테고리의 대기 중인 랜덤 사람전 방을 오래된 순으로, 방장 참가자로 읽습니다 (자동 제안 · 방 찾기).
+     * 세션 · 주제 · 방장 계정을 함께 읽습니다. 내 방과 방장 계정이 정리된(게스트 정리) 방은 들어갈 수 없어 뺍니다.
+     */
+    @Query(value = """
+            select p from DebateParticipant p
+              join fetch p.session s
+              join fetch s.topic
+              join fetch p.user u
+             where s.roomType = :random and s.mode = :human and s.status = :waiting and s.category = :category
+               and p.role = :initiator and u.id <> :userId
+             order by s.createdAt asc, s.id asc
+            """)
+    Slice<DebateParticipant> findWaitingHosts(@Param("category") Category category, @Param("userId") Long userId,
+                                              @Param("random") RoomType random, @Param("human") SessionMode human,
+                                              @Param("waiting") SessionStatus waiting,
+                                              @Param("initiator") ParticipantRole initiator, Pageable pageable);
+
+    default Slice<DebateParticipant> findWaitingHosts(Category category, Long userId, Pageable pageable) {
+        return findWaitingHosts(category, userId, RoomType.RANDOM, SessionMode.HUMAN, SessionStatus.WAITING,
+                ParticipantRole.INITIATOR, pageable);
+    }
 
     /** 방장 · 상대 참가자. 방장은 세션마다 한 명입니다. */
     Optional<DebateParticipant> findBySession_IdAndRole(Long sessionId, ParticipantRole role);

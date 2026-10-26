@@ -118,7 +118,7 @@ public class DebateSession extends BaseTimeEntity {
     }
 
     /**
-     * 자동 봇전. 제안을 모두 거절한 사용자에게 서버가 바로 만들어 주므로 대기 없이 시작합니다.
+     * 바로 봇전 ({@code POST /sessions/bot}). 사용자가 주제 · 입장을 고르면 대기 없이 시작합니다.
      * 대기열에 올라가지 않는 방이라 조건부 UPDATE 없이 여기서 시작 상태로 만듭니다.
      */
     public static DebateSession createAiMatch(Topic topic, LocalDateTime now) {

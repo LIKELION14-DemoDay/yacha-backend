@@ -2,6 +2,7 @@ package likelion.yacha_backend.global.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 /**
@@ -15,14 +16,26 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
  *
  * <p>타이머 작업은 짧게 끝나야 합니다. LLM 호출(판정)처럼 오래 걸리는 일은 이 스레드에서 하지 않고
  * 별도 실행기로 넘깁니다. 그래서 스레드 수는 작게 둡니다.
+ *
+ * <p>대기 타이머(팝업의 행 잠금 · 만료)와 구간 타이머(공개 · 종료)가 같은 스레드를 씁니다. DB 가 잠깐 느려져
+ * DB 를 치는 작업이 스레드를 모두 잡으면, 63 · 143초 공개처럼 시각이 중요한 작업이 모든 게임에서 밀립니다.
+ * 그래서 2개가 아니라 4개로 둡니다.
  */
 @Configuration
 public class GameSchedulerConfig {
 
     public static final String GAME_TASK_SCHEDULER = "gameTaskScheduler";
 
+    /** 판정(LLM 호출) 전용 실행기. 타이머 스레드에서 판정을 기다리지 않도록 이쪽으로 넘깁니다. */
+    public static final String JUDGE_EXECUTOR = "judgeExecutor";
+
+    /** 봇 글(LLM 호출) 전용 실행기. 타이머 스레드에서 봇 글을 기다리지 않도록 이쪽으로 넘깁니다. */
+    public static final String BOT_EXECUTOR = "botExecutor";
+    /** 힌트(LLM 호출) 전용 실행기. 입장 요청 · 타이머 스레드에서 힌트를 기다리지 않도록 이쪽으로 넘깁니다. */
+    public static final String HINT_EXECUTOR = "hintExecutor";
+
     /** 타이머 작업은 상태 확인 · 전송 정도라 짧습니다. 명세에서 정할 값이 아니라 상수로 둡니다. */
-    private static final int POOL_SIZE = 2;
+    private static final int POOL_SIZE = 4;
 
     @Bean(name = GAME_TASK_SCHEDULER)
     public ThreadPoolTaskScheduler gameTaskScheduler() {
@@ -34,5 +47,57 @@ public class GameSchedulerConfig {
         // 종료할 때 남은 타이머를 기다리지 않습니다. 재시작하면 진행 중인 게임은 어차피 ABORTED 로 정리됩니다.
         scheduler.setWaitForTasksToCompleteOnShutdown(false);
         return scheduler;
+    }
+
+    /**
+     * 판정 실행기. 한 판정이 재시도까지 30초 넘게 걸릴 수 있어 타이머와 나눕니다.
+     *
+     * <p>큐가 가득 차면 넘기는 쪽에서 예외가 나고, 그 판정은 {@code FAILED} 가 됩니다 (결과를 다시 조회하면 다시 시작).
+     * 종료할 때 기다리지 않습니다 — 재시작하면 메모리의 대화가 사라져 어차피 판정을 이어갈 수 없습니다.
+     */
+    @Bean(name = JUDGE_EXECUTOR)
+    public ThreadPoolTaskExecutor judgeExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setThreadNamePrefix("judge-");
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(100);
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        return executor;
+    }
+
+    /**
+     * 봇 실행기. 봇전마다 주장 · 반론 한 번씩과 채팅 대답(게임당 한 번에 하나)이 들어옵니다. 시각이 중요한 공개 ·
+     * 대답이 판정 몰림에 밀리지 않게 판정과 나눕니다.
+     *
+     * <p>큐가 가득 차면 넘기는 쪽에서 예외가 나고, 그 글 · 대답은 건너뜁니다. 종료할 때 기다리지 않습니다.
+     */
+    @Bean(name = BOT_EXECUTOR)
+    public ThreadPoolTaskExecutor botExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setThreadNamePrefix("bot-");
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(100);
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        return executor;
+    }
+
+    /**
+     * 힌트 실행기. 매칭마다 사람 참가자 수만큼(최대 2개) 작업이 들어오고, 한 작업이 재시도까지 20초 넘게 걸릴 수 있어
+     * 판정과도 나눕니다. 판정이 몰려도 PREP 60초 안에 끝내야 하는 힌트가 밀리지 않게 하기 위해서입니다.
+     *
+     * <p>큐가 가득 차면 넘기는 쪽에서 예외가 나고, 그 참가자의 힌트는 {@code FAILED} 가 됩니다 (힌트 없이 진행).
+     * 종료할 때 기다리지 않습니다 — 재시작하면 진행 중인 게임은 어차피 {@code ABORTED} 로 정리됩니다.
+     */
+    @Bean(name = HINT_EXECUTOR)
+    public ThreadPoolTaskExecutor hintExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setThreadNamePrefix("hint-");
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(100);
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        return executor;
     }
 }

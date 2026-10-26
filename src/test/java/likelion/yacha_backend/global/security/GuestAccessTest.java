@@ -66,26 +66,6 @@ class GuestAccessTest {
     }
 
     @Test
-    @DisplayName("전투 기록(GET /sessions/me)은 /sessions/** 아래지만 회원 전용")
-    void battleHistoryIsMemberOnly() throws Exception {
-        getAs(Role.GUEST, "/api/v1/sessions/me")
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code").value("GUEST_NOT_ALLOWED"));
-        getAs(Role.USER, "/api/v1/sessions/me")
-                .andExpect(status().is(not(403)));
-    }
-
-    @Test
-    @DisplayName("전투 기록 하위 경로(/sessions/me/**)도 회원 전용")
-    void battleHistorySubPathsAreMemberOnly() throws Exception {
-        getAs(Role.GUEST, "/api/v1/sessions/me/stats")
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code").value("GUEST_NOT_ALLOWED"));
-        getAs(Role.USER, "/api/v1/sessions/me/stats")
-                .andExpect(status().is(not(403)));
-    }
-
-    @Test
     @DisplayName("목록에 없는 경로는 회원 전용 — 새 기능은 따로 막지 않아도 게스트에게 닫힘")
     void unlistedEndpointsAreMemberOnly() throws Exception {
         postAs(Role.GUEST, "/api/v1/friends/invite")

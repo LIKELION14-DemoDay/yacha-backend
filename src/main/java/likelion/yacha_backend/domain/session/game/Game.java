@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.stream.Collectors;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
@@ -29,10 +30,23 @@ import lombok.Getter;
  * 정상 종료는 판정 LLM 이 대화 전체({@code messagesAfter(0)})를 읽어야 하므로, 채팅은 <b>판정이 끝난 뒤</b>
  * 버립니다. {@code FORFEIT} · {@code ABORTED} 는 판정이 없으니 종료 즉시 저장소에서 지웁니다 (명세 1-5).
  *
+ * <p><b>판정</b> — 정상 종료 뒤 판정 상태({@link JudgeStatus})와 결과({@link Verdict})도 여기에 둡니다.
+ * 판정이 끝나면(성공 · 실패) 결과 화면 보관 시간 뒤에 게임째 저장소에서 지웁니다 ({@code JudgeService}).
+ *
  * <p><b>주장 · 반론</b> — {@code PREP} 에는 주장, {@code REBUTTAL} 에는 반론을 제출합니다({@link #saveMemo}).
  * 공개 전에는 본인만 보고, 작성 구간이 끝나고 {@link DebatePhase#SUBMIT_GRACE} 가 지나면 {@link #revealArguments} 가
  * 양쪽 글을 {@link MessageType#ARGUMENT} 메시지로 기록합니다 (주장 63초, 반론 143초). 채팅은 반론이 공개된 뒤에만
  * 받고, 기록하기 전에 공개부터 하므로 스케줄러보다 채팅이 먼저 와도 반론이 앞 {@code seqNo} 를 받습니다.
+ *
+ * <p><b>봇</b> — 봇전은 봇 몫의 주장 · 반론 · 채팅을 AI 참가자 id 로 기록합니다({@link #saveBotMemo} ·
+ * {@link #appendBotChat}). 규칙(구간 · 글자 수 · 채팅 수)은 사람과 같고, 공개 · 순서 · 판정 입력도 같습니다.
+ *
+ * <p><b>힌트</b> — 사람 참가자마다 매칭 직후 만들기 시작한 힌트({@link GameHints})를 둡니다. 본인만 조회하고,
+ * 게임이 끝난 뒤 늦게 도착한 결과는 버립니다.
+ *
+ * <p><b>연결</b> — 사람 참가자마다 지금 인정하는 연결(토론방을 마지막으로 구독한 STOMP 세션)을 둡니다.
+ * 새로고침처럼 새 연결이 먼저 붙고 예전 연결이 늦게 끊기면 그 끊김은 무시합니다. 인정하는 연결이 끊기면
+ * 이탈 유예가 시작되고({@link #disconnect}), 유예 안에 다시 구독하면 복귀합니다({@link #connect}).
  *
  * <p><b>채팅 · 주장 본문을 로그 · 예외 메시지에 넣지 마세요</b> (명세 1-5).
  */
@@ -50,6 +64,10 @@ public class Game {
      * AI 참가자는 userId 가 없어 들어 있지 않습니다.
      */
     private final Map<Long, Long> participantIdByUserId;
+
+    /** 봇전의 AI 참가자 id. 사람전이면 null. 봇의 주장 · 반론 · 채팅을 기록할 때 씁니다. */
+    @Getter
+    private final Long aiParticipantId;
 
     private final int chatMaxLength;
 
@@ -73,12 +91,29 @@ public class Game {
     /** 이미 공개한 작성 구간. 구간마다 한 번만 공개합니다. */
     private final Set<DebatePhase> revealedPhases = EnumSet.noneOf(DebatePhase.class);
     private boolean finished;
+    /** 판정 상태. 판정을 시작하기 전에는 null 입니다. */
+    private JudgeStatus judgeStatus;
+    /** 판정이 끝나면({@code READY}) 들어갑니다. */
+    private Verdict verdict;
+    /** 판정을 시작한 횟수. 처음 판정 + 재판정입니다. */
+    private int judgeRuns;
+    /** 봇전의 봇 글 진행 상태. 사람전이면 null 입니다. */
+    private final BotProgress botProgress;
+    /** 사람 참가자의 userId → 힌트. 만들기 시작하기 전이면 들어 있지 않습니다. */
+    private final Map<Long, GameHints> hintsByUserId = new HashMap<>();
+    /** 사람 참가자의 userId → 지금 인정하는 연결(STOMP 세션 id). 토론방을 마지막으로 구독한 연결입니다. */
+    private final Map<Long, String> connectionByUserId = new HashMap<>();
+    /** 연결이 끊겨 이탈 유예 중인 userId → 몇 번째 끊김인지. 유예 타이머가 자기 끊김인지 확인합니다. */
+    private final Map<Long, Long> disconnectNoByUserId = new HashMap<>();
+    private long disconnectCount;
 
-    Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId,
+    Game(Long sessionId, LocalDateTime startedAt, Map<Long, Long> participantIdByUserId, Long aiParticipantId,
          int chatMaxLength, int maxChatsPerParticipant, int argumentMaxLength, int rebuttalMaxLength) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
         this.participantIdByUserId = Map.copyOf(participantIdByUserId);
+        this.aiParticipantId = aiParticipantId;
+        this.botProgress = aiParticipantId == null ? null : new BotProgress();
         this.chatMaxLength = chatMaxLength;
         this.maxChatsPerParticipant = maxChatsPerParticipant;
         this.argumentMaxLength = argumentMaxLength;
@@ -94,7 +129,19 @@ public class Game {
      * @param now 서버가 받은 시각. 구간은 이 시각으로 판단합니다
      */
     public synchronized GameMessage appendChat(Long userId, String content, LocalDateTime now) {
-        Long participantId = checkWritable(userId);
+        return appendChatOf(checkWritable(userId), content, now);
+    }
+
+    /**
+     * 봇전의 봇 채팅을 기록합니다. 규칙은 사람 채팅과 같습니다 (구간 · 글자 수 · 참가자별 채팅 수).
+     *
+     * @throws IllegalStateException 사람전 (AI 참가자가 없음)
+     */
+    public synchronized GameMessage appendBotChat(String content, LocalDateTime now) {
+        return appendChatOf(checkBotWritable(), content, now);
+    }
+
+    private GameMessage appendChatOf(Long participantId, String content, LocalDateTime now) {
         revealArguments(now);
         if (!DebatePhase.isChatOpen(startedAt, now)) {
             throw new BusinessException(SessionErrorCode.INVALID_PHASE);
@@ -121,7 +168,35 @@ public class Game {
      * @param now 서버가 받은 시각. 구간은 이 시각으로 판단합니다
      */
     public synchronized GameMemo saveMemo(Long userId, String content, LocalDateTime now) {
-        Long participantId = checkWritable(userId);
+        return saveMemoOf(checkWritable(userId), content, now);
+    }
+
+    /**
+     * 봇전의 봇 주장 · 반론을 제출합니다. 규칙은 사람 제출과 같습니다 (작성 구간 · 유예 3초 · 공개 전 · 글자 수).
+     *
+     * @throws IllegalStateException 사람전 (AI 참가자가 없음)
+     */
+    public synchronized GameMemo saveBotMemo(String content, LocalDateTime now) {
+        return saveMemoOf(checkBotWritable(), content, now);
+    }
+
+    /** 봇전의 봇 글 진행 상태. 사람전이면 null 입니다. */
+    public BotProgress botProgress() {
+        return botProgress;
+    }
+
+    /** 봇이 보낸 채팅 수. 사람전이면 0 입니다. */
+    public synchronized int botChatCount() {
+        return aiParticipantId == null ? 0 : chatCountByParticipantId.getOrDefault(aiParticipantId, 0);
+    }
+
+    /** 사람 참가자가 채팅을 한 번이라도 보냈는가. 봇의 첫마디를 정할 때 씁니다. */
+    public synchronized boolean hasHumanChat() {
+        return chatCountByParticipantId.entrySet().stream()
+                .anyMatch(entry -> !entry.getKey().equals(aiParticipantId) && entry.getValue() > 0);
+    }
+
+    private GameMemo saveMemoOf(Long participantId, String content, LocalDateTime now) {
         DebatePhase phase = DebatePhase.memoPhaseAt(startedAt, now);
         if (phase == null || revealedPhases.contains(phase)) {
             throw new BusinessException(SessionErrorCode.INVALID_PHASE);
@@ -209,6 +284,74 @@ public class Game {
         return participantIdByUserId.containsKey(userId);
     }
 
+    /** 사람 참가자의 userId. 봇은 들어 있지 않습니다. */
+    public Set<Long> humanUserIds() {
+        return participantIdByUserId.keySet();
+    }
+
+    /** 이 참가자의 힌트를 만들기 시작합니다 ({@code PENDING}). */
+    public synchronized void startHints(Long userId) {
+        if (!isParticipant(userId)) {
+            throw new IllegalArgumentException("사람 참가자가 아닙니다. sessionId=" + sessionId);
+        }
+        hintsByUserId.put(userId, GameHints.PENDING);
+    }
+
+    /** 만든 힌트를 저장합니다. 게임이 이미 끝났으면 버립니다. */
+    public synchronized void completeHints(Long userId, List<String> hints) {
+        if (!finished) {
+            hintsByUserId.put(userId, GameHints.ready(hints));
+        }
+    }
+
+    /** 힌트를 만들지 못했습니다. 다시 만들지 않습니다. 게임이 이미 끝났으면 아무것도 하지 않습니다. */
+    public synchronized void failHints(Long userId) {
+        if (!finished) {
+            hintsByUserId.put(userId, GameHints.FAILED);
+        }
+    }
+
+    /** 이 참가자의 힌트. 아직 만들기 시작하기 전(매칭 직후 아주 짧은 사이)이면 곧 시작하므로 {@code PENDING} 입니다. */
+    public synchronized GameHints hintsOf(Long userId) {
+        return hintsByUserId.getOrDefault(userId, GameHints.PENDING);
+    }
+
+    /**
+     * 토론방을 구독한 연결을 이 사용자의 연결로 인정합니다. 이탈 유예 중이었으면 복귀로 보고 true 를 돌려줍니다.
+     * 참가자가 아니거나(관전자) 끝난 게임이면 아무것도 하지 않고 false 입니다.
+     */
+    public synchronized boolean connect(Long userId, String connectionId) {
+        if (finished || !isParticipant(userId)) {
+            return false;
+        }
+        connectionByUserId.put(userId, Objects.requireNonNull(connectionId, "connectionId"));
+        return disconnectNoByUserId.remove(userId) != null;
+    }
+
+    /**
+     * 연결이 끊겼습니다. 이 사용자가 지금 인정하는 연결이면 이탈 유예를 시작하고 몇 번째 끊김인지 돌려줍니다.
+     * 예전 연결이거나, 이미 유예 중이거나, 끝난 게임이면 비어 있습니다.
+     */
+    public synchronized OptionalLong disconnect(Long userId, String connectionId) {
+        if (finished || !connectionId.equals(connectionByUserId.get(userId)) || disconnectNoByUserId.containsKey(userId)) {
+            return OptionalLong.empty();
+        }
+        long disconnectNo = ++disconnectCount;
+        disconnectNoByUserId.put(userId, disconnectNo);
+        return OptionalLong.of(disconnectNo);
+    }
+
+    /** {@code disconnectNo} 번째 끊김 뒤로 이 사용자가 아직 돌아오지 않았는가. 유예 타이머가 확인합니다. */
+    public synchronized boolean isStillDisconnected(Long userId, long disconnectNo) {
+        Long current = disconnectNoByUserId.get(userId);
+        return current != null && current == disconnectNo;
+    }
+
+    /** 이 사용자 말고 다른 사람 참가자도 이탈 유예 중인가 (양쪽 동시 이탈). */
+    public synchronized boolean isOtherDisconnected(Long userId) {
+        return disconnectNoByUserId.keySet().stream().anyMatch(other -> !other.equals(userId));
+    }
+
     /**
      * 이후 채팅 · 제출을 받지 않습니다. 이미 받은 메시지는 판정 LLM 이 읽도록 남겨 둡니다.
      * 사용자의 메시지 조회는 세션 상태로 막습니다 ({@code SessionQueryService#getMessages}).
@@ -219,6 +362,47 @@ public class Game {
 
     public synchronized boolean isFinished() {
         return finished;
+    }
+
+    /**
+     * 판정을 시작합니다. 처음이거나 실패({@code FAILED})한 뒤에만 {@code PENDING} 으로 바꾸고 true 를 돌려줍니다.
+     * 이미 판정 중이거나 끝났으면 false 라, 260초 종료와 결과 재요청이 겹쳐도 판정은 한 번만 돕니다.
+     *
+     * <p>시작한 횟수가 {@code maxRuns} 에 이르면 실패한 뒤에도 false 입니다. 결과 화면 폴링마다 재판정이 돌아
+     * LLM 호출이 끝없이 늘지 않게 합니다.
+     *
+     * @param maxRuns 판정을 시작할 수 있는 최대 횟수 (처음 판정 + 재판정)
+     * @throws IllegalStateException 아직 끝나지 않은 게임. 판정은 대화가 더 늘지 않을 때만 합니다
+     */
+    public synchronized boolean startJudging(int maxRuns) {
+        if (!finished) {
+            throw new IllegalStateException("끝나지 않은 게임은 판정할 수 없습니다. sessionId=" + sessionId);
+        }
+        if (judgeStatus == JudgeStatus.PENDING || judgeStatus == JudgeStatus.READY || judgeRuns >= maxRuns) {
+            return false;
+        }
+        judgeStatus = JudgeStatus.PENDING;
+        judgeRuns++;
+        return true;
+    }
+
+    public synchronized void completeJudging(Verdict verdict) {
+        this.verdict = Objects.requireNonNull(verdict, "verdict");
+        this.judgeStatus = JudgeStatus.READY;
+    }
+
+    public synchronized void failJudging() {
+        this.judgeStatus = JudgeStatus.FAILED;
+    }
+
+    /** 판정 상태. 판정을 시작하기 전이면 null 입니다. */
+    public synchronized JudgeStatus judgeStatus() {
+        return judgeStatus;
+    }
+
+    /** 판정 결과. {@code READY} 가 아니면 null 입니다. */
+    public synchronized Verdict verdict() {
+        return verdict;
     }
 
     /** 글자 수. 이모지처럼 두 칸(char)을 쓰는 문자도 한 글자로 셉니다. */
@@ -236,6 +420,17 @@ public class Game {
             throw new BusinessException(SessionErrorCode.NOT_PARTICIPANT);
         }
         return participantId;
+    }
+
+    /** 봇 글을 쓸 수 있는지 확인합니다. 끝난 게임이면 사람과 같이 SESSION_NOT_IN_PROGRESS 입니다. */
+    private Long checkBotWritable() {
+        if (aiParticipantId == null) {
+            throw new IllegalStateException("봇전이 아닙니다. sessionId=" + sessionId);
+        }
+        if (finished) {
+            throw new BusinessException(SessionErrorCode.SESSION_NOT_IN_PROGRESS);
+        }
+        return aiParticipantId;
     }
 
     /** 비어 있거나 공백뿐인 메시지는 받지 않습니다. 요청 본문에 {@code content} 가 빠지면 null 로 들어옵니다. */

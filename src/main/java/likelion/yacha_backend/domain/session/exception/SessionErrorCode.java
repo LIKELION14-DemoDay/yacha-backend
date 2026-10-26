@@ -25,6 +25,8 @@ public enum SessionErrorCode implements BaseErrorCode {
     /** 방장만 할 수 있는 동작 (대기 취소 · AI 전환). */
     NOT_ROOM_OWNER(HttpStatus.FORBIDDEN, "방장만 할 수 있습니다."),
     CANNOT_JOIN_OWN_ROOM(HttpStatus.CONFLICT, "내가 만든 방에는 들어갈 수 없습니다."),
+    /** 아직 끝나지 않은(대기 · 진행 중 · 취소된) 토론의 결과를 조회함. */
+    SESSION_NOT_FINISHED(HttpStatus.CONFLICT, "아직 끝나지 않은 토론입니다."),
     ;
 
     private final HttpStatus status;

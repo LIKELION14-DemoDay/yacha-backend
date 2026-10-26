@@ -17,6 +17,8 @@ public enum GlobalErrorCode implements BaseErrorCode {
     /** 게스트(비회원)가 회원 전용 기능을 부름. 인가 단계(JwtAccessDeniedHandler)에서 내므로 공통 코드에 둠 */
     GUEST_NOT_ALLOWED(HttpStatus.FORBIDDEN, "회원만 이용할 수 있습니다."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
+    /** 같은 IP에서 짧은 시간에 너무 많이 부름. 지금은 이메일 중복 확인에서 사용 */
+    TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "내부 서버 오류가 발생했습니다."),
     ;
 

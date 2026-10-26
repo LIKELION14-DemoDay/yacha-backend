@@ -6,16 +6,21 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import likelion.yacha_backend.domain.auth.dto.AuthResponse;
+import likelion.yacha_backend.domain.auth.dto.EmailAvailabilityRequest;
+import likelion.yacha_backend.domain.auth.dto.EmailAvailabilityResponse;
 import likelion.yacha_backend.domain.auth.dto.GoogleCodeLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.IssuedTokens;
 import likelion.yacha_backend.domain.auth.dto.KakaoCodeLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.LoginRequest;
 import likelion.yacha_backend.domain.auth.dto.PasswordResetConfirmRequest;
 import likelion.yacha_backend.domain.auth.dto.PasswordResetRequest;
+import likelion.yacha_backend.domain.auth.dto.PasswordResetVerifyRequest;
+import likelion.yacha_backend.domain.auth.dto.PasswordResetVerifyResponse;
 import likelion.yacha_backend.domain.auth.dto.SignupRequest;
 import likelion.yacha_backend.domain.auth.dto.SocialLoginRequest;
 import likelion.yacha_backend.domain.auth.dto.UpgradeRequest;
 import likelion.yacha_backend.domain.auth.service.AuthService;
+import likelion.yacha_backend.domain.auth.service.EmailAvailabilityService;
 import likelion.yacha_backend.domain.auth.service.GoogleLoginService;
 import likelion.yacha_backend.domain.auth.service.PasswordResetService;
 import likelion.yacha_backend.domain.auth.service.KakaoLoginService;
@@ -23,9 +28,12 @@ import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.cookie.CookieProvider;
 import likelion.yacha_backend.global.security.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,6 +51,7 @@ public class AuthController {
     private final CookieProvider cookieProvider;
     private final AuthResponseFactory authResponseFactory;
     private final PasswordResetService passwordResetService;
+    private final EmailAvailabilityService emailAvailabilityService;
 
     @Operation(
             summary = "게스트 생성",
@@ -52,6 +61,7 @@ public class AuthController {
                     - 응답 body 의 `accessToken` 을 이후 요청의 `Authorization: Bearer` 헤더에 넣음
                     - 리프레시 토큰은 HttpOnly 쿠키로 내려감
                       JS 로 읽을 수 없고, 재발급 시 브라우저가 자동으로 실어 보냄
+                    - `isNewUser`는 항상 true. 비회원은 닉네임을 바꿀 수 없으니 닉네임 화면 판단에는 쓰지 않음
                     """)
     @SecurityRequirements   // 전역 bearerAuth를 끔. 인증 없이 호출
     @PostMapping("/guest")
@@ -69,6 +79,7 @@ public class AuthController {
                     - 비밀번호는 8자 이상 72자 이하 (BCrypt 입력 상한)
                     - 게스트가 쓰던 기록을 이어가려면 이 API 가 아니라 `/auth/upgrade`
                       여기서는 새 계정이 만들어짐
+                    - `isNewUser`는 true. 닉네임은 가입 폼에서 받았으므로 닉네임 화면은 필요 없음
 
                     에러
                     - `VALIDATION_FAILED` (400): 형식·길이 위반
@@ -78,6 +89,35 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<ApiResponse<AuthResponse>> signup(@Valid @RequestBody SignupRequest request) {
         return withRefreshCookie(authService.signup(request));
+    }
+
+    @Operation(
+            summary = "회원가입 이메일 중복 확인",
+            description = """
+                    회원가입 아이디(이메일) 단계의 [다음]에서 호출. 마지막 [시작하기]까지 가지 않고 바로 알려줌
+                    로그인 없이 부를 수 있고, 비회원 승격 화면에서도 같은 API 를 씀
+
+                    ```json
+                    { "available": true }
+                    ```
+
+                    - 이미 가입된 이메일이면 `available: false`. 에러가 아니라 정상 결과라 200
+                    - 대소문자만 다른 이메일도 같은 이메일로 봄 (가입과 같은 규칙)
+                    - 안내용이라, 확인한 뒤에도 가입 때 `EMAIL_ALREADY_EXISTS`(409)가 날 수 있음
+                      (그 사이 다른 사람이 같은 이메일로 가입한 경우)
+                    - 같은 IP에서 1분에 30번까지. 넘으면 429 이고 1분 안에 풀림
+
+                    에러
+                    - `VALIDATION_FAILED` (400): 이메일이 없거나 형식 · 길이 위반 (가입과 같은 검증)
+                    - `TOO_MANY_REQUESTS` (429): 같은 IP에서 너무 많이 부름
+                    """)
+    @SecurityRequirements
+    @GetMapping("/email/availability")
+    public ApiResponse<EmailAvailabilityResponse> checkEmailAvailability(
+            @Valid @ParameterObject @ModelAttribute EmailAvailabilityRequest request,
+            HttpServletRequest httpRequest) {
+        boolean available = emailAvailabilityService.isAvailable(request.email(), httpRequest.getRemoteAddr());
+        return ApiResponse.success(new EmailAvailabilityResponse(available));
     }
 
     @Operation(
@@ -122,6 +162,9 @@ public class AuthController {
                     ```
 
                     - 처음 로그인하면 계정이 자동으로 만들어집니다. 별도 회원가입이 없습니다.
+                    - 응답의 `isNewUser`가 true면 이번에 계정이 만들어진 것입니다.
+                      닉네임 화면(소셜 닉네임을 기본값으로)을 보여 주고 `PATCH /users/me`로 바꿔 주세요.
+                      같은 계정으로 다시 로그인하면 false 라서 바로 홈으로 보내면 됩니다.
                     - 같은 이메일로 가입된 계정이 이미 있으면 연결하지 않고 409 를 줍니다.
                       원래 쓰던 방법으로 로그인하도록 안내해 주세요.
                     - 카카오는 이메일 제공이 선택 동의라, 이메일 없이 가입될 수 있습니다.
@@ -144,7 +187,7 @@ public class AuthController {
             description = """
                     웹의 카카오 JS SDK 는 id_token 을 바로 주지 않고, redirect URI 로 **인가 코드**만 넘겨줍니다.
                     그 코드를 보내면 서버가 카카오에 id_token 으로 바꿔 받은 뒤 `/auth/social` 과 같은 절차로 로그인합니다.
-                    응답 · 가입 규칙 · 409 는 `/auth/social` 과 같습니다.
+                    응답(`isNewUser` 포함) · 가입 규칙 · 409 는 `/auth/social` 과 같습니다.
 
                     ```json
                     { "code": "인가 코드", "redirectUri": "https://yacha.com/oauth/kakao" }
@@ -174,7 +217,7 @@ public class AuthController {
             description = """
                     프론트가 만든 버튼으로 구글 인가 주소에 보내면, redirect URI로 **인가 코드**가 돌아옵니다.
                     그 코드를 보내면 서버가 구글에 id_token으로 바꿔 받은 뒤 `/auth/social`과 같은 절차로 로그인합니다.
-                    응답 · 가입 규칙 · 409는 `/auth/social`과 같습니다.
+                    응답(`isNewUser` 포함) · 가입 규칙 · 409는 `/auth/social`과 같습니다.
 
                     ```json
                     { "code": "인가 코드", "redirectUri": "http://localhost:5173/oauth/google" }
@@ -201,32 +244,67 @@ public class AuthController {
     }
 
     @Operation(
-            summary = "비밀번호 재설정 메일 요청",
+            summary = "비밀번호 찾기 ① 인증번호 메일 요청",
             description = """
                     로그인 화면의 "비밀번호 찾기"
-                    입력한 주소로 재설정 링크를 보냄
+                    입력한 주소로 6자리 인증번호를 보냄 → ② `/auth/password/verify` → ③ `/auth/password/reset`
 
                     가입되지 않은 이메일이어도 200
                     어떤 주소가 가입돼 있는지 알려주지 않기 위해서임
                     프론트도 "가입된 계정이 있다면 메일을 보냈습니다"처럼 안내해 주세요
 
-                    - 링크는 30분 동안 유효하고 한 번만 사용 가능
-                    - 같은 이메일로는 1분에 한 번만 보냄. 제한에 걸려도 응답은 200.
-                    - 소셜(카카오 · 구글)로만 가입한 계정은 바꿀 비밀번호가 없어서, 링크 대신
+                    - 같은 IP에서 10분에 10번까지. 넘으면 429 `TOO_MANY_REQUESTS` (이메일과 관계없이 IP만 봄)
+                    - 인증번호는 3분 동안 유효 (화면 타이머)
+                    - 새로 요청하면 이전 인증번호는 무효가 되고, 틀린 횟수도 처음부터
+                    - 같은 이메일로는 1분에 한 번만 보냄. 제한에 걸려도 응답은 200 이고, 이전 인증번호가 그대로 유효
+                    - 소셜(카카오 · 구글)로만 가입한 계정은 바꿀 비밀번호가 없어서, 인증번호 대신
                       "소셜 로그인을 이용하세요" 안내 메일이 갑니다
                     """)
     @SecurityRequirements
     @PostMapping("/password/reset-request")
-    public ApiResponse<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
-        passwordResetService.sendResetMail(request);
+    public ApiResponse<Void> requestPasswordReset(
+            @Valid @RequestBody PasswordResetRequest request, HttpServletRequest httpRequest) {
+        passwordResetService.sendResetMail(request, httpRequest.getRemoteAddr());
         return ApiResponse.noContent();
     }
 
     @Operation(
-            summary = "비밀번호 재설정",
+            summary = "비밀번호 찾기 ② 인증번호 확인",
             description = """
-                    메일 링크로 들어와 새 비밀번호를 정함
-                    링크의 `?token=` 값을 그대로 보내주세요.
+                    메일로 받은 6자리 인증번호를 확인하고, 맞으면 재설정 토큰을 줌
+
+                    ```json
+                    { "email": "soomin@example.com", "code": "012345" }
+                    → { "resetToken": "..." }
+                    ```
+
+                    - `resetToken` 은 10분 동안 유효하고 한 번만 쓸 수 있음. ③ `/auth/password/reset` 의 `token` 에 넣음
+                    - 5번까지 틀릴 수 있음. 그다음은 맞는 번호여도 `RESET_CODE_EXPIRED` 라 다시 요청해야 함
+                    - 한 이메일을 같은 IP에서 24시간 동안 10번까지 틀릴 수 있음 (인증번호를 새로 받아도 이어서 셈). 넘으면 `RESET_ATTEMPTS_EXCEEDED`
+                      IP마다 따로 세서, 남이 일부러 틀려도 본인은 막히지 않음. 모든 IP를 합쳐 100번을 넘으면 그 이메일은 모두 막힘
+                    - 가입되지 않은 이메일도 가입된 이메일과 같은 응답 (가입 여부를 드러내지 않음)
+                    - `code` 는 숫자 6자리 문자열. 앞자리 0 이 있으니 숫자로 바꾸지 말고 그대로 보내 주세요
+
+                    에러
+                    - `VALIDATION_FAILED` (400): 이메일 형식 · 인증번호가 숫자 6자리가 아님 (시도 횟수에 들어가지 않음)
+                    - `INVALID_RESET_CODE` (400): 인증번호가 틀림. 다시 입력
+                    - `RESET_CODE_EXPIRED` (400): 만료(3분) · 5번 틀림 · 요청한 적 없음 · 이미 사용함. 다시 요청
+                    - `RESET_ATTEMPTS_EXCEEDED` (429): 24시간 동안 너무 많이 틀림 (같은 IP 10번 · 전체 100번). 처음 틀린 때부터 24시간 뒤에 다시 시도
+                    - `TOO_MANY_REQUESTS` (429): 같은 IP에서 10분에 30번 넘게 확인함. 잠시 뒤 다시 시도
+                    """)
+    @SecurityRequirements
+    @PostMapping("/password/verify")
+    public ApiResponse<PasswordResetVerifyResponse> verifyPasswordResetCode(
+            @Valid @RequestBody PasswordResetVerifyRequest request, HttpServletRequest httpRequest) {
+        return ApiResponse.success(new PasswordResetVerifyResponse(
+                passwordResetService.verify(request, httpRequest.getRemoteAddr())));
+    }
+
+    @Operation(
+            summary = "비밀번호 찾기 ③ 비밀번호 재설정",
+            description = """
+                    ② 인증번호 확인으로 받은 `resetToken` 으로 새 비밀번호를 정함
+                    `resetToken` 을 `token` 에 그대로 보내주세요.
 
                     성공하면 모든 기기에서 로그아웃
                     계정을 도둑맞아 재설정하는 경우 위함
@@ -234,7 +312,7 @@ public class AuthController {
 
                     에러
                     - `VALIDATION_FAILED` (400): 새 비밀번호가 8자 미만 또는 72자 초과
-                    - `INVALID_RESET_TOKEN` (401): 링크 만료(30분) · 이미 사용됨 · 잘못된 토큰
+                    - `INVALID_RESET_TOKEN` (401): 토큰 만료(10분) · 이미 사용됨 · 잘못된 토큰. 처음(①)부터 다시
                     """)
     @SecurityRequirements
     @PostMapping("/password/reset")

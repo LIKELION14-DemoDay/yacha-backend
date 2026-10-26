@@ -64,6 +64,11 @@ public class GameMessageService {
                 ArgumentSubmittedEvent.of(participantId, phase));
     }
 
+    /** 구간 전환 · 최종반론 안내 · 종료 같은 이벤트. 게임 락 안에서 불러 공개 메시지와 순서가 섞이지 않게 합니다. */
+    void broadcastEvent(Long sessionId, Object event) {
+        messagingTemplate.convertAndSend(SessionTopicSubscriptionAuthorizer.destinationOf(sessionId), event);
+    }
+
     private void broadcast(Long sessionId, GameMessage message) {
         messagingTemplate.convertAndSend(SessionTopicSubscriptionAuthorizer.destinationOf(sessionId),
                 GameMessageResponse.from(message, clock.getZone()));

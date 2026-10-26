@@ -16,6 +16,7 @@ import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.service.GameMemoService;
+import likelion.yacha_backend.domain.session.service.SessionMatchFacade;
 import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
 import likelion.yacha_backend.global.security.jwt.Role;
 import org.junit.jupiter.api.AfterEach;
@@ -40,9 +41,9 @@ import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "spectate.enabled=true")
+        properties = {"spectate.enabled=true", "game.disconnect.grace=1s"})
 @Import(SessionFixture.class)
-@DisplayName("토론방 STOMP — 채팅 · 주장 제출 알림 · 공개 · 관전 구독")
+@DisplayName("토론방 STOMP — 채팅 · 주장 제출 알림 · 공개 · 관전 구독 · 연결 끊김")
 class GameStompTest {
 
     private static final long TIMEOUT_SECONDS = 5;
@@ -71,6 +72,9 @@ class GameStompTest {
 
     @Autowired
     private GameMemoService gameMemoService;
+
+    @Autowired
+    private SessionMatchFacade sessionMatchFacade;
 
     private WebSocketStompClient stompClient;
     private ThreadPoolTaskScheduler clientScheduler;
@@ -313,6 +317,76 @@ class GameStompTest {
             }
             assertThat(host.errorFrame).isNotDone();
             assertThat(spectator.errorFrame).isNotDone();
+        }
+    }
+
+    @Nested
+    @DisplayName("연결 끊김 (이탈 유예 1초)")
+    class Disconnect {
+
+        @Test
+        @DisplayName("참가자 연결이 끊기면 상대가 OPPONENT_DISCONNECTED 를 받고, 유예가 지나면 SESSION_FINISHED(FORFEIT)")
+        void forfeitsAfterGrace() throws Exception {
+            Room room = track(fixture.randomHuman(IN_CHAT));
+            Client host = connect(room.hostUserId());
+            host.subscribeTopic(room.sessionId());
+            BlockingQueue<Map<String, Object>> toOpponent = connect(room.opponentUserId()).subscribeTopic(room.sessionId());
+
+            host.session.disconnect();
+
+            Map<String, Object> disconnected = next(toOpponent, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS));
+            assertThat(disconnected).containsEntry("type", "OPPONENT_DISCONNECTED");
+            assertThat((String) disconnected.get("graceEndsAt")).endsWith("+09:00");
+            Map<String, Object> finished = next(toOpponent, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS));
+            assertThat(finished).containsEntry("type", "SESSION_FINISHED").containsEntry("reason", "FORFEIT");
+        }
+
+        @Test
+        @DisplayName("유예 안에 새 연결로 토론방을 다시 구독하면 상대가 OPPONENT_RECONNECTED 를 받고 게임이 이어진다")
+        void reconnectsWithinGrace() throws Exception {
+            Room room = track(fixture.randomHuman(IN_CHAT));
+            Client host = connect(room.hostUserId());
+            host.subscribeTopic(room.sessionId());
+            BlockingQueue<Map<String, Object>> toOpponent = connect(room.opponentUserId()).subscribeTopic(room.sessionId());
+
+            host.session.disconnect();
+            assertThat(next(toOpponent, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS)))
+                    .containsEntry("type", "OPPONENT_DISCONNECTED");
+            connect(room.hostUserId()).subscribeTopic(room.sessionId());
+
+            assertThat(next(toOpponent, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS)))
+                    .containsEntry("type", "OPPONENT_RECONNECTED");
+            assertThat(next(toOpponent, 1_500)).isNull();
+        }
+
+        @Test
+        @DisplayName("대기 중에 미리 구독한 방장이 그 구독을 유지한 채 매칭된 뒤 끊겨도 상대가 OPPONENT_DISCONNECTED 를 받는다")
+        void detectsSubscriptionBeforeGame() throws Exception {
+            Room waiting = track(fixture.waitingRandom());
+            Client host = connect(waiting.hostUserId());
+            host.subscribeTopic(waiting.sessionId());
+            Long opponentUserId = fixture.newUser();
+            sessionMatchFacade.join(opponentUserId, waiting.sessionId());
+            BlockingQueue<Map<String, Object>> toOpponent = connect(opponentUserId).subscribeTopic(waiting.sessionId());
+
+            host.session.disconnect();
+
+            assertThat(next(toOpponent, TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS)))
+                    .containsEntry("type", "OPPONENT_DISCONNECTED");
+        }
+
+        @Test
+        @DisplayName("새 연결이 먼저 구독한 뒤 예전 연결이 끊기면(새로고침) 상대는 아무것도 받지 않는다")
+        void ignoresOldConnection() throws Exception {
+            Room room = track(fixture.randomHuman(IN_CHAT));
+            Client oldHost = connect(room.hostUserId());
+            oldHost.subscribeTopic(room.sessionId());
+            BlockingQueue<Map<String, Object>> toOpponent = connect(room.opponentUserId()).subscribeTopic(room.sessionId());
+            connect(room.hostUserId()).subscribeTopic(room.sessionId());
+
+            oldHost.session.disconnect();
+
+            assertThat(next(toOpponent, 1_500)).isNull();
         }
     }
 

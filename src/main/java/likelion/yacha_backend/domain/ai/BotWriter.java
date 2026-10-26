@@ -7,7 +7,7 @@ import likelion.yacha_backend.domain.session.entity.Stance;
  * 봇전의 봇이 쓰는 글 (명세 2-4). 봇도 사람과 같은 시간표 · 글자 수로 주장 · 반론을 쓰고, 채팅에 대답합니다.
  *
  * <p>실패하면 예외를 던지세요. 재시도와 실패 처리(빈 글 · 대답 건너뜀)는 부르는 쪽이 합니다.
- * 글자 수 상한을 넘으면 부르는 쪽이 자릅니다.
+ * 글자 수 상한은 구현체가 지킵니다. AI 응답이 넘으면 구현체가 잘라서 돌려주세요.
  */
 public interface BotWriter {
 
@@ -32,7 +32,9 @@ public interface BotWriter {
     String writeRebuttal(AiTopic topic, Stance botStance, String opponentArgument);
 
     /**
-     * 채팅 대답. 사람이 말할 때마다 3초 뒤에 부르고, 봇이 먼저 말을 걸지는 않습니다.
+     * 채팅 대답. 사람의 마지막 말 3초 뒤에 부릅니다 (3초 안에 여러 번 말하면 마지막 말 뒤 한 번).
+     * 채팅이 열리고 10초 동안 사람이 말이 없으면 첫마디로 한 번 먼저 부르므로, 대화의 마지막이 사람 말이 아닐 수 있습니다
+     * (그때는 공개된 주장 · 반론까지만 있음).
      *
      * @param topic            주제
      * @param botStance        봇의 입장

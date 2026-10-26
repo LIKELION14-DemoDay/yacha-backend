@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  * 방장 알림을 본인에게만 보냅니다 ({@code /user/queue/match}, 명세 2-4).
  *
  * <p>STOMP 사용자 이름이 userId 라서({@code AuthUser#getUsername}) userId 로 보냅니다.
- * 방장이 연결돼 있지 않으면 알림은 사라집니다. 재접속하면 {@code GET /sessions/{id}/state} 로 상태를 맞춥니다.
+ * 방장이 연결돼 있지 않으면 알림은 사라집니다. 재접속하면 {@code GET /sessions/current} · {@code /state} 로 상태를 맞춥니다.
  */
 @Component
 @RequiredArgsConstructor
@@ -20,6 +20,19 @@ public class MatchNotifier {
     private final SimpMessagingTemplate messagingTemplate;
 
     public void matched(Long hostUserId, Long sessionId) {
-        messagingTemplate.convertAndSendToUser(String.valueOf(hostUserId), MATCH_QUEUE, MatchNotice.matched(sessionId));
+        send(hostUserId, MatchNotice.matched(sessionId));
+    }
+
+    /** 대기 팝업. 5분 상한은 사용자에게 보여 주지 않으므로 기다린 초만 보냅니다. */
+    public void waitPrompt(Long hostUserId, Long sessionId, long waitedSeconds) {
+        send(hostUserId, MatchNotice.waitPrompt(sessionId, waitedSeconds));
+    }
+
+    public void waitExpired(Long hostUserId, Long sessionId) {
+        send(hostUserId, MatchNotice.waitExpired(sessionId));
+    }
+
+    private void send(Long userId, MatchNotice notice) {
+        messagingTemplate.convertAndSendToUser(String.valueOf(userId), MATCH_QUEUE, notice);
     }
 }

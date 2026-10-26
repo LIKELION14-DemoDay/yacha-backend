@@ -29,11 +29,11 @@ public class PasswordResetMailer {
 
     private final MailSender mailSender;
 
-    /** 재설정 링크 메일 */
+    /** 재설정 인증번호 메일 */
     @Async(AsyncConfig.MAIL_EXECUTOR)
-    public void sendResetLink(Long userId, String email, String resetUrl) {
+    public void sendResetCode(Long userId, String email, String code) {
         try {
-            mailSender.sendPasswordReset(email, resetUrl);
+            mailSender.sendPasswordResetCode(email, code);
         } catch (RuntimeException e) {
             logFailure("비밀번호 재설정", userId, e);
         }
@@ -51,7 +51,7 @@ public class PasswordResetMailer {
 
     /**
      * 예외 메시지는 남기지 않고 종류만 남김
-     * 발송 라이브러리의 메시지에 받는 주소나 본문(재설정 링크)이 섞여 있을 수 있음
+     * 발송 라이브러리의 메시지에 받는 주소나 본문(인증번호)이 섞여 있을 수 있음
      */
     private void logFailure(String mailType, Long userId, RuntimeException e) {
         log.warn("{} 메일 발송에 실패했습니다. userId={}, error={}",

@@ -9,6 +9,9 @@ import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.ai.Judge;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 @DisplayName("ai.mode — 임시 구현 등록 여부")
@@ -26,6 +29,13 @@ class StubAiConfigTest {
             assertThat(context).hasSingleBean(BotWriter.class);
             assertThat(context).hasSingleBean(Judge.class);
         });
+    }
+
+    @Test
+    @DisplayName("임시 판정이 등록되면 기동 로그에 경고를 남긴다")
+    @ExtendWith(OutputCaptureExtension.class)
+    void warnsStubJudge(CapturedOutput output) {
+        runner.run(context -> assertThat(output).contains("임시 판정 구현(StubJudge)이 등록됐습니다"));
     }
 
     @Test

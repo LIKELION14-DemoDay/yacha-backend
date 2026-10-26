@@ -12,7 +12,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
+import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
+import likelion.yacha_backend.domain.session.entity.ParticipantType;
+import likelion.yacha_backend.domain.session.entity.SessionMode;
 import likelion.yacha_backend.domain.session.entity.RoomType;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.session.entity.Stance;
@@ -32,7 +35,7 @@ import org.springframework.context.annotation.Import;
  */
 @SpringBootTest
 @Import(SessionFixture.class)
-@DisplayName("방 생성 · 입장 — 동시 요청")
+@DisplayName("방 생성 · 입장 · 봇전 — 동시 요청")
 class SessionMatchConcurrencyTest {
 
     @Autowired
@@ -113,6 +116,45 @@ class SessionMatchConcurrencyTest {
                 .filter(room -> sessionRepository.findById(room.sessionId()).orElseThrow().isInProgress())
                 .count();
         assertThat(started).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("AI 전환과 입장이 동시에 오면 한쪽만 성공하고, 늦은 쪽은 SESSION_NOT_WAITING")
+    void convertRacesWithJoin() throws Exception {
+        Room room = fixture.waitingRandom();
+        sessionIds.add(room.sessionId());
+        Long joiner = fixture.newUser();
+
+        List<Outcome> outcomes = runTogether(
+                () -> sessionMatchFacade.convertToAi(room.hostUserId(), room.sessionId()),
+                () -> sessionMatchFacade.join(joiner, room.sessionId()));
+
+        assertThat(outcomes).filteredOn(Outcome::succeeded).hasSize(1);
+        assertThat(outcomes).filteredOn(outcome -> !outcome.succeeded())
+                .extracting(Outcome::errorCode).containsExactly("SESSION_NOT_WAITING");
+        // 이긴 쪽에 맞게 참가자가 2명(방장 + AI 또는 방장 + 입장한 사람)이고 모드도 맞아야 합니다.
+        var participants = participantRepository.findAllBySession_Id(room.sessionId());
+        assertThat(participants).hasSize(2);
+        boolean aiWon = participants.stream().anyMatch(p -> p.getParticipantType() == ParticipantType.AI);
+        assertThat(sessionRepository.findById(room.sessionId()).orElseThrow().getMode())
+                .isEqualTo(aiWon ? SessionMode.AI : SessionMode.HUMAN);
+        assertThat(gameRegistry.find(room.sessionId())).isPresent();
+    }
+
+    @Test
+    @DisplayName("같은 사용자가 봇전을 동시에 두 번 시작하면 하나만 만들어지고, 다른 쪽은 ALREADY_IN_SESSION")
+    void sameUserStartsBotOnce() throws Exception {
+        Long userId = fixture.newUser();
+        BotMatchRequest request = new BotMatchRequest(fixture.topic().getId(), Stance.AGREE);
+
+        List<Outcome> outcomes = runTogether(
+                () -> sessionMatchFacade.startBot(userId, request),
+                () -> sessionMatchFacade.startBot(userId, request));
+        outcomes.stream().filter(Outcome::succeeded).forEach(outcome -> sessionIds.add(outcome.sessionId()));
+
+        assertThat(outcomes).filteredOn(Outcome::succeeded).hasSize(1);
+        assertThat(outcomes).filteredOn(outcome -> !outcome.succeeded())
+                .extracting(Outcome::errorCode).containsExactly("ALREADY_IN_SESSION");
     }
 
     /** 성공하면 세션 id, 실패하면 에러 코드. */

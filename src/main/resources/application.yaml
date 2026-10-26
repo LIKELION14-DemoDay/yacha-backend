@@ -21,6 +21,14 @@ spring:
       # 비밀번호를 걸지 않은 Redis면 비워둠
       password: ${REDIS_PASSWORD:}
 
+server:
+  # 운영은 서버의 프록시가 HTTPS 를 받아 앱(127.0.0.1:8080)으로 넘겨서, 앱이 보는 접속 IP 는 모두 프록시 주소임
+  # 프록시가 붙인 X-Forwarded-For · X-Forwarded-Proto 로 실제 클라이언트 IP · https 여부를 읽음 (이메일 중복 확인의 IP 제한)
+  # native 는 Tomcat 이 처리하고, 내부 주소(127.x · 10.x · 172.16~31.x · 192.168.x)에서 온 헤더만 믿음
+  # 그래서 외부에서 헤더를 꾸며 보내도, 프록시가 마지막에 붙인 실제 IP를 씀
+  # 프록시 없이 직접 띄우는 로컬에서는 헤더가 없어 아무 영향 없음
+  forward-headers-strategy: native
+
 jwt:
   # 기본값을 두지 않음
   secret: ${JWT_SECRET}
@@ -32,10 +40,37 @@ jwt:
 
 auth:
   password-reset:
-    # 재설정 링크 유효시간. 길면 메일함이 털렸을 때 위험 구간이 길어짐 (팀 결정)
-    token-ttl: 30m
+    # 인증번호 확인 뒤 받는 재설정 토큰의 유효시간. 새 비밀번호를 정하는 화면 하나만 남아서 짧게 둠 (10/5)
+    token-ttl: 10m
     # 같은 이메일로 다시 보낼 수 있을 때까지의 간격. 남의 메일함에 계속 보내는 것을 막음 (팀 결정)
     send-interval: 1m
+    # 메일로 보낸 인증번호 유효시간. 화면 타이머와 같음 (와이어프레임 10/5)
+    code-ttl: 3m
+    # 인증번호를 틀릴 수 있는 횟수. 넘기면 다시 요청해야 함. 6자리 + 5번이면 맞힐 확률 0.0005%
+    max-code-attempts: 5
+    # 틀린 횟수를 failure-window 동안 두 단계로 셈. 인증번호를 새로 받아도 이어서 셈
+    # 위 5번만으로는 1분마다 새로 요청해 하루 수천 번 대입할 수 있어서 둠
+    #   ip-failure-limit    이메일 하나를 한 IP가 틀릴 수 있는 횟수 (인증번호 2개 분량)
+    #                       IP마다 따로 세서, 남이 일부러 틀려도 본인(다른 IP)은 막히지 않음
+    #   email-failure-limit 이메일 하나를 모든 IP가 합쳐서 틀릴 수 있는 횟수. IP를 바꿔 가며 대입하는 것을 막음
+    ip-failure-limit: 10
+    email-failure-limit: 100
+    failure-window: 24h
+    # 한 IP가 인증번호 메일을 요청할 수 있는 횟수
+    # 이메일별 간격(send-interval)만 있으면 이메일을 바꿔 가며 대량으로 요청해 Redis · DB 에 부하를 줄 수 있어서 둠
+    request-ip-limit:
+      max-requests: 10
+      window: 10m
+    # 한 IP가 인증번호를 확인할 수 있는 횟수. 한 IP에서 여러 이메일을 돌아가며 대입하는 것을 늦춤
+    verify-ip-limit:
+      max-requests: 30
+      window: 10m
+
+  email-check:
+    # 회원가입 이메일 중복 확인을 한 IP가 window 안에 부를 수 있는 횟수
+    # 학교 · 행사장 와이파이처럼 여러 명이 같은 IP로 가입할 수 있어 넉넉하게 둠
+    max-requests: 30
+    window: 1m
 
   guest-cleanup:
     # 만든 지 이만큼 지났고 리프레시 토큰도 없는 게스트를 지움 (10/2 회의). 리프레시 토큰 수명과 맞춤
@@ -86,13 +121,6 @@ oauth:
     client-secret: ${GOOGLE_CLIENT_SECRET:}
     token-uri: https://oauth2.googleapis.com/token
 
-mail:
-  # 비밀번호 재설정 메일에 넣을 링크. 재설정 페이지는 프론트가 그리고, 서버는 주소만 만들어 보냄
-  # 배포에서는 FRONTEND_BASE_URL 로 실제 도메인을 넘김
-  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
-  # 프론트와 맞춰야 하는 값. 경로가 정해지면 여기만 바꾸면 됨
-  reset-path: /reset-password
-
 game:
   # 토론 중 채팅 · 주장 · 반론은 서버 메모리에만 둡니다 (명세 1-5)
   # 채팅 한 건의 글자 수 상한 (이모지도 한 글자)
@@ -103,6 +131,52 @@ game:
   argument-max-length: 200
   # REBUTTAL 에 제출하는 반론의 글자 수 상한
   rebuttal-max-length: 250
+  # 랜덤 방 대기 타이머 (created_at 기준)
+  wait:
+    # 방장에게 WAIT_PROMPT("봇전으로 시작하시겠습니까?")를 보내는 간격
+    prompt-interval: 30s
+    # 대기 상한. 지나면 방을 취소하고 WAIT_EXPIRED 를 보냄
+    limit: 5m
+    # 주기 정리 간격. 상한보다 이만큼 더 지났는데도 대기 중인 방(만료 작업 · 타이머 등록 실패)을 취소함
+    sweep-interval: 1m
+  # 진행 중 게임 (started_at 기준)
+  in-progress:
+    # 주기 정리 간격. 시간표(260초)보다 이만큼 더 지났는데도 진행 중인 게임(종료 작업 · 게임 생성 실패)을 끝냄
+    sweep-interval: 1m
+  # 봇전의 봇 발언 (주장 · 반론 제출, 채팅 대답)
+  bot:
+    # 한 게임에서 봇이 보내는 채팅 수 상한 (첫마디 포함)
+    max-replies: 30
+    # 사람의 마지막 말 뒤 대답까지
+    reply-delay: 3s
+    # 채팅이 열린 뒤(143초) 사람이 조용하면 봇이 먼저 한 번 말하기까지
+    first-message-delay: 10s
+    # 주장 · 반론 재시도 대기. 실패할 때마다 두 배(상한 retry-backoff-max)로 늘리며 작성 구간이 끝날 때까지 다시 시도
+    # (채팅 대답은 다시 시도하지 않음)
+    retry-backoff: 1s
+    retry-backoff-max: 8s
+    # 주장 · 반론을 끝내 못 써 실패 글이 공개된 뒤 게임을 무효(ABORTED)로 끝내기까지
+    failure-end-delay: 5s
+  # 힌트 (매칭 직후 사람 참가자마다 만듦, PREP 60초 안이 목표)
+  hint:
+    # 최대 시도 횟수. 모두 실패하면 FAILED 로 두고 힌트 없이 진행
+    max-attempts: 2
+    # 재시도 전 대기 시간
+    retry-backoff: 1s
+  # 게임 중 연결 끊김
+  disconnect:
+    # 이탈 유예. 이 안에 토론방을 다시 구독하면 복귀하고, 지나면 몰수패 (FORFEIT)
+    grace: 10s
+  # 판정 (260초에 채팅이 끝나면 시작)
+  judge:
+    # 판정 한 번의 최대 시도 횟수. 모두 실패하면 FAILED
+    max-attempts: 3
+    # 첫 재시도 전 대기 시간. 다음 재시도부터 두 배 (1초 → 2초). 429 · 5xx 가 이어질 때 바로 다시 때리지 않게
+    retry-backoff: 1s
+    # FAILED 뒤 /result 를 다시 부를 때 재판정하는 횟수. 다 쓰면 FAILED 를 그대로 줌 (폴링마다 LLM 을 부르지 않게)
+    max-rejudges: 2
+    # 결과 화면 보관 시간. 지나면 점수 · 요약은 지우고 승패만 남음
+    result-retention: 10m
 
 springdoc:
   # 기본값은 비활성화하고, local 및 데모 기간의 prod 프로필에서 필요한 경우 명시적으로 활성화한다.
