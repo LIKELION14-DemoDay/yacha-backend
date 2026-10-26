@@ -12,8 +12,8 @@ import likelion.yacha_backend.domain.topic.entity.Topic;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-@DisplayName("WeeklyPhilosophy")
-class WeeklyPhilosophyTest {
+@DisplayName("PhilosophyArticle")
+class PhilosophyArticleTest {
 
     private static final LocalDate MONDAY = LocalDate.of(2026, 11, 2);
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 10, 30, 12, 0);
@@ -24,29 +24,29 @@ class WeeklyPhilosophyTest {
     @Test
     @DisplayName("검토 전 상태로 만들어진다")
     void createsPending() {
-        WeeklyPhilosophy weekly = WeeklyPhilosophy.createPending(topic, MONDAY);
+        PhilosophyArticle article = PhilosophyArticle.createPending(topic, MONDAY);
 
-        assertThat(weekly.getStatus()).isEqualTo(PhilosophyStatus.PENDING);
-        assertThat(weekly.isApproved()).isFalse();
-        assertThat(weekly.getApprovedAt()).isNull();
+        assertThat(article.getStatus()).isEqualTo(PhilosophyStatus.PENDING);
+        assertThat(article.isApproved()).isFalse();
+        assertThat(article.getApprovedAt()).isNull();
     }
 
     @Test
     @DisplayName("시작일이 월요일이 아니면 만들 수 없다")
     void rejectsNonMonday() {
-        assertThatThrownBy(() -> WeeklyPhilosophy.createPending(topic, MONDAY.plusDays(1)))
+        assertThatThrownBy(() -> PhilosophyArticle.createPending(topic, MONDAY.plusDays(1)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("글은 붙인 순서대로 탭 순서가 정해진다")
     void addsContentsInOrder() {
-        WeeklyPhilosophy weekly = WeeklyPhilosophy.createPending(topic, MONDAY);
+        PhilosophyArticle article = PhilosophyArticle.createPending(topic, MONDAY);
 
-        weekly.addContent("아리스토텔레스", SECTIONS);
-        weekly.addContent("플라톤", SECTIONS);
+        article.addContent("아리스토텔레스", SECTIONS);
+        article.addContent("플라톤", SECTIONS);
 
-        assertThat(weekly.getContents())
+        assertThat(article.getContents())
                 .extracting(PhilosopherContent::getPhilosopherName, PhilosopherContent::getSortOrder)
                 .containsExactly(
                         tuple("아리스토텔레스", 0),
@@ -56,43 +56,43 @@ class WeeklyPhilosophyTest {
     @Test
     @DisplayName("소제목 + 내용이 없는 글은 붙일 수 없다")
     void rejectsEmptySections() {
-        WeeklyPhilosophy weekly = WeeklyPhilosophy.createPending(topic, MONDAY);
+        PhilosophyArticle article = PhilosophyArticle.createPending(topic, MONDAY);
 
-        assertThatThrownBy(() -> weekly.addContent("플라톤", List.of()))
+        assertThatThrownBy(() -> article.addContent("플라톤", List.of()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("글이 있으면 승인할 수 있다")
     void approves() {
-        WeeklyPhilosophy weekly = WeeklyPhilosophy.createPending(topic, MONDAY);
-        weekly.addContent("플라톤", SECTIONS);
+        PhilosophyArticle article = PhilosophyArticle.createPending(topic, MONDAY);
+        article.addContent("플라톤", SECTIONS);
 
-        weekly.approve(NOW);
+        article.approve(NOW);
 
-        assertThat(weekly.isApproved()).isTrue();
-        assertThat(weekly.getApprovedAt()).isEqualTo(NOW);
+        assertThat(article.isApproved()).isTrue();
+        assertThat(article.getApprovedAt()).isEqualTo(NOW);
     }
 
     @Test
     @DisplayName("글이 없으면 승인할 수 없다")
     void cannotApproveWithoutContents() {
-        WeeklyPhilosophy weekly = WeeklyPhilosophy.createPending(topic, MONDAY);
+        PhilosophyArticle article = PhilosophyArticle.createPending(topic, MONDAY);
 
-        assertThatThrownBy(() -> weekly.approve(NOW)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> article.approve(NOW)).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     @DisplayName("글을 지우면 승인도 취소되어 다시 검토해야 한다")
     void clearingContentsCancelsApproval() {
-        WeeklyPhilosophy weekly = WeeklyPhilosophy.createPending(topic, MONDAY);
-        weekly.addContent("플라톤", SECTIONS);
-        weekly.approve(NOW);
+        PhilosophyArticle article = PhilosophyArticle.createPending(topic, MONDAY);
+        article.addContent("플라톤", SECTIONS);
+        article.approve(NOW);
 
-        weekly.clearContents();
+        article.clearContents();
 
-        assertThat(weekly.getContents()).isEmpty();
-        assertThat(weekly.getStatus()).isEqualTo(PhilosophyStatus.PENDING);
-        assertThat(weekly.getApprovedAt()).isNull();
+        assertThat(article.getContents()).isEmpty();
+        assertThat(article.getStatus()).isEqualTo(PhilosophyStatus.PENDING);
+        assertThat(article.getApprovedAt()).isNull();
     }
 }

@@ -26,7 +26,7 @@ import lombok.NoArgsConstructor;
  * 철학자 이름은 AI가 고른 이름을 그대로 저장함 (아리스토텔레스 · 플라톤 등)
  * 회원의 철학자 유형 8개와는 따로임
  *
- * {@link WeeklyPhilosophy}를 통해서만 만들고 지움
+ * {@link PhilosophyArticle}를 통해서만 만들고 지움
  */
 @Entity
 @Table(name = "philosopher_content")
@@ -42,8 +42,8 @@ public class PhilosopherContent {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "weekly_philosophy_id", nullable = false)
-    private WeeklyPhilosophy weeklyPhilosophy;
+    @JoinColumn(name = "philosophy_article_id", nullable = false)
+    private PhilosophyArticle article;
 
     @Column(name = "philosopher_name", nullable = false, length = PHILOSOPHER_NAME_MAX_LENGTH)
     private String philosopherName;
@@ -61,14 +61,14 @@ public class PhilosopherContent {
     @OrderColumn(name = "sort_order", nullable = false)
     private List<PhilosophySection> sections = new ArrayList<>();
 
-    static PhilosopherContent create(WeeklyPhilosophy weeklyPhilosophy, String philosopherName, int sortOrder,
+    static PhilosopherContent create(PhilosophyArticle article, String philosopherName, int sortOrder,
                                      List<PhilosophySection> sections) {
         Objects.requireNonNull(sections, "sections");
         if (sections.isEmpty()) {
             throw new IllegalArgumentException("철학자 글에는 소제목 + 내용이 하나 이상 있어야 합니다");
         }
         PhilosopherContent content = new PhilosopherContent();
-        content.weeklyPhilosophy = Objects.requireNonNull(weeklyPhilosophy, "weeklyPhilosophy");
+        content.article = Objects.requireNonNull(article, "article");
         content.philosopherName = Objects.requireNonNull(philosopherName, "philosopherName");
         content.sortOrder = sortOrder;
         content.sections.addAll(sections);

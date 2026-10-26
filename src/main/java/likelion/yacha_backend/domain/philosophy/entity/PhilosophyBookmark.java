@@ -26,7 +26,7 @@ import lombok.NoArgsConstructor;
 @Table(
         name = "philosophy_bookmark",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_philosophy_bookmark_user_weekly", columnNames = {"user_id", "weekly_philosophy_id"})
+                name = "uk_philosophy_bookmark_user_article", columnNames = {"user_id", "philosophy_article_id"})
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -41,16 +41,16 @@ public class PhilosophyBookmark {
     private User user;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "weekly_philosophy_id", nullable = false)
-    private WeeklyPhilosophy weeklyPhilosophy;
+    @JoinColumn(name = "philosophy_article_id", nullable = false)
+    private PhilosophyArticle article;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    public static PhilosophyBookmark create(User user, WeeklyPhilosophy weeklyPhilosophy, LocalDateTime now) {
+    public static PhilosophyBookmark create(User user, PhilosophyArticle article, LocalDateTime now) {
         PhilosophyBookmark bookmark = new PhilosophyBookmark();
         bookmark.user = Objects.requireNonNull(user, "user");
-        bookmark.weeklyPhilosophy = Objects.requireNonNull(weeklyPhilosophy, "weeklyPhilosophy");
+        bookmark.article = Objects.requireNonNull(article, "article");
         bookmark.createdAt = Objects.requireNonNull(now, "now");
         return bookmark;
     }

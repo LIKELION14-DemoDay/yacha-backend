@@ -18,7 +18,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 1분 철학 메모. 회원 한 명이 주제(한 주의 1분 철학)마다 하나씩 가짐
+ * 1분 철학 메모. 회원 한 명이 글(주제) 한 편마다 하나씩 가짐
  *
  * 다시 저장하면 새로 만들지 않고 내용을 덮어씀
  */
@@ -26,7 +26,7 @@ import lombok.NoArgsConstructor;
 @Table(
         name = "philosophy_memo",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_philosophy_memo_user_weekly", columnNames = {"user_id", "weekly_philosophy_id"})
+                name = "uk_philosophy_memo_user_article", columnNames = {"user_id", "philosophy_article_id"})
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -44,16 +44,16 @@ public class PhilosophyMemo extends BaseTimeEntity {
     private User user;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "weekly_philosophy_id", nullable = false)
-    private WeeklyPhilosophy weeklyPhilosophy;
+    @JoinColumn(name = "philosophy_article_id", nullable = false)
+    private PhilosophyArticle article;
 
     @Column(nullable = false, length = CONTENT_MAX_LENGTH)
     private String content;
 
-    public static PhilosophyMemo create(User user, WeeklyPhilosophy weeklyPhilosophy, String content) {
+    public static PhilosophyMemo create(User user, PhilosophyArticle article, String content) {
         PhilosophyMemo memo = new PhilosophyMemo();
         memo.user = Objects.requireNonNull(user, "user");
-        memo.weeklyPhilosophy = Objects.requireNonNull(weeklyPhilosophy, "weeklyPhilosophy");
+        memo.article = Objects.requireNonNull(article, "article");
         memo.content = Objects.requireNonNull(content, "content");
         return memo;
     }

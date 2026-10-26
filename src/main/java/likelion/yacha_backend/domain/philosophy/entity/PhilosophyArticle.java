@@ -32,25 +32,28 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 /**
- * 한 주의 1분 철학 (#98). 주제 하나와 그 주제에 의견이 있는 철학자 2~3명의 글
+ * 1분 철학 글 한 편 (#98). 주제 하나와 그 주제에 의견이 있는 철학자 2~3명의 글
  *
- * 한 주는 월요일부터라 {@code weekStart}는 월요일이고, 주마다 하나만 있음
+ * 한 주에 여러 편(기본 5편)을 월요일에 한꺼번에 공개함
+ * 한 주는 월요일부터라 {@code weekStart}는 월요일이고, 같은 주에 같은 주제는 한 번만 들어감
+ * 승인은 글마다 따로 해서, 승인된 글만 보임
  * AI로 만든 글은 {@link PhilosophyStatus#PENDING}으로 저장하고, 팀원이 승인해야 사용자에게 보임
  *
  * 지난 글은 지우지 않음. 북마크 · 지난 글 목록에서 계속 볼 수 있어야 하고, 한 주에 몇 KB라 용량 부담도 없음
  */
 @Entity
 @Table(
-        name = "weekly_philosophy",
+        name = "philosophy_article",
         indexes = {
-                // 이번 주 글(승인된 것 중 시작일이 오늘 이전인 최신) · 지난 글 목록
-                @Index(name = "idx_weekly_philosophy_status_week", columnList = "status, week_start"),
+                // 이번 주 글(승인된 것 중 시작일이 오늘 이전인 최신 주) · 지난 글 목록
+                @Index(name = "idx_philosophy_article_status_week", columnList = "status, week_start"),
         },
-        uniqueConstraints = @UniqueConstraint(name = "uk_weekly_philosophy_week", columnNames = "week_start")
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_philosophy_article_week_topic", columnNames = {"week_start", "topic_id"})
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class WeeklyPhilosophy extends BaseTimeEntity {
+public class PhilosophyArticle extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -74,21 +77,21 @@ public class WeeklyPhilosophy extends BaseTimeEntity {
     private LocalDateTime approvedAt;
 
     /** 철학자 글. 화면 탭 순서대로 */
-    @OneToMany(mappedBy = "weeklyPhilosophy", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "article", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder asc")
     private List<PhilosopherContent> contents = new ArrayList<>();
 
     /** 검토 전 상태로 만듦. 글은 {@link #addContent}로 붙임 */
-    public static WeeklyPhilosophy createPending(Topic topic, LocalDate weekStart) {
+    public static PhilosophyArticle createPending(Topic topic, LocalDate weekStart) {
         Objects.requireNonNull(weekStart, "weekStart");
         if (weekStart.getDayOfWeek() != DayOfWeek.MONDAY) {
             throw new IllegalArgumentException("weekStart 는 월요일이어야 합니다: " + weekStart);
         }
-        WeeklyPhilosophy weekly = new WeeklyPhilosophy();
-        weekly.topic = Objects.requireNonNull(topic, "topic");
-        weekly.weekStart = weekStart;
-        weekly.status = PhilosophyStatus.PENDING;
-        return weekly;
+        PhilosophyArticle article = new PhilosophyArticle();
+        article.topic = Objects.requireNonNull(topic, "topic");
+        article.weekStart = weekStart;
+        article.status = PhilosophyStatus.PENDING;
+        return article;
     }
 
     /** 철학자 글을 맨 뒤에 붙임 */
