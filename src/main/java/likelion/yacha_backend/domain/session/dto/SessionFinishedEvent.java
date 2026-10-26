@@ -7,7 +7,7 @@ import likelion.yacha_backend.domain.session.entity.FinishReason;
  *
  * @param type   항상 {@code SESSION_FINISHED}
  * @param reason 끝난 이유 ({@code COMPLETED} 시간 종료 · {@code FORFEIT} 나가기 · 끊김 몰수패 ·
- *               {@code ABORTED} 양쪽 모두 끊겨 무효)
+ *               {@code ABORTED} 양쪽 모두 끊김 · 봇이 주장 · 반론을 끝내 못 써 무효)
  */
 public record SessionFinishedEvent(String type, FinishReason reason) {
 
