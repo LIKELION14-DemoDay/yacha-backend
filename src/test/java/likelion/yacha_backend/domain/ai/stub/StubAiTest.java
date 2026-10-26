@@ -12,6 +12,9 @@ import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.ai.JudgeCriterion;
 import likelion.yacha_backend.domain.ai.JudgeRequest;
 import likelion.yacha_backend.domain.ai.JudgeResult;
+import likelion.yacha_backend.domain.ai.PhilosopherWriting;
+import likelion.yacha_backend.domain.ai.PhilosophyWriter;
+import likelion.yacha_backend.domain.philosophy.service.PhilosophyWritingValidator;
 import likelion.yacha_backend.domain.session.entity.Stance;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -35,6 +38,22 @@ class StubAiTest {
 
             assertThat(hints).hasSize(HintGenerator.HINT_COUNT)
                     .allSatisfy(hint -> assertThat(length(hint)).isLessThanOrEqualTo(HintGenerator.HINT_MAX_LENGTH));
+        }
+    }
+
+    @Nested
+    @DisplayName("1분 철학")
+    class Philosophy {
+
+        @Test
+        @DisplayName("검증을 그대로 통과하고, 철학자마다 내용이 300 ~ 500자다")
+        void passesValidation() {
+            List<PhilosopherWriting> writings = new StubPhilosophyWriter().write(LONG_TOPIC);
+
+            assertThat(PhilosophyWritingValidator.validate(writings)).isEqualTo(writings);
+            assertThat(writings).allSatisfy(writing -> assertThat(
+                    writing.sections().stream().mapToInt(section -> length(section.body())).sum())
+                    .isBetween(PhilosophyWriter.TARGET_MIN_LENGTH, PhilosophyWriter.TARGET_MAX_LENGTH));
         }
     }
 

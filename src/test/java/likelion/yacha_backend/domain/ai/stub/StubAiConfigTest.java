@@ -7,6 +7,7 @@ import java.util.random.RandomGenerator;
 import likelion.yacha_backend.domain.ai.BotWriter;
 import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.ai.Judge;
+import likelion.yacha_backend.domain.ai.PhilosophyWriter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,7 +20,8 @@ class StubAiConfigTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withBean(RandomGenerator.class, () -> new SplittableRandom(1))
-            .withUserConfiguration(StubHintGenerator.class, StubBotWriter.class, StubJudge.class);
+            .withUserConfiguration(StubHintGenerator.class, StubBotWriter.class, StubJudge.class,
+                    StubPhilosophyWriter.class);
 
     @Test
     @DisplayName("설정이 없으면 임시 구현이 등록된다")
@@ -28,6 +30,7 @@ class StubAiConfigTest {
             assertThat(context).hasSingleBean(HintGenerator.class);
             assertThat(context).hasSingleBean(BotWriter.class);
             assertThat(context).hasSingleBean(Judge.class);
+            assertThat(context).hasSingleBean(PhilosophyWriter.class);
         });
     }
 
@@ -45,6 +48,7 @@ class StubAiConfigTest {
             assertThat(context).doesNotHaveBean(HintGenerator.class);
             assertThat(context).doesNotHaveBean(BotWriter.class);
             assertThat(context).doesNotHaveBean(Judge.class);
+            assertThat(context).doesNotHaveBean(PhilosophyWriter.class);
         });
     }
 }
