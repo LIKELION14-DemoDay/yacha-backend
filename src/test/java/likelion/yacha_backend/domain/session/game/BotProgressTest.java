@@ -3,23 +3,68 @@ package likelion.yacha_backend.domain.session.game;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
+import likelion.yacha_backend.domain.session.game.BotProgress.Submission;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-@DisplayName("BotProgress — 봇 글 제출 시점 · 대답 차례")
+@DisplayName("BotProgress — 봇 글 제출 시점 · 임시 글 · 실패 · 대답 차례")
 class BotProgressTest {
 
-    @Test
-    @DisplayName("글이 먼저 끝나면 제출 시각에, 제출 시각이 먼저 오면 글이 끝날 때 한 번만 제출한다")
-    void submitsAtLaterOfReadyAndDue() {
-        BotProgress early = new BotProgress();
-        assertThat(early.prepared(DebatePhase.PREP, "주장")).isNull();
-        assertThat(early.due(DebatePhase.PREP)).isEqualTo("주장");
-        assertThat(early.due(DebatePhase.PREP)).isNull();
+    private static final String PLACEHOLDER = "생각중";
+    private static final String FAILURE = "실패";
 
-        BotProgress late = new BotProgress();
-        assertThat(late.due(DebatePhase.REBUTTAL)).isNull();
-        assertThat(late.prepared(DebatePhase.REBUTTAL, "반론")).isEqualTo("반론");
+    @Test
+    @DisplayName("글이 먼저 끝나면 제출 시각에 한 번만 제출한다")
+    void submitsAtDueWhenReady() {
+        BotProgress progress = new BotProgress();
+        assertThat(progress.prepared(DebatePhase.PREP, "주장")).isNull();
+
+        assertThat(progress.due(DebatePhase.PREP, PLACEHOLDER)).isEqualTo(new Submission("주장", true));
+        assertThat(progress.due(DebatePhase.PREP, PLACEHOLDER)).isNull();
+        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isNull();
+    }
+
+    @Test
+    @DisplayName("제출 시각에 글이 없으면 임시 글을 내고, 글이 끝나면 알림 없이 덮어쓴다")
+    void placeholderThenText() {
+        BotProgress progress = new BotProgress();
+
+        assertThat(progress.due(DebatePhase.REBUTTAL, PLACEHOLDER)).isEqualTo(new Submission(PLACEHOLDER, true));
+        assertThat(progress.prepared(DebatePhase.REBUTTAL, "반론")).isEqualTo(new Submission("반론", false));
+        assertThat(progress.fail(DebatePhase.REBUTTAL, FAILURE)).isNull();
+        assertThat(progress.isFailed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("작성 구간이 끝날 때까지 글이 없으면 실패 글을 내고, 그 뒤 끝난 글은 내지 않는다")
+    void failsWithoutText() {
+        BotProgress progress = new BotProgress();
+        progress.due(DebatePhase.PREP, PLACEHOLDER);
+
+        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, false));
+        assertThat(progress.isFailed()).isTrue();
+        assertThat(progress.prepared(DebatePhase.PREP, "늦은 주장")).isNull();
+        assertThat(progress.due(DebatePhase.REBUTTAL, PLACEHOLDER)).isNull();
+    }
+
+    @Test
+    @DisplayName("임시 글을 내기 전에 실패하면 실패 글이 첫 제출이라 알림을 보낸다")
+    void failBeforePlaceholderNotifies() {
+        BotProgress progress = new BotProgress();
+
+        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, true));
+    }
+
+    @Test
+    @DisplayName("낸 글이 게임에 들어가지 못하면(글자 수 초과 등) 구간이 끝날 때 실패로 처리된다")
+    void rejectedTextFails() {
+        BotProgress progress = new BotProgress();
+        progress.due(DebatePhase.PREP, PLACEHOLDER);
+        progress.prepared(DebatePhase.PREP, "너무 긴 주장");
+
+        progress.rejected(DebatePhase.PREP);
+
+        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, false));
     }
 
     @Test

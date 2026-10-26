@@ -5,8 +5,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -24,7 +26,9 @@ import likelion.yacha_backend.domain.ai.AiException;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
+import likelion.yacha_backend.domain.session.dto.SessionFinishedEvent;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
+import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameMessage;
@@ -90,6 +94,16 @@ class BotTest extends TimerTestSupport {
                 .toList();
     }
 
+    /** {@code at} 에 공개된 봇 주장 원문. 공개를 일으키므로 테스트 마지막에 부릅니다. */
+    private String botArgument(Game game, LocalDateTime at) {
+        return game.revealArguments(at).stream()
+                .filter(message -> message.type() == MessageType.ARGUMENT && message.phase() == DebatePhase.PREP)
+                .filter(message -> message.participantId().equals(game.getAiParticipantId()))
+                .map(GameMessage::content)
+                .findFirst()
+                .orElseThrow();
+    }
+
     private void humanChat(Room room, String content) {
         gameMessageService.sendChat(room.sessionId(), room.hostUserId(), content);
         botService.humanSpoke(room.sessionId());
@@ -137,15 +151,52 @@ class BotTest extends TimerTestSupport {
     }
 
     @Test
-    @DisplayName("주장 · 반론은 2번 시도하고, 모두 실패하면 내지 않는다")
-    void argumentFailsAfterMaxAttempts() {
-        doThrow(new IllegalStateException("AI 응답 없음")).when(botWriter).writeArgument(any(), any());
+    @DisplayName("실패가 이어지면 제출 시각에 임시 글을 내고, 작성 구간 끝까지 다시 시도한다")
+    void placeholderWhileRetrying() {
+        doThrow(new AiException("LINER_HTTP_ERROR_429", true)).when(botWriter).writeArgument(any(), any());
         Room room = botRoom(LATE_PREP);
+        Game game = game(room);
+
+        botService.start(room.sessionId());
+
+        verify(botWriter, timeout(WAIT_MILLIS).atLeast(3)).writeArgument(any(), any());
+        verify(gameMessageService, times(1))
+                .broadcastSubmitted(eq(room.sessionId()), eq(game.getAiParticipantId()), eq(DebatePhase.PREP));
+        assertThat(game.submittedParticipantIds(LocalDateTime.now(clock))).contains(game.getAiParticipantId());
+    }
+
+    @Test
+    @DisplayName("다시 시도해 글이 끝나면 임시 글을 덮어쓰고, ARGUMENT_SUBMITTED 는 한 번만 보낸다")
+    void textReplacesPlaceholder() {
+        doThrow(new AiException("LINER_HTTP_ERROR_429", true)).doReturn("다시 써 낸 주장")
+                .when(botWriter).writeArgument(any(), any());
+        Room room = botRoom(LATE_PREP);
+        Game game = game(room);
 
         botService.start(room.sessionId());
 
         verify(botWriter, timeout(WAIT_MILLIS).times(2)).writeArgument(any(), any());
-        verify(gameMessageService, after(500).never()).broadcastSubmitted(eq(room.sessionId()), anyLong(), any());
+        verify(gameMessageService, after(300).times(1))
+                .broadcastSubmitted(eq(room.sessionId()), eq(game.getAiParticipantId()), eq(DebatePhase.PREP));
+        assertThat(botArgument(game, game.getStartedAt().plusSeconds(64))).isEqualTo("다시 써 낸 주장");
+    }
+
+    @Test
+    @DisplayName("작성 구간이 끝날 때까지 못 쓰면 실패 글을 공개하고 게임을 무효(ABORTED)로 끝낸다")
+    void failureAbortsGame() {
+        doThrow(new AiException("LINER_HTTP_ERROR_429", true)).when(botWriter).writeArgument(any(), any());
+        // 작성 구간(60초)은 끝났고 공개(63초) 전인 유예 시간
+        Room room = botRoom(61);
+
+        botService.start(room.sessionId());
+
+        verify(gameMessageService, timeout(WAIT_MILLIS)).broadcastEvent(room.sessionId(),
+                SessionFinishedEvent.of(FinishReason.ABORTED));
+        verify(gameMessageService, atLeastOnce()).broadcastAll(eq(room.sessionId()), argThat(messages -> messages.stream()
+                .anyMatch(message -> message.type() == MessageType.ARGUMENT
+                        && BotService.FAILURE_TEXT.equals(message.content()))));
+        assertThat(gameRegistry.find(room.sessionId())).isEmpty();
+        verify(botWriter, never()).writeRebuttal(any(), any(), anyString());
     }
 
     @Test
@@ -161,7 +212,7 @@ class BotTest extends TimerTestSupport {
 
     @Test
     @DisplayName("공개 시각을 넘겨 끝난 글은 내지 않는다")
-    void dropsLateArgument() {
+    void dropsLateArgument() throws Exception {
         Room room = botRoom(LATE_PREP);
         Game game = game(room);
         doAnswer(invocation -> {
@@ -173,7 +224,8 @@ class BotTest extends TimerTestSupport {
         botService.start(room.sessionId());
 
         verify(botWriter, timeout(WAIT_MILLIS)).writeArgument(any(), any());
-        verify(gameMessageService, after(500).never()).broadcastSubmitted(eq(room.sessionId()), anyLong(), any());
+        Thread.sleep(500);
+        assertThat(game.messagesAfter(0)).noneMatch(message -> "늦게 끝난 주장".equals(message.content()));
     }
 
     // ---- 채팅 ----
