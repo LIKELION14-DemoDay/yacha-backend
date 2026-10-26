@@ -60,11 +60,25 @@ class BotProgressTest {
     void rejectedTextFails() {
         BotProgress progress = new BotProgress();
         progress.due(DebatePhase.PREP, PLACEHOLDER);
-        progress.prepared(DebatePhase.PREP, "너무 긴 주장");
+        Submission text = progress.prepared(DebatePhase.PREP, "너무 긴 주장");
 
-        progress.rejected(DebatePhase.PREP);
+        progress.rejected(DebatePhase.PREP, text);
 
+        // 임시 글이 이미 알림을 보냈으므로 실패 글은 알림 없이 덮어씁니다.
         assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, false));
+    }
+
+    @Test
+    @DisplayName("알림을 맡은 글이 거절되면 알림도 나가지 않았으므로, 실패 글이 알림을 보낸다")
+    void rejectedAnnouncingTextRestoresAnnounce() {
+        BotProgress progress = new BotProgress();
+        progress.prepared(DebatePhase.PREP, "너무 긴 주장");
+        Submission text = progress.due(DebatePhase.PREP, PLACEHOLDER);
+        assertThat(text).isEqualTo(new Submission("너무 긴 주장", true));
+
+        progress.rejected(DebatePhase.PREP, text);
+
+        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, true));
     }
 
     @Test

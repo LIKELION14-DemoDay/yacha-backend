@@ -233,12 +233,16 @@ public class BotService {
      * 봇 글을 제출합니다. 무엇을 낼지({@code decide})는 게임 락 안에서 정해, 늦게 정한 글이 먼저 들어가 덮어쓰이지
      * 않게 합니다. 처음 내는 글이면 사람처럼 {@code ARGUMENT_SUBMITTED} 를 보내고, 임시 글을 덮어쓸 때는 보내지 않습니다.
      * 지금이 그 글의 작성 구간(유예 포함)이 아니면 버립니다 — 늦게 끝난 주장이 반론으로 들어가거나,
-     * 공개가 끝난 뒤 들어가지 않게 합니다.
+     * 공개가 끝난 뒤 들어가지 않게 합니다. AI 를 기다리는 사이 게임이 끝났으면(나가기 · 몰수 · 무효) 바로 그만둡니다.
+     * 끝난 게임은 {@link Game#saveBotMemo} 가 어차피 거부하지만, 거부 경고 로그와 제출 상태 되돌리기를 하지 않게 먼저 확인합니다.
      *
      * @return 글을 게임에 넣었으면 true
      */
     private boolean submit(Long sessionId, Game game, DebatePhase phase, Function<BotProgress, Submission> decide) {
         synchronized (game) {
+            if (!isActive(game)) {
+                return false;
+            }
             LocalDateTime now = LocalDateTime.now(clock);
             gameMessageService.broadcastAll(sessionId, game.revealArguments(now));
             if (DebatePhase.memoPhaseAt(game.getStartedAt(), now) != phase) {
@@ -256,7 +260,7 @@ public class BotService {
                 }
                 return true;
             } catch (BusinessException e) {
-                game.botProgress().rejected(phase);
+                game.botProgress().rejected(phase, submission);
                 log.warn("[봇] {} 을 내지 못했습니다. sessionId={}, error={}", phase, sessionId, e.getErrorCode().name());
                 return false;
             }

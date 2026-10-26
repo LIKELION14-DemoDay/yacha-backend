@@ -65,9 +65,16 @@ public class BotProgress {
         return new Submission(failureText, announce);
     }
 
-    /** 낸 글이 게임에 들어가지 못했습니다(글자 수 초과 등). 구간이 끝날 때 실패로 처리되게 되돌립니다. */
-    public synchronized void rejected(DebatePhase phase) {
-        drafts.get(phase).submitted = false;
+    /**
+     * 낸 글이 게임에 들어가지 못했습니다(글자 수 초과 등). 구간이 끝날 때 실패로 처리되게 되돌립니다.
+     * 그 글이 {@code ARGUMENT_SUBMITTED} 를 맡았다면 알림도 나가지 않았으므로, 다음 글이 알림을 보내게 함께 되돌립니다.
+     */
+    public synchronized void rejected(DebatePhase phase, Submission submission) {
+        Draft draft = drafts.get(phase);
+        draft.submitted = false;
+        if (submission.announce()) {
+            draft.shown = false;
+        }
     }
 
     /** 글을 쓰지 못해 게임을 무효로 끝내는 중인가. 그러면 봇은 더 쓰거나 대답하지 않습니다. */
