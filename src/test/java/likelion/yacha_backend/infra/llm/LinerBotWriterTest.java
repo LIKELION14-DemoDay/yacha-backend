@@ -170,12 +170,12 @@ class LinerBotWriterTest {
     }
 
     @Test
-    @DisplayName("OpenAI 호출 실패 시 예외를 전달한다")
+    @DisplayName("Liner 호출 실패 시 예외를 전달한다")
     void apiFailure() {
         LinerBotWriter writer = new LinerBotWriter(
                 (system, input, label) -> {
                     throw new AbstractLinerChatClient.LinerChatException(
-                            "OPENAI_NETWORK_ERROR",
+                            "LINER_NETWORK_ERROR",
                             true
                     );
                 },
@@ -210,4 +210,50 @@ class LinerBotWriterTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("AI 응답이 비어 있습니다.");
     }
+
+
+    @Test
+    @DisplayName("최대 글자 수를 넘으면 완성된 문장에서 자른다")
+    void truncateAtSentenceBoundary() {
+        String completeSentence =
+                "가".repeat(140) + "입니다.";
+
+        LinerBotWriter writer = new LinerBotWriter(
+                (system, input, label) ->
+                        completeSentence + " " + "나".repeat(120),
+                (system, input, label) -> "사용하지 않음"
+        );
+
+        String result = writer.writeArgument(
+                TOPIC,
+                Stance.AGREE
+        );
+
+        assertThat(result).isEqualTo(completeSentence);
+
+        assertThat(
+                result.codePointCount(0, result.length())
+        ).isLessThanOrEqualTo(200);
+    }
+
+    @Test
+    @DisplayName("완성된 문장이 없으면 단어 경계에서 자른다")
+    void truncateAtWordBoundary() {
+        LinerBotWriter writer = new LinerBotWriter(
+                (system, input, label) -> "논점 ".repeat(100),
+                (system, input, label) -> "사용하지 않음"
+        );
+
+        String result = writer.writeArgument(
+                TOPIC,
+                Stance.AGREE
+        );
+
+        assertThat(result).endsWith("…");
+
+        assertThat(
+                result.codePointCount(0, result.length())
+        ).isLessThanOrEqualTo(200);
+    }
+
 }

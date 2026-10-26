@@ -348,10 +348,15 @@ public class LinerBotWriter implements BotWriter {
      * 일부 이모지는 String.length()에서
      * 두 글자로 계산되므로 codePointCount()를 사용한다.
      */
-    private String truncate(
-            String text,
-            int maxLength
-    ) {
+
+    /**
+     * AI 응답의 글자 수를 제한한다.
+     *
+     * 가능한 경우 완성된 문장에서 자르고,
+     * 그렇지 않으면 단어 경계에서 자른다.
+     * 적절한 경계가 없으면 코드 포인트 기준으로 자른다.
+     */
+    private String truncate(String text, int maxLength) {
         String trimmed = Objects.requireNonNull(
                 text,
                 "AI 응답이 null입니다."
@@ -363,12 +368,12 @@ public class LinerBotWriter implements BotWriter {
             );
         }
 
-        int codePoints = trimmed.codePointCount(
+        int length = trimmed.codePointCount(
                 0,
                 trimmed.length()
         );
 
-        if (codePoints <= maxLength) {
+        if (length <= maxLength) {
             return trimmed;
         }
 
@@ -377,8 +382,63 @@ public class LinerBotWriter implements BotWriter {
                 maxLength
         );
 
-        return trimmed.substring(0, endIndex);
+        String limited = trimmed.substring(0, endIndex);
+
+        // 최대 길이의 절반 이상에서 끝나는 완성된 문장을 찾는다.
+        int lastSentenceEnd = -1;
+
+        for (int i = 0; i < limited.length(); i++) {
+            char ch = limited.charAt(i);
+
+            boolean sentenceEnd =
+                    ch == '.' || ch == '!' || ch == '?'
+                            || ch == '。' || ch == '！' || ch == '？';
+
+            boolean boundary =
+                    i + 1 == limited.length()
+                            || Character.isWhitespace(
+                                    limited.charAt(i + 1)
+                            );
+
+            if (sentenceEnd && boundary) {
+                lastSentenceEnd = i + 1;
+            }
+        }
+
+        if (lastSentenceEnd > 0
+                && limited.codePointCount(0, lastSentenceEnd)
+                >= maxLength / 2) {
+
+            return limited.substring(
+                    0,
+                    lastSentenceEnd
+            ).trim();
+        }
+
+        // 완성된 문장이 없다면 단어 사이 공백을 찾는다.
+        int lastWhitespace = -1;
+
+        for (int i = limited.length() - 1; i >= 0; i--) {
+            if (Character.isWhitespace(limited.charAt(i))) {
+                lastWhitespace = i;
+                break;
+            }
+        }
+
+        if (lastWhitespace > 0
+                && limited.codePointCount(0, lastWhitespace)
+                >= maxLength / 2) {
+
+            return limited.substring(
+                    0,
+                    lastWhitespace
+            ).trim() + "…";
+        }
+
+        // 공백이나 문장 경계가 없는 응답에 대한 안전한 처리
+        return limited;
     }
+
 
     /**
      * 외부 API 요청을 추상화한 인터페이스.

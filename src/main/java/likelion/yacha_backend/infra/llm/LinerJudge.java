@@ -16,7 +16,6 @@ import likelion.yacha_backend.domain.ai.JudgeCriterion;
 import likelion.yacha_backend.domain.ai.JudgeRequest;
 import likelion.yacha_backend.domain.ai.JudgeResult;
 import likelion.yacha_backend.infra.liner.LinerProperties;
-import org.springframework.beans.factory.annotation.Value;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -200,13 +199,11 @@ public class LinerJudge
                         .append(message.kind().name())
                         .append("\n");
 
-                builder.append("발언 내용: ")
-                        .append(
-                                message.content()
-                                        .replace("\r", " ")
-                                        .replace("\n", " ")
-                        )
+
+                builder.append("발언 내용(JSON 문자열): ")
+                        .append(toJsonString(message.content()))
                         .append("\n\n");
+
             }
         }
 
@@ -446,7 +443,7 @@ public class LinerJudge
                     node.get(criterion.name());
 
             if (summaryNode == null
-                    || !summaryNode.isTextual()) {
+                    || !summaryNode.isString()) {
 
                 throw new IllegalStateException(
                         criterion + " 판정 요약이 없습니다."
@@ -454,7 +451,7 @@ public class LinerJudge
             }
 
             String summary =
-                    summaryNode.asText().trim();
+                    summaryNode.asString().trim();
 
             if (summary.isBlank()
                     || summary.contains("\n")
@@ -498,4 +495,21 @@ public class LinerJudge
                 lastFence
         ).trim();
     }
+
+
+    /**
+     * 사용자 발언을 JSON 문자열로 인코딩한다.
+     * 발언에 포함된 줄바꿈과 따옴표 등을 이스케이프한다.
+     */
+    private String toJsonString(String content) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(content);
+        } catch (JacksonException e) {
+            throw new IllegalStateException(
+                    "토론 발언을 JSON 문자열로 변환하지 못했습니다.",
+                    e
+            );
+        }
+    }
+
 }

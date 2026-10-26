@@ -92,4 +92,30 @@ class LinerAiModeConfigTest {
                     .doesNotHaveBean(StubJudge.class);
         });
     }
+
+
+    @Test
+    @DisplayName("Liner 모드에서 API 키가 없으면 서버 시작에 실패한다")
+    void linerModeWithoutApiKeyFails() {
+        new ApplicationContextRunner()
+                .withBean(
+                        LinerProperties.class,
+                        () -> new LinerProperties(
+                                "https://platform.liner.com",
+                                "",
+                                "liner-mark"
+                        )
+                )
+                .withUserConfiguration(
+                        LinerPartialAiConfig.class
+                )
+                .withPropertyValues("ai.mode=liner")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining("LINER_API_KEY");
+                });
+    }
+
 }
