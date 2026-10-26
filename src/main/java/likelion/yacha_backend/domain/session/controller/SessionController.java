@@ -115,7 +115,7 @@ public class SessionController {
                     자동 제안과 같은 대기열이고, 내 방은 빠짐. 입장은 `POST /sessions/{id}/join`
 
                     카드: 방장(닉네임 · 철학자 유형) · 주제 · `wantedStance`(찾는 입장 = 들어가면 맡을 입장)
-                    `philosopherType` 은 아직 null. `hasNext` 가 true 면 다음 페이지가 있음
+                    `philosopherType` 은 방장의 밸런스 게임 결과 (안 했으면 null = "일반인"). `hasNext` 가 true 면 다음 페이지가 있음
 
                     로그인 필요 (게스트 가능)
                     카테고리 값이 잘못되면 `BINDING_ERROR`, `page` 가 음수면 `VALIDATION_FAILED`

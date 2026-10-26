@@ -300,6 +300,7 @@ erDiagram
   | `/auth/logout` · `/auth/upgrade` | 로그아웃 · 회원 승격 |
   | `/sessions/**` | 게임 (방 · 상태 · 메시지 · 주장 등). 🟢 관전은 사용하지 않는다 |
   | `GET /users/me` · `GET /topics/**` | 내 정보 · 주제 조회 |
+  | 🟢 `/balance-game/**` | 밸런스 게임 (질문 · 결과 · 건너뛰기). 유형 설명 `GET /balance-game/philosophers/{type}` 은 공유 링크용이라 **로그인 없이** 볼 수 있다 |
 
 - **게임 · 관전용 경로를 `/sessions/**` 밖에 새로 만들면** `SecurityConfig` 의 게스트 경로 목록에 추가해야 한다.
 - 🟢 전투 기록(승리 · 패배 수)은 `GET /users/me` 의 `stats` 다. 게스트도 부를 수 있지만 승패를 기록하지 않아 0 / 0 이다. 판별 목록(`GET /sessions/me`)은 만들지 않는다.
@@ -446,7 +447,7 @@ erDiagram
   "hasNext": false }
 ```
 
-- 🟢 `philosopherType` 은 users 에 컬럼이 생기기 전까지 null 이다 (결과 화면과 같음).
+- 🟢 `philosopherType` 은 방장의 밸런스 게임 결과다 (2-13). 안 했거나 건너뛰었으면 null 이고 프론트는 "일반인" 으로 보여준다 (결과 화면과 같음).
 
 - `wantedStance` 는 방장의 반대다. 프론트는 "반대입장인 사람을 찾아요!" / "찬성입장인 사람을 찾아요!" 를 띄운다.
 
