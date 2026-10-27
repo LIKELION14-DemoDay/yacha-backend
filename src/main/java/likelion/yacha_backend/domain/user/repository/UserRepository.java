@@ -5,11 +5,13 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import likelion.yacha_backend.domain.user.entity.BalanceGameStatus;
 import likelion.yacha_backend.domain.user.entity.Provider;
 import likelion.yacha_backend.domain.user.entity.User;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -54,4 +56,22 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.id = :id")
     Optional<User> findByIdForUpdate(@Param("id") Long id);
+
+    /**
+     * 밸런스 게임 건너뛰기 — 아직 결과가 없을 때만 {@code SKIPPED} 로 바꾸고, 바꾼 행 수를 돌려줌 (조건부 UPDATE)
+     * 읽어 둔 값이 아니라 DB 의 지금 상태로 판단해, 같은 사용자의 결과 제출이 먼저 커밋됐으면 0 건이고 결과 · 유형을 덮어쓰지 않음
+     * 상태 칼럼(과 수정 시각)만 바꿈. 호출할 때 {@code SKIPPED}, {@code DONE} 을 넘김
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update User u
+               set u.balanceGameStatus = :skipped, u.updatedAt = :now
+             where u.id = :id and u.balanceGameStatus <> :done
+            """)
+    int skipBalanceGameIfNotDone(@Param("id") Long id, @Param("now") LocalDateTime now,
+                                 @Param("skipped") BalanceGameStatus skipped, @Param("done") BalanceGameStatus done);
+
+    default int skipBalanceGameIfNotDone(Long id, LocalDateTime now) {
+        return skipBalanceGameIfNotDone(id, now, BalanceGameStatus.SKIPPED, BalanceGameStatus.DONE);
+    }
 }

@@ -9,16 +9,21 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.util.Objects;
 import likelion.yacha_backend.global.entity.BaseTimeEntity;
 import likelion.yacha_backend.global.security.jwt.Role;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 
 @Entity
+// 바뀐 칼럼만 UPDATE 함. 한 사용자 행을 여러 요청이 각자 읽어 고치므로(밸런스 게임 결과 · 회원 승격 · 닉네임 변경),
+// 행 전체를 쓰면 그 사이 커밋된 다른 요청의 칼럼을 읽어 둔 낡은 값으로 되돌림
+@DynamicUpdate
 @Table(
         name = "users",
         // 같은 소셜 계정으로 두 번 가입되지 않게 함
@@ -62,6 +67,22 @@ public class User extends BaseTimeEntity {
      */
     @Column(name = "provider_id", length = 255)
     private String providerId;
+
+    /** 밸런스 게임으로 정한 철학 유형. 안 했거나 건너뛰었으면 NULL ("일반인"). 게스트가 가입해도 그대로 남음 */
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "philosopher_type", length = 20)
+    private PhilosopherType philosopherType;
+
+    /**
+     * 밸런스 게임을 했는지. 기존 행은 ddl-auto 로 컬럼이 생길 때 기본값 NOT_STARTED 가 채워져,
+     * 다음에 들어오면 게임이 뜸
+     */
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "balance_game_status", nullable = false, length = 20,
+            columnDefinition = "varchar(20) default 'NOT_STARTED' not null")
+    private BalanceGameStatus balanceGameStatus = BalanceGameStatus.NOT_STARTED;
 
     public static User createGuest(String nickname) {
         User user = new User();
@@ -133,5 +154,11 @@ public class User extends BaseTimeEntity {
 
     public void changeNickname(String nickname) {
         this.nickname = nickname;
+    }
+
+    /** 밸런스 게임 결과. 다시 하면 덮어씀 */
+    public void completeBalanceGame(PhilosopherType philosopherType) {
+        this.philosopherType = Objects.requireNonNull(philosopherType, "philosopherType");
+        this.balanceGameStatus = BalanceGameStatus.DONE;
     }
 }

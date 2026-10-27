@@ -31,8 +31,8 @@ public class KakaoRestTokenClient implements KakaoTokenClient {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
 
     /**
-     * 응답 대기 상한. 없으면 무한 대기 (AbstractOpenAiChatClient 주석 참고)
-     * 사용자가 로그인 버튼을 누르고 기다리는 호출이라 짧게 둠
+     * 카카오 토큰 API의 응답 대기 시간.
+     * 로그인 요청이 장시간 지연되지 않도록 제한한다.
      */
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
 

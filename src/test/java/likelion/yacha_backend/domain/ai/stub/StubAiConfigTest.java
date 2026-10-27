@@ -44,7 +44,7 @@ class StubAiConfigTest {
     @Test
     @DisplayName("stub 이 아니면 임시 구현을 등록하지 않는다 — 실제 구현이 대신 들어간다")
     void otherMode() {
-        runner.withPropertyValues("ai.mode=openai").run(context -> {
+        runner.withPropertyValues("ai.mode=liner").run(context -> {
             assertThat(context).doesNotHaveBean(HintGenerator.class);
             assertThat(context).doesNotHaveBean(BotWriter.class);
             assertThat(context).doesNotHaveBean(Judge.class);

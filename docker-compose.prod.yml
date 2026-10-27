@@ -61,6 +61,8 @@ services:
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
       KAKAO_CLIENT_IDS: ${KAKAO_CLIENT_IDS:-${KAKAO_REST_API_KEY:-}}
       LINER_API_KEY: ${LINER_API_KEY:-}
+      LINER_MODEL: ${LINER_MODEL:-liner-mark}
+      AI_MODE: ${AI_MODE:-stub}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:?AWS_S3_BUCKET must be set}
     ports:
