@@ -178,18 +178,18 @@ class StompConnectAuthTest {
     @Test
     @DisplayName("다른 사용자의 개인 큐(/user/{userId}/queue/**)로 SEND 하면 FORBIDDEN 으로 거부하고 전달하지 않는다")
     void rejectsSendToOtherUserQueue() throws Exception {
-        StompSession receiver = connect(bearer(jwtTokenProvider.createAccessToken(7L, Role.USER)), new ErrorCapturingHandler());
+        StompSession victim = connect(bearer(jwtTokenProvider.createAccessToken(7L, Role.USER)), new ErrorCapturingHandler());
         BlockingQueue<String> received = new LinkedBlockingQueue<>();
-        receiver.subscribe("/user/queue/errors", new CapturingFrameHandler(received));
+        victim.subscribe("/user/queue/errors", new CapturingFrameHandler(received));
         // 구독이 등록되기 전에 보내면, 권한 검사가 없어도 전달되지 않아 테스트가 통과해 버립니다.
         assertThat(sendUntilReceived("7", "probe", received)).isEqualTo("probe");
 
-        String errorCode = errorCodeAfterConnect(8L, sender -> sender.send("/user/7/queue/errors", "spoofed"));
+        String errorCode = errorCodeAfterConnect(8L, attacker -> attacker.send("/user/7/queue/errors", "spoofed"));
 
         assertThat(errorCode).isEqualTo("FORBIDDEN");
         Thread.sleep(500);
         assertThat(received).doesNotContain("spoofed");
-        receiver.disconnect();
+        victim.disconnect();
     }
 
     @Test
