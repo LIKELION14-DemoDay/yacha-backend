@@ -193,6 +193,7 @@ cors:
 liner:
   base-url: https://platform.liner.com
   api-key: ${LINER_API_KEY:}
+  model: ${LINER_MODEL:liner-mark}
 
 ai:
   # 힌트 키워드 · 봇 · 판정 구현 선택. stub 은 AI 연동 전까지 쓰는 임시 구현 (#76)
