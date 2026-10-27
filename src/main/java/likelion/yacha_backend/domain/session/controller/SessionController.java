@@ -150,7 +150,7 @@ public class SessionController {
             description = """
                     방을 만들지 않고 봇과 바로 토론을 시작함 (`IN_PROGRESS`)
 
-                    언제 부르나: 자동 제안이 한 바퀴 끝나 `NEW_TOPIC` 을 받은 뒤, 새 주제 화면에서 "봇전으로 시작" 을 누를 때만
+                    언제 부르나: 자동 제안 · 제안 거절에서 `NEW_TOPIC` 을 받은 뒤(한 바퀴를 다 돌았거나 대기 방이 없음), 새 주제 화면에서 "봇전으로 시작" 을 누를 때만
                     - 카테고리 화면에서 바로 봇전을 시작하는 길은 없음
                     - 내 방에서 기다리다 봇전으로 바꾸는 것은 이 API 가 아니라 `POST /sessions/{id}/ai`
 
@@ -159,7 +159,7 @@ public class SessionController {
                     - `stance`: 사용자가 고른 입장. 봇은 반대 입장
 
                     응답을 받은 뒤
-                    - 응답은 `{ sessionId }`. 상대가 봇이라 `MATCHED` 알림은 오지 않음
+                    - 응답의 `data` 는 `{ sessionId }`. 상대가 봇이라 `MATCHED` 알림은 오지 않음
                     - 바로 토론방 `/topic/sessions/{sessionId}` 를 구독하고 `GET /sessions/{sessionId}/state` 로 구간 · 남은 시간을 맞춤
 
                     로그인 필요 (게스트 가능)
