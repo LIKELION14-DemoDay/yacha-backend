@@ -16,8 +16,9 @@ import org.springframework.validation.annotation.Validated;
  * @param replyDelay        사람의 마지막 말 뒤 대답까지 (3초)
  * @param firstMessageDelay 채팅이 열린 뒤 사람이 조용하면 봇이 먼저 말하기까지 (10초)
  * @param retryBackoff      주장 · 반론 첫 재시도 전 대기 시간 (1초). 실패할 때마다 두 배로 늘립니다.
- *                          재시도는 작성 구간이 끝날 때까지 하고, 채팅 대답은 다시 시도하지 않습니다
+ *                          재시도는 작성 구간이 끝날 때까지 합니다
  * @param retryBackoffMax   재시도 대기 시간 상한 (8초)
+ * @param replyRetryDelay   채팅 대답이 실패한 뒤 한 번 다시 시도하기까지 (1초). 다시 실패하면 준비된 문장으로 대답합니다
  * @param failureEndDelay   글을 끝내 쓰지 못해 실패 글이 공개된 뒤 게임을 무효로 끝내기까지 (5초, 실패 글을 읽을 시간)
  */
 @Validated
@@ -28,6 +29,7 @@ public record BotProperties(
         @NotNull Duration firstMessageDelay,
         @NotNull Duration retryBackoff,
         @NotNull Duration retryBackoffMax,
+        @NotNull Duration replyRetryDelay,
         @NotNull Duration failureEndDelay
 ) {
 
@@ -35,7 +37,7 @@ public record BotProperties(
     @AssertTrue(message = "game.bot 의 시간 값은 0 이상이어야 합니다.")
     public boolean isDurationsNotNegative() {
         return notNegative(replyDelay) && notNegative(firstMessageDelay) && notNegative(retryBackoff)
-                && notNegative(retryBackoffMax) && notNegative(failureEndDelay);
+                && notNegative(retryBackoffMax) && notNegative(replyRetryDelay) && notNegative(failureEndDelay);
     }
 
     private static boolean notNegative(Duration duration) {

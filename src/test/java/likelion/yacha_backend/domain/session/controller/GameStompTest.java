@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import likelion.yacha_backend.domain.session.SessionFixture;
@@ -30,6 +31,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.stomp.ConnectionLostException;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
@@ -49,6 +51,8 @@ class GameStompTest {
     private static final long TIMEOUT_SECONDS = 5;
     /** 받지 말아야 할 메시지를 기다리는 시간 */
     private static final long SILENCE_MILLIS = 500;
+    /** 연결하자마자 거부되는 구독을 ERROR 프레임 없이 연결만 끊겼을 때 다시 시도하는 횟수 ({@link #assertSubscribeForbidden}) */
+    private static final int MAX_ATTEMPTS = 3;
 
     private static final long IN_PREP = 10;
     private static final long IN_REBUTTAL = 90;
@@ -285,11 +289,7 @@ class GameStompTest {
         @Test
         @DisplayName("형식이 맞지 않는 토론방 목적지는 FORBIDDEN")
         void malformedDestination() throws Exception {
-            Client user = connect(fixture.newUser());
-
-            user.session.subscribe("/topic/sessions/abc", new QueueFrameHandler(new LinkedBlockingQueue<>()));
-
-            assertThat(user.errorFrame.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isEqualTo("FORBIDDEN");
+            assertSubscribeForbidden(fixture.newUser(), "/topic/sessions/abc");
         }
     }
 
@@ -410,9 +410,28 @@ class GameStompTest {
     }
 
     private void assertSubscribeForbidden(Long userId, Long sessionId) throws Exception {
-        Client spectator = connect(userId);
-        spectator.session.subscribe("/topic/sessions/" + sessionId, new QueueFrameHandler(new LinkedBlockingQueue<>()));
-        assertThat(spectator.errorFrame.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isEqualTo("FORBIDDEN");
+        assertSubscribeForbidden(userId, "/topic/sessions/" + sessionId);
+    }
+
+    /**
+     * 연결하자마자 구독해 FORBIDDEN 으로 거부되는지 확인합니다.
+     *
+     * <p>서버가 그 연결로 다른 프레임(CONNECTED 등)을 보내는 도중에 ERROR 를 보내면, Spring 은 ERROR 를 버퍼에 둔 채
+     * 바로 연결을 닫아 ERROR 가 버려질 수 있습니다(#48). 그래서 ERROR 없이 연결만 끊기면 새로 연결해 다시 시도합니다.
+     */
+    private void assertSubscribeForbidden(Long userId, String destination) throws Exception {
+        for (int attempt = 1; ; attempt++) {
+            Client client = connect(userId);
+            client.session.subscribe(destination, new QueueFrameHandler(new LinkedBlockingQueue<>()));
+            try {
+                assertThat(client.errorFrame.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isEqualTo("FORBIDDEN");
+                return;
+            } catch (ExecutionException e) {
+                if (!(e.getCause() instanceof ConnectionLostException) || attempt == MAX_ATTEMPTS) {
+                    throw e;
+                }
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -525,6 +544,15 @@ class GameStompTest {
         @Override
         public void handleException(StompSession session, StompCommand command, StompHeaders headers,
                                     byte[] payload, Throwable exception) {
+            errors.completeExceptionally(exception);
+        }
+
+        /**
+         * 연결이 끊김. ERROR 프레임을 받은 뒤라면 이미 끝난 future 라 아무 일도 없고,
+         * ERROR 없이 끊겼으면 시간 초과까지 기다리지 않고 바로 실패하게 합니다.
+         */
+        @Override
+        public void handleTransportError(StompSession session, Throwable exception) {
             errors.completeExceptionally(exception);
         }
     }

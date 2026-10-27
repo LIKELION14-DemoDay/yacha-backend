@@ -121,6 +121,21 @@ oauth:
     client-secret: ${GOOGLE_CLIENT_SECRET:}
     token-uri: https://oauth2.googleapis.com/token
 
+
+mail:
+  # 운영 메일 발송 (SMTP, 비밀번호 재설정 인증번호 · 소셜 계정 안내)
+  # host 가 비어 있으면 보내지 않고 기동 로그에 경고만 남김. local · test 는 로그로 대신함
+  # SES 의 SMTP 계정이든 Gmail 앱 비밀번호든 이 값만 바꾸면 됨. 비밀번호는 저장소에 적지 마세요
+  host: ${MAIL_HOST:}
+  port: ${MAIL_PORT:587}
+  username: ${MAIL_USERNAME:}
+  password: ${MAIL_PASSWORD:}
+  # 보내는 주소. SES 는 인증한 도메인의 주소, Gmail 은 그 Gmail 주소여야 함
+  from: ${MAIL_FROM:}
+  from-name: 야차철학
+  # 메일 서버가 멈춰도 발송 스레드(mail-)가 오래 묶이지 않게 함
+  connection-timeout: 5s
+  timeout: 10s
 game:
   # 토론 중 채팅 · 주장 · 반론은 서버 메모리에만 둡니다 (명세 1-5)
   # 채팅 한 건의 글자 수 상한 (이모지도 한 글자)
@@ -152,9 +167,10 @@ game:
     # 채팅이 열린 뒤(143초) 사람이 조용하면 봇이 먼저 한 번 말하기까지
     first-message-delay: 10s
     # 주장 · 반론 재시도 대기. 실패할 때마다 두 배(상한 retry-backoff-max)로 늘리며 작성 구간이 끝날 때까지 다시 시도
-    # (채팅 대답은 다시 시도하지 않음)
     retry-backoff: 1s
     retry-backoff-max: 8s
+    # 채팅 대답이 실패하면 이만큼 뒤 한 번 다시 시도. 또 실패하면 준비된 문장으로 대답
+    reply-retry-delay: 1s
     # 주장 · 반론을 끝내 못 써 실패 글이 공개된 뒤 게임을 무효(ABORTED)로 끝내기까지
     failure-end-delay: 5s
   # 힌트 (매칭 직후 사람 참가자마다 만듦, PREP 60초 안이 목표)

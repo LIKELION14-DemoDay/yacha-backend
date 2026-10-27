@@ -21,8 +21,11 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
 import likelion.yacha_backend.domain.ai.AiException;
+import likelion.yacha_backend.domain.ai.PreparedReplies;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
@@ -34,10 +37,16 @@ import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameMessage;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.game.MessageType;
+import likelion.yacha_backend.global.config.GameSchedulerConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.messaging.MessageDeliveryException;
 
 /**
  * 봇 발언 (명세 2-4) — 주장 · 반론 제출, 채팅 대답 · 첫마디 · 상한 · 실패. 실제 타이머 · 실행기로 확인합니다
@@ -54,6 +63,8 @@ class BotTest extends TimerTestSupport {
     private static final long LATE_REBUTTAL = 135;
     /** 첫마디 시각(143초 + 0.5초)이 지난 CHAT */
     private static final long IN_CHAT = 150;
+    /** 봇 실행기 스레드 수 ({@link GameSchedulerConfig#botExecutor}) */
+    private static final int BOT_EXECUTOR_THREADS = 4;
 
     @Autowired
     private SessionFixture fixture;
@@ -69,6 +80,10 @@ class BotTest extends TimerTestSupport {
 
     @Autowired
     private Clock clock;
+
+    @Autowired
+    @Qualifier(GameSchedulerConfig.BOT_EXECUTOR)
+    private Executor botExecutor;
 
     private final List<Long> sessionIds = new ArrayList<>();
 
@@ -316,11 +331,54 @@ class BotTest extends TimerTestSupport {
     }
 
     @Test
-    @DisplayName("대답을 만들지 못하면 그 대답만 건너뛰고, 다음 말에는 다시 대답한다")
-    void skipsFailedReply() {
+    @DisplayName("대답을 만들지 못하면 대기 뒤 한 번 다시 시도해 그 대답을 보낸다")
+    void retriesFailedReplyOnce() {
         Room room = botRoom(IN_CHAT);
         Game game = game(room);
-        doThrow(new IllegalStateException("AI 응답 없음")).doReturn("이번엔 대답할게요.")
+        doThrow(new AiException("LINER_HTTP_ERROR_429", true)).doReturn("이번엔 대답할게요.")
+                .when(botWriter).reply(any(), any(), anyLong(), anyList());
+
+        humanChat(room, "첫 번째");
+
+        waitUntil(() -> botChats(game).size() == 1);
+        assertThat(botChats(game).get(0).content()).isEqualTo("이번엔 대답할게요.");
+        verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
+    }
+
+    @Test
+    @DisplayName("다시 시도해도 실패하면 준비된 문장으로 대답한다")
+    void preparedReplyAfterRetryFails() {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new IllegalStateException("AI 응답 없음")).when(botWriter).reply(any(), any(), anyLong(), anyList());
+
+        humanChat(room, "첫 번째");
+
+        waitUntil(() -> botChats(game).size() == 1);
+        assertThat(botChats(game).get(0).content()).isEqualTo(PreparedReplies.next(0));
+        verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
+    }
+
+    @Test
+    @DisplayName("다시 시도할 수 없는 실패면 기다리지 않고 바로 준비된 문장으로 대답한다")
+    void preparedReplyWithoutRetry() {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new AiException("LINER_HTTP_ERROR_401", false)).when(botWriter).reply(any(), any(), anyLong(), anyList());
+
+        humanChat(room, "첫 번째");
+
+        waitUntil(() -> botChats(game).size() == 1);
+        assertThat(botChats(game).get(0).content()).isEqualTo(PreparedReplies.next(0));
+        verify(botWriter, after(800).times(1)).reply(any(), any(), anyLong(), anyList());
+    }
+
+    @Test
+    @DisplayName("다시 시도를 기다리는 사이 사람이 또 말하면, 다시 시도하지 않고 새 말에 대답한다")
+    void skipsRetryWhenHumanSpeaks() {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new IllegalStateException("AI 응답 없음")).doReturn("새 말에 대답할게요.")
                 .when(botWriter).reply(any(), any(), anyLong(), anyList());
 
         humanChat(room, "첫 번째");
@@ -328,7 +386,75 @@ class BotTest extends TimerTestSupport {
         humanChat(room, "두 번째");
 
         waitUntil(() -> botChats(game).size() == 1);
-        verify(botWriter, times(2)).reply(any(), any(), anyLong(), anyList());
+        assertThat(botChats(game).get(0).content()).isEqualTo("새 말에 대답할게요.");
+        verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
+    }
+
+    @Test
+    @DisplayName("다시 시도가 실행기에서 기다리는 사이 사람이 또 말하면, 그 시도는 AI 를 부르지 않고 새 말에 한 번만 대답한다")
+    void skipsQueuedRetryWhenHumanSpeaks() throws Exception {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new IllegalStateException("AI 응답 없음")).doReturn("새 말에 대답할게요.")
+                .when(botWriter).reply(any(), any(), anyLong(), anyList());
+        CountDownLatch release = new CountDownLatch(1);
+
+        humanChat(room, "첫 번째");
+        verify(botWriter, timeout(WAIT_MILLIS).times(1)).reply(any(), any(), anyLong(), anyList());
+        try {
+            // 실행기 스레드를 모두 잡아, 대답 재시도 대기(200ms) 뒤 다시 시도가 대기열에서 기다리게 합니다.
+            for (int i = 0; i < BOT_EXECUTOR_THREADS; i++) {
+                botExecutor.execute(() -> {
+                    try {
+                        release.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
+            }
+            Thread.sleep(400);
+            humanChat(room, "두 번째");
+            // 새 말의 대답 타이머(300ms)까지 울려, 끝나면 한 번 더 대답하도록 표시된 상태를 만듭니다.
+            Thread.sleep(500);
+        } finally {
+            release.countDown();
+        }
+
+        waitUntil(() -> botChats(game).size() == 1);
+        assertThat(botChats(game).get(0).content()).isEqualTo("새 말에 대답할게요.");
+        verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
+        assertThat(botChats(game)).hasSize(1);
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("대답을 보내다 예상 밖 오류가 나면 어느 게임인지 로그로 남기고, 다음 말에는 다시 대답한다")
+    void logsUnexpectedSendFailure(CapturedOutput output) {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new MessageDeliveryException("보내기 실패")).doCallRealMethod()
+                .when(gameMessageService).broadcastAll(eq(room.sessionId()), argThat(messages -> messages.stream()
+                        .anyMatch(message -> message.participantId().equals(game.getAiParticipantId()))));
+
+        humanChat(room, "첫 번째");
+        waitUntil(() -> output.getAll().contains("[봇] 대답을 보내지 못했습니다. sessionId=" + room.sessionId()));
+        humanChat(room, "두 번째");
+
+        waitUntil(() -> botChats(game).size() == 2);
+    }
+
+    @Test
+    @DisplayName("첫마디도 실패하면 한 번 다시 시도하고, 또 실패하면 준비된 문장으로 말한다")
+    void preparedFirstMessage() {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new IllegalStateException("AI 응답 없음")).when(botWriter).reply(any(), any(), anyLong(), anyList());
+
+        botService.start(room.sessionId());
+
+        waitUntil(() -> botChats(game).size() == 1);
+        assertThat(botChats(game).get(0).content()).isEqualTo(PreparedReplies.next(0));
+        verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
     }
 
     @Test

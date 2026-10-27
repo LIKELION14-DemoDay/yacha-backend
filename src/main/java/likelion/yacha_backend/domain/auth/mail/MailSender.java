@@ -5,8 +5,8 @@ import likelion.yacha_backend.domain.user.entity.Provider;
 /**
  * 메일 발송
  *
- * 아직 메일 인프라가 없어서 인터페이스로 두고, 지금은 인증번호를 로그에 남기는 구현만 사용
- * 인프라가 준비되면 구현체만 갈아끼우면 서비스 코드는 그대로임
+ * 운영은 SMTP로 실제 발송하고({@link SmtpMailSender}, 설정이 없으면 {@link NoOpMailSender}),
+ * local · test 는 인증번호를 로그에 남김({@link LoggingMailSender}). 고르는 곳은 {@link MailSenderConfig}
  *
  * 발송은 메일 서버 응답을 기다리는 외부 호출임
  * 트랜잭션 안에서 부르지 안됨

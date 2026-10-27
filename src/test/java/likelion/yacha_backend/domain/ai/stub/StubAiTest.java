@@ -14,6 +14,7 @@ import likelion.yacha_backend.domain.ai.JudgeRequest;
 import likelion.yacha_backend.domain.ai.JudgeResult;
 import likelion.yacha_backend.domain.ai.PhilosopherWriting;
 import likelion.yacha_backend.domain.ai.PhilosophyWriter;
+import likelion.yacha_backend.domain.ai.PreparedReplies;
 import likelion.yacha_backend.domain.philosophy.service.PhilosophyWritingValidator;
 import likelion.yacha_backend.domain.session.entity.Stance;
 import org.junit.jupiter.api.DisplayName;
@@ -88,7 +89,7 @@ class StubAiTest {
             String second = writer.reply(LONG_TOPIC, Stance.DISAGREE, botId, conversation);
 
             assertThat(first).isNotEqualTo(second);
-            assertThat(StubBotWriter.REPLIES)
+            assertThat(PreparedReplies.REPLIES)
                     .allSatisfy(reply -> assertThat(length(reply)).isLessThanOrEqualTo(BotWriter.CHAT_MAX_LENGTH));
         }
     }
