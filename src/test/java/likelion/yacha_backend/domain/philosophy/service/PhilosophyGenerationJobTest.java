@@ -2,10 +2,14 @@ package likelion.yacha_backend.domain.philosophy.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import likelion.yacha_backend.domain.philosophy.exception.PhilosophyErrorCode;
 import likelion.yacha_backend.global.exception.BusinessException;
@@ -15,6 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.core.task.SyncTaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 
 @ExtendWith(OutputCaptureExtension.class)
 @DisplayName("PhilosophyGenerationJob")
@@ -23,11 +29,40 @@ class PhilosophyGenerationJobTest {
     private static final LocalDate NEXT_MONDAY = LocalDate.of(2026, 11, 2);
 
     private final PhilosophyGenerationService service = mock(PhilosophyGenerationService.class);
-    private final PhilosophyGenerationJob job = new PhilosophyGenerationJob(service);
+    private final PhilosophyGenerationJob job = new PhilosophyGenerationJob(service, new SyncTaskExecutor());
 
     @BeforeEach
     void setUp() {
         given(service.nextWeekStart()).willReturn(NEXT_MONDAY);
+    }
+
+    @Test
+    @DisplayName("생성은 1분 철학 실행기에 넘기고 스케줄러 스레드에서는 돌리지 않는다")
+    void handsOffToExecutor() {
+        List<Runnable> submitted = new ArrayList<>();
+        PhilosophyGenerationJob job = new PhilosophyGenerationJob(service, submitted::add);
+        given(service.generate(NEXT_MONDAY)).willReturn(new PhilosophyGenerationResult(List.of(1L), 0));
+
+        job.run();
+
+        then(service).should(never()).generate(any());
+        assertThat(submitted).hasSize(1);
+
+        submitted.get(0).run();
+
+        then(service).should().generate(NEXT_MONDAY);
+    }
+
+    @Test
+    @DisplayName("관리자 생성 · 다시 생성이 돌고 있으면 건너뛰고 관리자 API로 생성하라는 에러 로그를 남긴다")
+    void skipsWhenGenerationInProgress(CapturedOutput output) {
+        PhilosophyGenerationJob job = new PhilosophyGenerationJob(service, task -> {
+            throw new TaskRejectedException("busy");
+        });
+
+        assertThatCode(job::run).doesNotThrowAnyException();
+        then(service).should(never()).generate(any());
+        assertThat(output).contains("관리자 생성 · 다시 생성이 돌고 있어 2026-11-02 주 자동 생성을 건너뛰었습니다");
     }
 
     @Test

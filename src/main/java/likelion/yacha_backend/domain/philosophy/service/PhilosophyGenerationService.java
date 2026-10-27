@@ -108,7 +108,8 @@ public class PhilosophyGenerationService {
                 }
                 failed++;
             } catch (DataIntegrityViolationException e) {
-                // AI를 기다리는 사이 같은 주에 같은 주제가 먼저 저장됨 (스케줄러와 관리자 생성이 겹친 경우)
+                // AI를 기다리는 사이 같은 주에 같은 주제가 먼저 저장됨
+                // 생성은 한 실행기에서 하나씩만 돌아 보통은 없지만, DB 제약에 걸려도 다음 주제로 넘어가게 둠
                 log.warn("[1분 철학] 같은 주에 같은 주제가 이미 있어 저장하지 않았습니다. weekStart={}, topicId={}",
                         weekStart, topic.topicId());
                 failed++;

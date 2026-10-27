@@ -2,9 +2,12 @@ package likelion.yacha_backend.domain.philosophy.service;
 
 import java.time.LocalDate;
 import likelion.yacha_backend.domain.philosophy.exception.PhilosophyErrorCode;
+import likelion.yacha_backend.global.config.AsyncConfig;
 import likelion.yacha_backend.global.exception.BusinessException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -12,19 +15,38 @@ import org.springframework.stereotype.Component;
  * 매주 다음 주 1분 철학 글을 만들어 둠. 기본은 목요일 오전 10시
  * 금요일 · 주말에 팀원이 검토 · 승인하면 월요일에 한꺼번에 보임
  *
+ * 관리자 생성 · 다시 생성과 같은 {@link AsyncConfig#PHILOSOPHY_EXECUTOR}에서 돎
+ * 한 번에 하나만 돌아서, 겹쳐 AI를 두 번 부르거나 한 주에 정해진 편수보다 많이 저장되지 않음
+ * 관리자 작업이 돌고 있으면 건너뜀
+ *
  * 실패해도 다시 돌지 않음. 로그를 보고 관리자 API로 모자란 만큼 생성하면 됨
  * 다음 주 글이 하나도 승인되지 않으면 지난주 글이 계속 보이므로 화면이 비지는 않음
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class PhilosophyGenerationJob {
 
     private final PhilosophyGenerationService generationService;
+    private final TaskExecutor executor;
+
+    public PhilosophyGenerationJob(PhilosophyGenerationService generationService,
+                                   @Qualifier(AsyncConfig.PHILOSOPHY_EXECUTOR) TaskExecutor executor) {
+        this.generationService = generationService;
+        this.executor = executor;
+    }
 
     @Scheduled(cron = "${philosophy.generation.cron}")
     public void run() {
         LocalDate weekStart = generationService.nextWeekStart();
+        try {
+            executor.execute(() -> generate(weekStart));
+        } catch (TaskRejectedException e) {
+            log.error("[1분 철학] 관리자 생성 · 다시 생성이 돌고 있어 {} 주 자동 생성을 건너뛰었습니다. 끝난 뒤 관리자 API로 생성해 주세요",
+                    weekStart);
+        }
+    }
+
+    private void generate(LocalDate weekStart) {
         try {
             PhilosophyGenerationResult result = generationService.generate(weekStart);
             if (result.failed() > 0) {
