@@ -131,7 +131,8 @@ public class SessionResultService {
                     Detail detail = detailOf.apply(p);
                     return new ParticipantResultResponse(p.getId(),
                             p.getUser() == null ? null : p.getUser().getNickname(),
-                            null, p.getStance(), p.isUser(userId),
+                            p.getUser() == null ? null : p.getUser().getPhilosopherType(),
+                            p.getStance(), p.isUser(userId),
                             detail.result(), detail.scores(), detail.total());
                 })
                 .toList();

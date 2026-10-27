@@ -71,7 +71,8 @@ erDiagram
 | nickname | VARCHAR(50) | NN |  |
 | is_guest | BOOLEAN | NN |  |
 | role | VARCHAR(20) | NN | `USER` / `ADMIN` |
-| philosopher_type | VARCHAR(20) | NULL | 🟢 **철학자 유형** — 회원가입 때 정해진다 (가입 · 유형 결정은 다른 담당). 프로필 이미지는 프론트가 유형으로 고른다. 없으면 기본 이미지 |
+| philosopher_type | VARCHAR(20) | NULL | 🟢 **철학자 유형** — 🟢 **밸런스 게임**(2-13)으로 정한다. 안 했거나 건너뛰면 NULL("일반인"). 프로필 이미지는 프론트가 유형으로 고른다. 없으면 기본 이미지 |
+| balance_game_status | VARCHAR(20) | NN | 🟢 `NOT_STARTED`(기본값) / `SKIPPED` / `DONE` — 홈에 들어올 때 밸런스 게임을 띄울지 (2-13) |
 | created_at | DATETIME | NN |  |
 | updated_at | DATETIME | NN |  |
 
@@ -90,7 +91,7 @@ erDiagram
 > | `HOBBES` | 홉스형 | 질서를 세우는 자 |
 > | `ROUSSEAU` | 루소형 | 사회를 의심하는 자 |
 >
-> 유형이 없는 사용자(게스트 등)는 기본 이미지, 봇은 봇 전용 이미지를 쓴다.
+> 유형이 없는 사용자는 기본 이미지와 🟢 이름 **"일반인"**, 봇은 봇 전용 이미지를 쓴다. 🟢 게스트도 밸런스 게임을 할 수 있고, 가입(승격)해도 유형이 남는다. 게스트의 소셜 로그인(새 계정) · 오래된 게스트 정리 때는 넘어가지 않는다.
 
 ### topic — 🔷 주제 풀 (구 `daily_topic`)
 
@@ -202,7 +203,7 @@ erDiagram
 | 🟣 `debate_session` | `is_public` 제거 (공개 페이지 폐지), `finish_reason` 에 `ABORTED` 추가 |
 | 🟣 `debate_participant` | `result`(WIN/LOSE/DRAW) 추가 |
 | 🟢 `topic` | `subcategory`, `agree_text`, `disagree_text` 추가. 카테고리 값 `FUTURE_TECH` → `TECH_AND_FUTURE`, `TRUTH_AND_LIE` → `TRUTH_AND_BELIEF` |
-| 🟢 `users` | `philosopher_type` 추가 (가입 담당) |
+| 🟢 `users` | `philosopher_type` · `balance_game_status` 추가 (밸런스 게임, 2-13) |
 
 ---
 
@@ -254,7 +255,7 @@ erDiagram
 | POST | `/auth/social/google` | 구글 로그인 (인가 코드, 웹) | — |
 | POST | `/auth/social` | 소셜 로그인 (카카오 · 구글 id_token) | — |
 | POST | `/auth/upgrade` | 게스트 → 회원 승격 (같은 계정 유지, 토큰 재발급) | ✅ |
-| GET | `/users/me` | 내 정보 · 🟢 전투 기록 `stats { wins, losses }` (승리 · 패배 수, **무승부는 세지 않음**) | ✅ |
+| GET | `/users/me` | 내 정보 · 🟢 전투 기록 `stats { wins, losses }` (승리 · 패배 수, **무승부는 세지 않음**) · 🟢 철학 유형 `philosopher { type, name, alias }`(없으면 이름 "일반인") · `balanceGameRequired`(아직 안 했으면 true — 홈에서 밸런스 게임을 띄움) | ✅ |
 | PATCH | `/users/me` | 닉네임 변경 — 🟠 회원 전용 | ✅ (회원) |
 
 🟢 **로그인 응답 (10/5)** — 토큰을 주는 API(가입 · 로그인 · 소셜 · 게스트 · 재발급 · 승격 · 비밀번호 변경)는 모두 같은 형태다. 리프레시 토큰은 body 가 아니라 쿠키로 간다.
@@ -299,6 +300,7 @@ erDiagram
   | `/auth/logout` · `/auth/upgrade` | 로그아웃 · 회원 승격 |
   | `/sessions/**` | 게임 (방 · 상태 · 메시지 · 주장 등). 🟢 관전은 사용하지 않는다 |
   | `GET /users/me` · `GET /topics/**` | 내 정보 · 주제 조회 |
+  | 🟢 `/balance-game/**` | 밸런스 게임 (질문 · 결과 · 건너뛰기). 유형 설명 `GET /balance-game/philosophers/{type}` 은 공유 링크용이라 **로그인 없이** 볼 수 있다 |
 
 - **게임 · 관전용 경로를 `/sessions/**` 밖에 새로 만들면** `SecurityConfig` 의 게스트 경로 목록에 추가해야 한다.
 - 🟢 전투 기록(승리 · 패배 수)은 `GET /users/me` 의 `stats` 다. 게스트도 부를 수 있지만 승패를 기록하지 않아 0 / 0 이다. 판별 목록(`GET /sessions/me`)은 만들지 않는다.
@@ -445,7 +447,7 @@ erDiagram
   "hasNext": false }
 ```
 
-- 🟢 `philosopherType` 은 users 에 컬럼이 생기기 전까지 null 이다 (결과 화면과 같음).
+- 🟢 `philosopherType` 은 방장의 밸런스 게임 결과다 (2-13). 안 했거나 건너뛰었으면 null 이고 프론트는 "일반인" 으로 보여준다 (결과 화면과 같음).
 
 - `wantedStance` 는 방장의 반대다. 프론트는 "반대입장인 사람을 찾아요!" / "찬성입장인 사람을 찾아요!" 를 띄운다.
 
@@ -918,13 +920,44 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 
 ---
 
+## 2-13. 🟢 밸런스 게임
+
+질문 12개에 A / B 로 답해 **철학자 유형 8개**(1-2) 중 하나를 정한다. 채팅과는 별개 기능이다.
+
+| Method | Path | 설명 | 인증 |
+| --- | --- | --- | --- |
+| GET | `/balance-game/questions` | 질문 12개 `{ number, question, optionA, optionB }` (배점은 주지 않음) | ✅ (게스트 가능) |
+| POST | `/balance-game/result` | `{ "answers": ["A","B", …] }` 12개 → 유형 저장 · 결과. 다시 하면 덮어씀 | ✅ (게스트 가능) |
+| POST | `/balance-game/skip` | 건너뛰기 — 다음부터 홈에서 띄우지 않음 | ✅ (게스트 가능) |
+| GET | `/balance-game/philosophers/{type}` | 공유 링크용 유형 설명 (누구의 결과인지는 없음) | — (로그인 없이) |
+
+**결과 응답**
+
+```json
+{ "type": "NIETZSCHE", "name": "니체", "alias": "기존의 답을 부수는 자",
+  "sections": [
+    { "title": "■ 나만의 기준", "content": "남들이 당연하게 받아들이는 기준이나 …" },
+    { "title": "■ 성장을 위한 도전", "content": "편하고 익숙한 곳에 머물기보다 …" },
+    { "title": "■ 다름을 선택하는 용기", "content": "모두가 같은 의견이어도 …" } ] }
+```
+
+- **계산**: 선택지마다 철학자 두 명에게 +2 · +1 (배점표는 노션 "밸런스게임 › 철학자 기준"). 철학자별로 더해 가장 높은 철학자. 8명 모두 최대 9점이다.
+- **동점**: +2 를 더 많이 받은 철학자 → 그래도 같으면 가장 나중 질문에서 점수를 받은 철학자 (같은 질문이면 +2 쪽). 같은 답이면 항상 같은 결과다.
+- **화면 흐름**: 로그인 후 홈에 들어올 때 `GET /users/me` 의 `balanceGameRequired` 가 true 면 띄운다. 마이페이지 "밸런스 게임 시작하기" 로 언제든 다시 할 수 있다.
+- **상태**: `NOT_STARTED` 아직 안 함(도중에 나간 사람 포함, 중간 답은 저장하지 않음) → 띄움 / `SKIPPED` 건너뜀 → 마이페이지에서만 / `DONE` 결과 있음. 결과가 있는 사람이 다시 하다 건너뛰면 이전 유형을 그대로 둔다.
+- **유형이 없으면** 서버가 이름을 "일반인" 으로 준다 (`type: null`). 결과 화면(2-6) 참가자의 `philosopherType` 도 이 유형이다.
+- 이름 · 별칭은 1-2 의 철학자 유형 표를 따른다. 질문 · 배점 · 결과 문구는 서버 코드에 둔다. 결과 문구는 유형마다 소제목이 있는 성향 3개(`sections`)이고, 소제목은 유형마다 다르다 (칸트: 흔들리지 않는 원칙 · 약속과 책임 · 공정한 과정). 소제목인 줄 알 수 있게 서버가 앞에 `■ ` 를 붙여 보낸다.
+- 에러: 답이 12개가 아니면 `VALIDATION_FAILED`, `A` · `B` 가 아닌 값이면 `PARSING_ERROR`, 없는 유형 코드면 `BINDING_ERROR`.
+
+---
+
 # PART 3. 2차 (런칭 후) · 🔷 신규 기능 후보
 
 | 기능 | 내용 | 필요 테이블 |
 | --- | --- | --- |
 | **도전장 공유** | 링크로 친구에게 반박 요청. 🔷 친구와 야차(초대 링크)와 겹치므로 합칠지 검토 | `challenge_link` |
 | **알림** | 07~09시 · 17~19시 푸시 | `push_subscription`, `notification_setting`, `notification` |
-| 🔷 **밸런스 게임** | 랜덤 주제에 예 / 아니오 → 같은 선택을 한 비율(%) 표시. 온보딩에 배치하고 선택 후 링크 공유. **백엔드 개발 가능 여부 결정 필요** | `balance_question`, `balance_vote` (안) |
+| 🔷 **밸런스 게임** | ~~랜덤 주제에 예 / 아니오 → 같은 선택을 한 비율(%) 표시~~ 🟢 **질문 12개로 철학자 유형을 정하는 방식으로 MVP 에 넣었다 (2-13)** | 🟢 테이블 없음 (`users.philosopher_type` · `balance_game_status`) |
 | 🔷 **1분 철학** | 주제마다 여러 철학자를 제시하고 각자의 내용을 제공 (확정). 후보: 댓글, 개인 메모 · 하이라이트, 내 생각에 대한 AI 철학자 피드백(MY 에서 확인) | `philosopher`, `philosophy_content`, `comment`, `memo`, `ai_feedback` (안) |
 | **신고 · 차단** | 사용자 신고 · 차단. 🟣 채팅 내용을 저장하지 않으므로 **내용 기반 신고는 대안 필요** (PART 5) | `report`, `user_block` |
 
@@ -962,7 +995,7 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 > 🟢 **피그마 확정으로 바뀐 영향 (10/5)**
 > - C 의 외부 연동은 `힌트 · 판정 · 봇(주장 · 반론 · 채팅 대답)` 이 된다. 근거 검색(LINER) · 상대 요약은 빠졌다. **봇 생성은 C 가 맡되 B 와 상의**해 나눈다.
 > - A: 시간표 · 주장 제출과 공개 · 카테고리 순환 제안 · 바로 봇전 · 나가기가 바뀌거나 추가됐다.
-> - 주제(`topic`)와 하위 카테고리는 A 가 만든다. 철학자 유형은 가입 담당이 만든다.
+> - 주제(`topic`)와 하위 카테고리는 A 가 만든다. 철학자 유형은 🟢 밸런스 게임(2-13)으로 정한다.
 >
 > 🟣 **관전 · 채팅 비저장으로 바뀐 영향**
 > - A: 게임 상태를 메모리에서 관리한다 (채팅 · 근거 · 요약 · 판정 상세). 관전 구독 권한과 관전 목록이 추가된다.
@@ -1043,7 +1076,7 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 - [x] **봇전 진행 방식** — 🟢 사람과 같은 시간표 · 판정. 주장 200자 · 반론 250자를 쓰고, 채팅은 사람이 말할 때마다 3초 뒤 50자 이내로 대답 (2-4).
 - [ ] **`/topics/today` 유지 여부** — 주제 풀로 바뀐 뒤에도 "오늘의 야차판" 을 따로 보여줄지. 유지하면 "A/B 선택 현황" 을 무엇으로 바꿀지.
 - [x] **아이디 · 비밀번호 찾기** — 🟢 이메일 인증번호 방식 (6자리 · 3분 · 5번). 이메일이 아이디라 비밀번호 재설정만 한다 (2-1).
-- [ ] **밸런스 게임** — 개발 여부, 비회원 중복 투표 방지 방법.
+- [x] **밸런스 게임** — 🟢 질문 12개로 철학자 유형을 정한다. 투표 비율 방식이 아니라 중복 투표 문제가 없다 (2-13).
 - [ ] **1분 철학** — 댓글 · 메모 · AI 피드백 중 MVP 범위, 철학자 의견을 직접 쓸지 AI 로 정리할지.
 
 **미정 — 🔶 PVP 우선에서 이어진 것**
