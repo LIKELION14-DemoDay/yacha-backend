@@ -10,6 +10,7 @@ import java.util.random.RandomGenerator;
 import likelion.yacha_backend.domain.ai.AiException;
 import likelion.yacha_backend.domain.ai.AiTopic;
 import likelion.yacha_backend.domain.ai.BotWriter;
+import likelion.yacha_backend.domain.ai.PreparedReplies;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.Stance;
@@ -59,7 +60,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>작성 구간이 끝날 때(60초 · 140초)까지 못 쓰면 {@value #FAILURE_TEXT} 를 내고, 그 글이 공개된 뒤
  *       {@code game.bot.failure-end-delay} 가 지나면 게임을 무효({@code ABORTED}, 승패 NULL)로 끝냅니다.</li>
  * </ul>
- * 채팅 대답은 다시 시도하지 않고 그 대답만 건너뜁니다.
+ * 채팅 대답은 {@code game.bot.reply-retry-delay} 뒤 한 번 더 시도하고, 그것도 실패하면 준비된 문장({@link PreparedReplies})으로
+ * 대답합니다. 채팅 하나가 빠져도 토론은 이어지므로 게임을 끝내지 않습니다.
  *
  * <p>대화 내용은 로그에 남기지 않습니다 (명세 1-5).
  */
@@ -290,18 +292,53 @@ public class BotService {
     }
 
     private void startReplying(Long sessionId, Game game) {
-        if (!execute(sessionId, () -> reply(sessionId, game))) {
+        startReplying(sessionId, game, game.botProgress().humanChatNo(), 1);
+    }
+
+    private void startReplying(Long sessionId, Game game, long chatNo, int attempt) {
+        if (!execute(sessionId, () -> reply(sessionId, game, chatNo, attempt))) {
             game.botProgress().finishReply();
         }
     }
 
-    /** 대답 하나. 끝나면, 만드는 동안 사람이 또 말해 차례가 왔으면 바로 한 번 더 대답합니다. */
-    private void reply(Long sessionId, Game game) {
+    /**
+     * 대답 하나. 끝나면, 만드는 동안 사람이 또 말해 차례가 왔으면 바로 한 번 더 대답합니다.
+     * 첫 시도가 실패하면 {@link #retryReply} 로 한 번 더 시도하고, 그것도 실패하면 준비된 문장으로 대답합니다.
+     *
+     * @param chatNo  이 대답을 시작할 때까지 사람이 말한 횟수. 다시 시도하기 전에 사람이 또 말했는지 봅니다
+     * @param attempt 몇 번째 시도인가 (1 · 2)
+     */
+    private void reply(Long sessionId, Game game, long chatNo, int attempt) {
+        boolean retrying = false;
         try {
             if (isActive(game) && game.botChatCount() < properties.maxReplies()) {
-                Input input = input(sessionId, game);
-                String text = botWriter.reply(input.topic(), input.stance(), game.getAiParticipantId(),
-                        AiConversation.of(game));
+                if (attempt > 1 && game.botProgress().humanChatNo() != chatNo) {
+                    // 실행기에서 기다리는 사이 사람이 또 말했습니다. 이 재시도는 버리고 새 말에 대답합니다 —
+                    // 새 말의 차례가 이미 왔으면 아래 finishReply 가, 아직이면 그 말의 대답 타이머가 대답을 시작합니다.
+                    log.info("[봇] 다시 시도하기 전에 사람이 또 말해 새 말에 대답합니다. sessionId={}", sessionId);
+                    return;
+                }
+                String text;
+                try {
+                    Input input = input(sessionId, game);
+                    text = botWriter.reply(input.topic(), input.stance(), game.getAiParticipantId(),
+                            AiConversation.of(game));
+                    if (text == null) {
+                        throw new IllegalStateException("봇 대답이 비어 있습니다.");
+                    }
+                } catch (RuntimeException e) {
+                    if (attempt == 1 && !(e instanceof AiException ai && !ai.isRetryable())) {
+                        log.warn("[봇] 대답을 만들지 못해 다시 시도합니다. sessionId={}, error={}",
+                                sessionId, e.getClass().getSimpleName());
+                        // 예약에 성공한 뒤에 표시합니다. 예약이 실패하면 아래 finally 가 대답 중 표시를 풀어야 합니다.
+                        retryReply(sessionId, game, chatNo);
+                        retrying = true;
+                        return;
+                    }
+                    log.warn("[봇] 대답을 만들지 못해 준비된 문장으로 대답합니다. sessionId={}, error={}",
+                            sessionId, e.getClass().getSimpleName());
+                    text = PreparedReplies.next(game.botChatCount());
+                }
                 synchronized (game) {
                     LocalDateTime now = LocalDateTime.now(clock);
                     gameMessageService.broadcastAll(sessionId, game.revealArguments(now));
@@ -312,12 +349,27 @@ public class BotService {
             // 채팅이 닫혔거나(260초 · 종료) 글자 수 · 채팅 수를 넘었습니다. 이 대답만 버립니다.
             log.info("[봇] 대답을 버립니다. sessionId={}, error={}", sessionId, e.getErrorCode().name());
         } catch (RuntimeException e) {
-            log.warn("[봇] 대답을 만들지 못해 건너뜁니다. sessionId={}, error={}", sessionId, e.getClass().getSimpleName());
+            // AI 실패는 위에서 받습니다. 여기는 대답 보내기 · 다시 시도 예약 같은 예상 밖 실패로, 어느 게임인지 남깁니다.
+            log.error("[봇] 대답을 보내지 못했습니다. sessionId={}", sessionId, e);
         } finally {
-            if (game.botProgress().finishReply()) {
+            if (!retrying && game.botProgress().finishReply()) {
                 startReplying(sessionId, game);
             }
         }
+    }
+
+    /**
+     * {@code game.bot.reply-retry-delay} 뒤 대답을 한 번 더 시도합니다. 실행기 스레드를 잡지 않게 게임 타이머로 예약합니다.
+     * 기다리는 동안 사람이 또 말했으면 다시 시도하지 않고 대답을 끝냅니다 — 그 말의 대답 타이머가 새 말에 대답합니다.
+     */
+    private void retryReply(Long sessionId, Game game, long chatNo) {
+        gameTimers.schedule(sessionId, LocalDateTime.now(clock).plus(properties.replyRetryDelay()), () -> {
+            if (isActive(game) && game.botProgress().humanChatNo() == chatNo) {
+                startReplying(sessionId, game, chatNo, 2);
+            } else if (game.botProgress().finishReply()) {
+                startReplying(sessionId, game);
+            }
+        });
     }
 
     // ---- 공통 ----
