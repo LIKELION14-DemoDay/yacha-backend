@@ -8,10 +8,11 @@ import io.jsonwebtoken.security.Keys;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import javax.crypto.SecretKey;
 import likelion.yacha_backend.global.security.jwt.JwtProperties;
@@ -147,22 +148,11 @@ class StompConnectAuthTest {
     void allowsUserQueueSubscription() throws Exception {
         ErrorCapturingHandler handler = new ErrorCapturingHandler();
         StompSession session = connect(bearer(jwtTokenProvider.createAccessToken(7L, Role.USER)), handler);
-        CompletableFuture<String> received = new CompletableFuture<>();
+        BlockingQueue<String> received = new LinkedBlockingQueue<>();
 
         session.subscribe("/user/queue/errors", new CapturingFrameHandler(received));
 
-        // 구독 등록은 비동기라, 받을 때까지 짧은 간격으로 다시 보냅니다.
-        String payload = null;
-        for (int i = 0; i < 50 && payload == null; i++) {
-            messagingTemplate.convertAndSendToUser("7", "/queue/errors", "hello");
-            try {
-                payload = received.get(100, TimeUnit.MILLISECONDS);
-            } catch (TimeoutException ignored) {
-                // 아직 구독이 등록되지 않았습니다.
-            }
-        }
-
-        assertThat(payload).isEqualTo("hello");
+        assertThat(sendUntilReceived("7", "hello", received)).isEqualTo("hello");
         assertThat(handler.errors).isNotDone();
         session.disconnect();
     }
@@ -188,15 +178,18 @@ class StompConnectAuthTest {
     @Test
     @DisplayName("다른 사용자의 개인 큐(/user/{userId}/queue/**)로 SEND 하면 FORBIDDEN 으로 거부하고 전달하지 않는다")
     void rejectsSendToOtherUserQueue() throws Exception {
-        StompSession victim = connect(bearer(jwtTokenProvider.createAccessToken(7L, Role.USER)), new ErrorCapturingHandler());
-        CompletableFuture<String> received = new CompletableFuture<>();
-        victim.subscribe("/user/queue/errors", new CapturingFrameHandler(received));
+        StompSession receiver = connect(bearer(jwtTokenProvider.createAccessToken(7L, Role.USER)), new ErrorCapturingHandler());
+        BlockingQueue<String> received = new LinkedBlockingQueue<>();
+        receiver.subscribe("/user/queue/errors", new CapturingFrameHandler(received));
+        // 구독이 등록되기 전에 보내면, 권한 검사가 없어도 전달되지 않아 테스트가 통과해 버립니다.
+        assertThat(sendUntilReceived("7", "probe", received)).isEqualTo("probe");
 
-        String errorCode = errorCodeAfterConnect(8L, attacker -> attacker.send("/user/7/queue/errors", "spoofed"));
+        String errorCode = errorCodeAfterConnect(8L, sender -> sender.send("/user/7/queue/errors", "spoofed"));
 
         assertThat(errorCode).isEqualTo("FORBIDDEN");
-        assertThatThrownBy(() -> received.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
-        victim.disconnect();
+        Thread.sleep(500);
+        assertThat(received).doesNotContain("spoofed");
+        receiver.disconnect();
     }
 
     @Test
@@ -226,6 +219,22 @@ class StompConnectAuthTest {
         return stompClient
                 .connectAsync(url(), new WebSocketHttpHeaders(), connectHeaders(authorization), handler)
                 .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
+     * 구독 등록은 비동기라, 받을 때까지 짧은 간격으로 다시 보냅니다. 받은 메시지를 돌려주고, 끝내 못 받으면 null.
+     * 먼저 보낸 것이 늦게 도착해 같은 메시지를 더 받을 수 있습니다.
+     */
+    private String sendUntilReceived(String userId, String payload, BlockingQueue<String> received)
+            throws InterruptedException {
+        for (int i = 0; i < 50; i++) {
+            messagingTemplate.convertAndSendToUser(userId, "/queue/errors", payload);
+            String message = received.poll(100, TimeUnit.MILLISECONDS);
+            if (message != null) {
+                return message;
+            }
+        }
+        return null;
     }
 
     /**
@@ -311,9 +320,9 @@ class StompConnectAuthTest {
 
     private static class CapturingFrameHandler implements StompFrameHandler {
 
-        private final CompletableFuture<String> received;
+        private final BlockingQueue<String> received;
 
-        CapturingFrameHandler(CompletableFuture<String> received) {
+        CapturingFrameHandler(BlockingQueue<String> received) {
             this.received = received;
         }
 
@@ -324,7 +333,7 @@ class StompConnectAuthTest {
 
         @Override
         public void handleFrame(StompHeaders headers, Object payload) {
-            received.complete((String) payload);
+            received.add((String) payload);
         }
     }
 
