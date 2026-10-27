@@ -36,3 +36,9 @@ jwt:
 storage:
   s3:
     bucket: test-profile-images
+
+topic:
+  seed:
+    # 주제가 없거나 직접 넣은 주제만 있다고 가정하는 테스트가 있어 주제 파일을 넣지 않습니다.
+    # 파일 내용은 TopicSeedFileTest 가 따로 검사합니다.
+    enabled: false

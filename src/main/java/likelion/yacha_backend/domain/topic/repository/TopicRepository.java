@@ -34,6 +34,9 @@ public interface TopicRepository extends JpaRepository<Topic, Long> {
     List<Topic> findActiveTopics(@Param("subcategory") Subcategory subcategory,
                                  @Param("excludeId") Long excludeId);
 
+    /** 주제 파일에서 넣은 주제 (주제 키가 있는 것). */
+    List<Topic> findAllByCodeIsNotNull();
+
     /** 방을 만들 때 고른 주제. 내린(비활성) 주제는 없는 것으로 봅니다. */
     Optional<Topic> findByIdAndActiveTrue(Long id);
 }
