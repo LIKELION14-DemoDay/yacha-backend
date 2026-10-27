@@ -72,7 +72,8 @@ public class PhilosophyGenerationService {
     /**
      * {@code weekStart} 주의 글을 정해진 편수가 되도록 모자란 만큼 만들어 검토 전으로 저장
      *
-     * 글 한 편이 실패해도 멈추지 않고 다음 주제로 넘어감. 키 오류처럼 다시 해도 안 되는 실패면 남은 주제도 멈춤
+     * 글 한 편이 실패해도 멈추지 않고 다음 주제로 넘어감
+     * 키 오류처럼 다시 해도 안 되는 실패거나, 서버 종료로 생성이 중단되면 남은 주제도 멈춤
      *
      * @throws BusinessException 월요일이 아니면 {@code INVALID_WEEK_START}, 이미 다 있으면 {@code WEEK_ALREADY_FULL},
      *                           고를 주제가 하나도 없으면 {@code TOPIC_NOT_FOUND}
@@ -91,6 +92,13 @@ public class PhilosophyGenerationService {
         List<Long> createdIds = new ArrayList<>();
         int failed = missing - topics.size();
         for (int i = 0; i < topics.size(); i++) {
+            if (Thread.currentThread().isInterrupted()) {
+                // 서버 종료로 재시도 대기가 끊긴 경우 등. 남은 주제로 AI를 더 부르지 않음
+                int remaining = topics.size() - i;
+                log.warn("[1분 철학] 생성이 중단돼 남은 {}편은 만들지 않았습니다. weekStart={}", remaining, weekStart);
+                failed += remaining;
+                break;
+            }
             PickedTopic topic = topics.get(i);
             try {
                 List<PhilosopherWriting> writings = writeWithRetry(topic);
@@ -114,6 +122,9 @@ public class PhilosophyGenerationService {
                         weekStart, topic.topicId());
                 failed++;
             } catch (RuntimeException e) {
+                // 저장 중 DB 오류 등. 원인을 남기고 다음 주제로 넘어감
+                log.error("[1분 철학] 글을 만들지 못해 다음 주제로 넘어갑니다. weekStart={}, topicId={}",
+                        weekStart, topic.topicId(), e);
                 failed++;
             }
         }

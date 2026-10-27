@@ -33,13 +33,17 @@ import likelion.yacha_backend.global.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.transaction.PlatformTransactionManager;
 
 @DataJpaTest
 @Import(JpaAuditingConfig.class)
+@ExtendWith(OutputCaptureExtension.class)
 @DisplayName("PhilosophyGenerationService")
 class PhilosophyGenerationServiceTest {
 
@@ -312,8 +316,8 @@ class PhilosophyGenerationServiceTest {
         }
 
         @Test
-        @DisplayName("한 편이 끝내 실패해도 나머지 편은 만든다")
-        void continuesAfterFailure() {
+        @DisplayName("한 편이 끝내 실패해도 원인을 로그로 남기고 나머지 편은 만든다")
+        void continuesAfterFailure(CapturedOutput output) {
             List<Topic> all = topics(3);
             ScriptedWriter writer = new ScriptedWriter().thenFail(3);
 
@@ -322,6 +326,32 @@ class PhilosophyGenerationServiceTest {
             assertThat(result.failed()).isEqualTo(1);
             assertThat(topicIdsOf(result.createdIds())).containsExactly(all.get(1).getId(), all.get(2).getId());
             assertThat(writer.calls).isEqualTo(5);
+            assertThat(output).contains("글을 만들지 못해 다음 주제로 넘어갑니다. weekStart=2026-11-02, topicId=" + all.get(0).getId())
+                    .contains("IllegalStateException: network");
+        }
+
+        @Test
+        @DisplayName("재시도 대기 중 중단되면(서버 종료) 남은 편은 AI를 부르지 않고 모두 실패로 센다")
+        void stopsWhenInterrupted(CapturedOutput output) {
+            topics(3);
+            ScriptedWriter writer = new ScriptedWriter().then(() -> {
+                // 첫 시도가 실패한 뒤 재시도 대기에서 중단되게 함
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("network");
+            });
+
+            PhilosophyGenerationResult result;
+            try {
+                result = service(writer, 3).generate(NEXT_MONDAY);
+            } finally {
+                // 중단 표시가 남으면 테스트 정리(롤백)가 실패함
+                Thread.interrupted();
+            }
+
+            assertThat(writer.calls).isEqualTo(1);
+            assertThat(result.createdIds()).isEmpty();
+            assertThat(result.failed()).isEqualTo(3);
+            assertThat(output).contains("생성이 중단돼 남은 2편은 만들지 않았습니다");
         }
 
         @Test
