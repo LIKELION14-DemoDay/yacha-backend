@@ -8,6 +8,7 @@ import likelion.yacha_backend.domain.session.entity.DebateResult;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.session.game.JudgeStatus;
+import likelion.yacha_backend.domain.user.entity.PhilosopherType;
 
 /**
  * {@code GET /sessions/{id}/result} — 결과 화면 (명세 2-6).
@@ -49,7 +50,7 @@ public record SessionResultResponse(
 
     /**
      * @param nickname        닉네임. AI 참가자와 계정이 정리된 참가자는 null
-     * @param philosopherType 철학자 유형. 아직 users 에 없어 null (봇은 항상 null, 프론트가 봇 이미지를 씀)
+     * @param philosopherType 철학자 유형 (밸런스 게임 결과). 안 했거나 건너뛰었으면 null("일반인"), 봇은 항상 null (프론트가 봇 이미지를 씀)
      * @param isMe            조회한 사용자 본인인지
      * @param result          승패. 보관 시간이 지난 뒤 게스트는 DB 에 기록이 없어 null
      * @param scores          기준별 점수 (0 ~ 25). 보관 시간이 지났거나 몰수패면 null
@@ -58,7 +59,7 @@ public record SessionResultResponse(
     public record ParticipantResultResponse(
             Long participantId,
             String nickname,
-            String philosopherType,
+            PhilosopherType philosopherType,
             Stance stance,
             boolean isMe,
             DebateResult result,

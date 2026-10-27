@@ -16,8 +16,8 @@ import java.util.List;
  *
  * <p>컨트롤러에서 로그인한 유저 id 를 꺼내는 방법:
  * <pre>{@code
- * @GetMapping("/sessions/me")
- * public ApiResponse<...> mySessions(@AuthenticationPrincipal AuthUser authUser) {
+ * @GetMapping("/users/me")
+ * public ApiResponse<...> getMyInfo(@AuthenticationPrincipal AuthUser authUser) {
  *     Long userId = authUser.getUserId();
  * }
  * }</pre>

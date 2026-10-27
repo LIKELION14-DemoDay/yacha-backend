@@ -4,6 +4,8 @@ import java.util.List;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.topic.entity.Topic;
+import likelion.yacha_backend.domain.user.entity.PhilosopherType;
+import likelion.yacha_backend.domain.user.entity.User;
 import org.springframework.data.domain.Slice;
 
 /**
@@ -27,13 +29,14 @@ public record WaitingRoomsResponse(List<Room> rooms, boolean hasNext) {
 
         static Room from(DebateParticipant host) {
             Topic topic = host.getSession().getTopic();
-            return new Room(host.getSession().getId(), new Host(host.getUser().getNickname(), null),
+            User user = host.getUser();
+            return new Room(host.getSession().getId(), new Host(user.getNickname(), user.getPhilosopherType()),
                     new RoomTopic(topic.getId(), topic.getStatement()), host.getStance().opposite());
         }
     }
 
-    /** @param philosopherType 철학자 유형. 아직 users 에 없어 null (결과 화면과 같음) */
-    public record Host(String nickname, String philosopherType) {
+    /** @param philosopherType 방장의 철학자 유형 (밸런스 게임 결과). 안 했거나 건너뛰었으면 null("일반인"), 결과 화면과 같음 */
+    public record Host(String nickname, PhilosopherType philosopherType) {
     }
 
     public record RoomTopic(Long id, String statement) {

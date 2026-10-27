@@ -115,7 +115,7 @@ public class SessionController {
                     자동 제안과 같은 대기열이고, 내 방은 빠짐. 입장은 `POST /sessions/{id}/join`
 
                     카드: 방장(닉네임 · 철학자 유형) · 주제 · `wantedStance`(찾는 입장 = 들어가면 맡을 입장)
-                    `philosopherType` 은 아직 null. `hasNext` 가 true 면 다음 페이지가 있음
+                    `philosopherType` 은 방장의 밸런스 게임 결과 (안 했으면 null = "일반인"). `hasNext` 가 true 면 다음 페이지가 있음
 
                     로그인 필요 (게스트 가능)
                     카테고리 값이 잘못되면 `BINDING_ERROR`, `page` 가 음수면 `VALIDATION_FAILED`
@@ -324,7 +324,7 @@ public class SessionController {
                     판정이 실패하면 다시 부를 때 판정을 다시 시작하고 `PENDING`
                     점수 · 요약은 10분 동안만 있고, 그 뒤에는 승패만 (`criteria` · `scores` · `total` null, 게스트는 승패도 없음)
                     결과를 낼 수 없으면 `FAILED` (판정 중 서버 재시작 · 무효 게임 `ABORTED`)
-                    `philosopherType` 은 아직 null, 봇은 `nickname` 도 null
+                    `philosopherType` 은 밸런스 게임 결과 (안 했으면 null = "일반인"), 봇은 `nickname` · `philosopherType` 모두 null
 
                     참가자만 (`NOT_PARTICIPANT`), 아직 끝나지 않은 토론이면 `SESSION_NOT_FINISHED`
                     """)

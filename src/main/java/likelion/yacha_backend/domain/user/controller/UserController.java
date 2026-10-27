@@ -39,7 +39,8 @@ public class UserController {
                     게스트도 호출 가능
                     게스트는 `email`이 `null`
 
-                    `stats`는 판정 도메인 연동 전까지 0으로 내려감
+                    `stats`는 전투 기록 — 승리(`wins`) · 패배(`losses`) 수. 무승부는 세지 않음
+                    게스트는 승패를 기록하지 않아 0 / 0
 
                     `provider`(LOCAL / KAKAO / GOOGLE)는 가입 경로
                     LOCAL이 아니면 비밀번호가 없는 계정이라, 마이페이지의 "비밀번호 변경" 메뉴를 숨기면 됨

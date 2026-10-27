@@ -53,10 +53,11 @@ public class SecurityConfig {
             "/actuator/health",
     };
 
-    /** 인증 없이 GET만 허용할 경로. 카테고리 목록 · 회원가입 이메일 중복 확인 */
+    /** 인증 없이 GET만 허용할 경로. 카테고리 목록 · 회원가입 이메일 중복 확인 · 밸런스 게임 유형 설명(공유 링크) */
     private static final String[] PUBLIC_GET_ENDPOINTS = {
             "/api/v1/categories",
             "/api/v1/auth/email/availability",
+            "/api/v1/balance-game/philosophers/**",
     };
 
     /**
@@ -67,15 +68,17 @@ public class SecurityConfig {
      * 게임 · 관전에 쓰는 경로를 새로 만들면 여기에 추가해야 함
      *
      * 단, /sessions/** 아래에서는 반대로 동작함. 이 아래 회원 전용 기능은 직접 막아야 함
-     *   경로로 나눌 수 있으면 → filterChain 에서 /sessions/** 보다 먼저 막기 (예: 전투 기록 /sessions/me)
+     *   경로로 나눌 수 있으면 → filterChain 에서 /sessions/** 보다 먼저 막기
      *   경로가 같으면 → 서비스에서 막기 (예: 친구 방 생성은 랜덤 방과 같은 POST /sessions, 게스트면 GUEST_NOT_ALLOWED)
      */
     private static final String[] GUEST_ENDPOINTS = {
             "/api/v1/auth/logout",
             // 게스트 전용. 회원이 부르면 서비스에서 ALREADY_MEMBER
             "/api/v1/auth/upgrade",
-            // 게임 · 관전 (방 · 상태 · 메시지 · 주장 등). 회원 전용인 전투 기록(GET /sessions/me/**)은 위에서 먼저 막음
+            // 게임 · 관전 (방 · 상태 · 메시지 · 주장 등)
             "/api/v1/sessions/**",
+            // 밸런스 게임 (질문 · 결과 · 건너뛰기). 게스트도 유형을 가짐. 공유용 유형 설명은 위에서 로그인 없이 열어 둠
+            "/api/v1/balance-game/**",
     };
 
     /** 게스트도 GET 으로 쓸 수 있는 경로 */
@@ -111,8 +114,6 @@ public class SecurityConfig {
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_GET_ENDPOINTS).permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                        // 전투 기록(승패)은 회원 전용. 아래 /sessions/** 보다 먼저 와야 함
-                        .requestMatchers(HttpMethod.GET, "/api/v1/sessions/me", "/api/v1/sessions/me/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers(GUEST_ENDPOINTS).authenticated()
                         .requestMatchers(HttpMethod.GET, GUEST_GET_ENDPOINTS).authenticated()
                         // 나머지는 회원 전용. 게스트가 오면 403 GUEST_NOT_ALLOWED (JwtAccessDeniedHandler)
