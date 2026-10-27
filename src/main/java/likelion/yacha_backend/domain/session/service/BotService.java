@@ -312,6 +312,12 @@ public class BotService {
         boolean retrying = false;
         try {
             if (isActive(game) && game.botChatCount() < properties.maxReplies()) {
+                if (attempt > 1 && game.botProgress().humanChatNo() != chatNo) {
+                    // 실행기에서 기다리는 사이 사람이 또 말했습니다. 이 재시도는 버리고 새 말에 대답합니다 —
+                    // 새 말의 차례가 이미 왔으면 아래 finishReply 가, 아직이면 그 말의 대답 타이머가 대답을 시작합니다.
+                    log.info("[봇] 다시 시도하기 전에 사람이 또 말해 새 말에 대답합니다. sessionId={}", sessionId);
+                    return;
+                }
                 String text;
                 try {
                     Input input = input(sessionId, game);

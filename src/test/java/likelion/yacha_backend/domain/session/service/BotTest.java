@@ -21,6 +21,8 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
 import likelion.yacha_backend.domain.ai.AiException;
 import likelion.yacha_backend.domain.ai.PreparedReplies;
@@ -35,10 +37,12 @@ import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameMessage;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.game.MessageType;
+import likelion.yacha_backend.global.config.GameSchedulerConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 /**
  * 봇 발언 (명세 2-4) — 주장 · 반론 제출, 채팅 대답 · 첫마디 · 상한 · 실패. 실제 타이머 · 실행기로 확인합니다
@@ -55,6 +59,8 @@ class BotTest extends TimerTestSupport {
     private static final long LATE_REBUTTAL = 135;
     /** 첫마디 시각(143초 + 0.5초)이 지난 CHAT */
     private static final long IN_CHAT = 150;
+    /** 봇 실행기 스레드 수 ({@link GameSchedulerConfig#botExecutor}) */
+    private static final int BOT_EXECUTOR_THREADS = 4;
 
     @Autowired
     private SessionFixture fixture;
@@ -70,6 +76,10 @@ class BotTest extends TimerTestSupport {
 
     @Autowired
     private Clock clock;
+
+    @Autowired
+    @Qualifier(GameSchedulerConfig.BOT_EXECUTOR)
+    private Executor botExecutor;
 
     private final List<Long> sessionIds = new ArrayList<>();
 
@@ -374,6 +384,42 @@ class BotTest extends TimerTestSupport {
         waitUntil(() -> botChats(game).size() == 1);
         assertThat(botChats(game).get(0).content()).isEqualTo("새 말에 대답할게요.");
         verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
+    }
+
+    @Test
+    @DisplayName("다시 시도가 실행기에서 기다리는 사이 사람이 또 말하면, 그 시도는 AI 를 부르지 않고 새 말에 한 번만 대답한다")
+    void skipsQueuedRetryWhenHumanSpeaks() throws Exception {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new IllegalStateException("AI 응답 없음")).doReturn("새 말에 대답할게요.")
+                .when(botWriter).reply(any(), any(), anyLong(), anyList());
+        CountDownLatch release = new CountDownLatch(1);
+
+        humanChat(room, "첫 번째");
+        verify(botWriter, timeout(WAIT_MILLIS).times(1)).reply(any(), any(), anyLong(), anyList());
+        try {
+            // 실행기 스레드를 모두 잡아, 대답 재시도 대기(200ms) 뒤 다시 시도가 대기열에서 기다리게 합니다.
+            for (int i = 0; i < BOT_EXECUTOR_THREADS; i++) {
+                botExecutor.execute(() -> {
+                    try {
+                        release.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
+            }
+            Thread.sleep(400);
+            humanChat(room, "두 번째");
+            // 새 말의 대답 타이머(300ms)까지 울려, 끝나면 한 번 더 대답하도록 표시된 상태를 만듭니다.
+            Thread.sleep(500);
+        } finally {
+            release.countDown();
+        }
+
+        waitUntil(() -> botChats(game).size() == 1);
+        assertThat(botChats(game).get(0).content()).isEqualTo("새 말에 대답할게요.");
+        verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
+        assertThat(botChats(game)).hasSize(1);
     }
 
     @Test
