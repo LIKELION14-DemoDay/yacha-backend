@@ -330,8 +330,9 @@ public class BotService {
                     if (attempt == 1 && !(e instanceof AiException ai && !ai.isRetryable())) {
                         log.warn("[봇] 대답을 만들지 못해 다시 시도합니다. sessionId={}, error={}",
                                 sessionId, e.getClass().getSimpleName());
-                        retrying = true;
+                        // 예약에 성공한 뒤에 표시합니다. 예약이 실패하면 아래 finally 가 대답 중 표시를 풀어야 합니다.
                         retryReply(sessionId, game, chatNo);
+                        retrying = true;
                         return;
                     }
                     log.warn("[봇] 대답을 만들지 못해 준비된 문장으로 대답합니다. sessionId={}, error={}",
@@ -347,6 +348,9 @@ public class BotService {
         } catch (BusinessException e) {
             // 채팅이 닫혔거나(260초 · 종료) 글자 수 · 채팅 수를 넘었습니다. 이 대답만 버립니다.
             log.info("[봇] 대답을 버립니다. sessionId={}, error={}", sessionId, e.getErrorCode().name());
+        } catch (RuntimeException e) {
+            // AI 실패는 위에서 받습니다. 여기는 대답 보내기 · 다시 시도 예약 같은 예상 밖 실패로, 어느 게임인지 남깁니다.
+            log.error("[봇] 대답을 보내지 못했습니다. sessionId={}", sessionId, e);
         } finally {
             if (!retrying && game.botProgress().finishReply()) {
                 startReplying(sessionId, game);

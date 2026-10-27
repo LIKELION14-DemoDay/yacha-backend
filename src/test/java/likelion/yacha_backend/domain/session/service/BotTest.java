@@ -41,8 +41,12 @@ import likelion.yacha_backend.global.config.GameSchedulerConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.messaging.MessageDeliveryException;
 
 /**
  * 봇 발언 (명세 2-4) — 주장 · 반론 제출, 채팅 대답 · 첫마디 · 상한 · 실패. 실제 타이머 · 실행기로 확인합니다
@@ -420,6 +424,23 @@ class BotTest extends TimerTestSupport {
         assertThat(botChats(game).get(0).content()).isEqualTo("새 말에 대답할게요.");
         verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
         assertThat(botChats(game)).hasSize(1);
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("대답을 보내다 예상 밖 오류가 나면 어느 게임인지 로그로 남기고, 다음 말에는 다시 대답한다")
+    void logsUnexpectedSendFailure(CapturedOutput output) {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new MessageDeliveryException("보내기 실패")).doCallRealMethod()
+                .when(gameMessageService).broadcastAll(eq(room.sessionId()), argThat(messages -> messages.stream()
+                        .anyMatch(message -> message.participantId().equals(game.getAiParticipantId()))));
+
+        humanChat(room, "첫 번째");
+        waitUntil(() -> output.getAll().contains("[봇] 대답을 보내지 못했습니다. sessionId=" + room.sessionId()));
+        humanChat(room, "두 번째");
+
+        waitUntil(() -> botChats(game).size() == 2);
     }
 
     @Test
