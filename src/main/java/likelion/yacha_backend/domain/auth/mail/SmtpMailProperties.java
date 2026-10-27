@@ -50,6 +50,15 @@ public record SmtpMailProperties(
         return !isConfigured() || hasText(from);
     }
 
+    /**
+     * 계정은 아이디 · 비밀번호를 함께 넣어야 함
+     * 하나만 있으면 서버는 뜨지만 메일을 보낼 때마다 인증이 실패하고, 발송은 비동기라 로그로만 드러남
+     */
+    @AssertTrue(message = "mail.host가 있으면 mail.username · mail.password는 둘 다 있거나 둘 다 없어야 합니다.")
+    public boolean isCredentialsComplete() {
+        return !isConfigured() || hasText(username) == hasText(password);
+    }
+
     /** 타임아웃은 밀리초로 넘기므로 1ms 이상이어야 함. 0이면 무한 대기가 됨 (null은 위의 @NotNull이 검사) */
     @AssertTrue(message = "mail.connection-timeout · mail.timeout 은 1ms 이상이어야 합니다.")
     public boolean isTimeoutsAtLeastOneMillisecond() {

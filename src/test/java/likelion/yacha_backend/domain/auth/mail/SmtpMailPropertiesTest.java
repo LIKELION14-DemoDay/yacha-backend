@@ -74,6 +74,26 @@ class SmtpMailPropertiesTest {
     }
 
     @Test
+    @DisplayName("host가 있는데 아이디 · 비밀번호 중 하나만 있으면 기동이 실패한다")
+    void halfCredentials() {
+        for (String missing : new String[]{"password", "username"}) {
+            Map<String, String> values = configuredValues();
+            values.put(missing, "");
+            runnerWith(values).run(context -> assertThat(context).as("%s 없음", missing).hasFailed());
+        }
+    }
+
+    @Test
+    @DisplayName("host가 비어 있으면 아이디만 있어도 기동한다 (보내지 않는 설정이라)")
+    void halfCredentialsWithoutHost() {
+        Map<String, String> values = configuredValues();
+        values.put("host", "");
+        values.put("password", "");
+
+        runnerWith(values).run(context -> assertThat(context).hasNotFailed());
+    }
+
+    @Test
     @DisplayName("계정이 비어 있으면 인증 없이 보내는 설정이다")
     void withoutCredentials() {
         Map<String, String> values = configuredValues();
