@@ -19,6 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>DB 에만 있는 주제는 지우지 않고 내립니다. 이미 그 주제로 한 게임이 참조하기 때문입니다</li>
  *   <li>주제 키가 없는 주제(파일 밖에서 넣은 것)는 건드리지 않습니다</li>
  * </ul>
+ *
+ * <p>파일이 비었는데 DB 에 파일 주제가 있으면 맞추지 않고 실패합니다. 병합 실수 등으로 파일이 비면 모든 주제가 내려가
+ * 방 생성 · 자동 제안 · 봇전이 전부 막히기 때문입니다. 서버가 뜨지 않아 배포에서 바로 드러납니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -30,6 +33,9 @@ public class TopicSeedService {
     public Result sync(List<TopicSeed> seeds) {
         Map<String, Topic> existing = topicRepository.findAllByCodeIsNotNull().stream()
                 .collect(Collectors.toMap(Topic::getCode, Function.identity()));
+        if (seeds.isEmpty() && !existing.isEmpty()) {
+            throw new IllegalStateException("주제 파일이 비었는데 DB 에 파일 주제가 " + existing.size() + "건 있습니다");
+        }
         int created = 0;
         int updated = 0;
         for (TopicSeed seed : seeds) {

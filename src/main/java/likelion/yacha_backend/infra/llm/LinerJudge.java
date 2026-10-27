@@ -176,7 +176,7 @@ public class LinerJudge
 
             builder.append("입장: ")
                     .append(
-                            request.topic().stanceText(
+                            request.topic().stanceDescription(
                                     participant.stance()
                             )
                     )

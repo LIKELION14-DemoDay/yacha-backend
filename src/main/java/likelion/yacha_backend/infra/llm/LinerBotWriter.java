@@ -133,7 +133,7 @@ public class LinerBotWriter implements BotWriter {
                 %s
                 """.formatted(
                 topic.statement(),
-                topic.stanceText(botStance)
+                topic.stanceDescription(botStance)
         );
 
         String response = normalClient.request(
@@ -183,7 +183,7 @@ public class LinerBotWriter implements BotWriter {
                 %s
                 """.formatted(
                 topic.statement(),
-                topic.stanceText(botStance),
+                topic.stanceDescription(botStance),
                 opponentArgument
         );
 
@@ -274,7 +274,7 @@ public class LinerBotWriter implements BotWriter {
                 %s
                 """.formatted(
                 topic.statement(),
-                topic.stanceText(botStance),
+                topic.stanceDescription(botStance),
                 formatConversation(
                         conversation,
                         botParticipantId

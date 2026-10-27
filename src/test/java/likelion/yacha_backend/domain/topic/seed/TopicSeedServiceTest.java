@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.topic.seed;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import likelion.yacha_backend.domain.topic.entity.Category;
@@ -64,15 +65,35 @@ class TopicSeedServiceTest {
     @Test
     @DisplayName("파일에서 빠진 주제는 지우지 않고 내리고, 다시 넣으면 올린다")
     void deactivatesRemoved() {
-        topicSeedService.sync(List.of(seed("tech-ai-01", Subcategory.AI, "질문", null)));
+        topicSeedService.sync(List.of(seed("tech-ai-01", Subcategory.AI, "질문", null),
+                seed("tech-ai-02", Subcategory.AI, "남는 질문", null)));
+        List<TopicSeed> withoutFirst = List.of(seed("tech-ai-02", Subcategory.AI, "남는 질문", null));
 
-        assertThat(topicSeedService.sync(List.of())).isEqualTo(new TopicSeedService.Result(0, 0, 1));
+        assertThat(topicSeedService.sync(withoutFirst)).isEqualTo(new TopicSeedService.Result(0, 0, 1));
         assertThat(find("tech-ai-01").isActive()).isFalse();
-        assertThat(topicSeedService.sync(List.of())).isEqualTo(new TopicSeedService.Result(0, 0, 0));
+        assertThat(topicSeedService.sync(withoutFirst)).isEqualTo(new TopicSeedService.Result(0, 0, 0));
 
-        assertThat(topicSeedService.sync(List.of(seed("tech-ai-01", Subcategory.AI, "질문", null))))
+        assertThat(topicSeedService.sync(List.of(seed("tech-ai-01", Subcategory.AI, "질문", null),
+                seed("tech-ai-02", Subcategory.AI, "남는 질문", null))))
                 .isEqualTo(new TopicSeedService.Result(0, 1, 0));
         assertThat(find("tech-ai-01").isActive()).isTrue();
+    }
+
+    @Test
+    @DisplayName("파일이 비었는데 DB 에 파일 주제가 있으면 아무것도 내리지 않고 실패한다")
+    void rejectsEmptyFileWhenSeeded() {
+        topicSeedService.sync(List.of(seed("tech-ai-01", Subcategory.AI, "질문", null)));
+
+        assertThatThrownBy(() -> topicSeedService.sync(List.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("파일 주제가 1건");
+        assertThat(find("tech-ai-01").isActive()).isTrue();
+    }
+
+    @Test
+    @DisplayName("DB 에 파일 주제가 없으면 빈 파일은 아무 일도 하지 않는다 (주제를 채우기 전)")
+    void emptyFileBeforeSeeding() {
+        assertThat(topicSeedService.sync(List.of())).isEqualTo(new TopicSeedService.Result(0, 0, 0));
     }
 
     @Test
