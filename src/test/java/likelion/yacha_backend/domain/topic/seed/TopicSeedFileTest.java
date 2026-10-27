@@ -8,6 +8,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.regex.Pattern;
 import likelion.yacha_backend.domain.topic.entity.Subcategory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,13 +19,72 @@ import tools.jackson.databind.json.JsonMapper;
 @DisplayName("주제 파일 — 읽기 · 검사")
 class TopicSeedFileTest {
 
+    /**
+     * 열린 질문에 자주 나오는 의문사. "어떤" 은 "어떤 경우에도 ~인가?" 처럼 예 / 아니오 질문에도 자주 써서 뺍니다.
+     * 의문사가 아닌 말(왜곡 · 어떻게든 · 누구나 · 언제나 · 어디든 · 몇몇)은 뺍니다. 그 밖에 잘못 걸리면 문장을 바꿉니다.
+     */
+    private static final Pattern QUESTION_WORD =
+            Pattern.compile("무엇|뭐|왜(?!곡)|어떻게(?!든)|누구(?![나든])|언제(?![나든])|어디(?!든)|얼마나|몇(?!몇)");
+
+    /** "~의 의미는?" 처럼 명사 + 은 / 는 으로 끝나는 열린 질문. "~하는가?" 는 "가?" 로 끝나 걸리지 않습니다. */
+    private static final Pattern NOUN_QUESTION_END = Pattern.compile("[은는]\\s*\\?$");
+
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     @Test
     @DisplayName("실제 주제 파일(topics/topics.json)은 읽을 수 있고 규칙에 맞는다")
     void actualFile() throws Exception {
+        assertThat(readActualFile()).isNotNull();
+    }
+
+    /**
+     * 답은 예 / 아니오로만 받으므로 열린 질문은 넣지 않습니다. 문장 규칙으로 보는 거라 선택형 질문 등은 놓칠 수 있어
+     * 마지막 확인은 사람이 합니다. 잘못 걸러내도 서버가 뜨지 못하면 안 되므로 서버 시작 검사에는 넣지 않습니다.
+     */
+    @Test
+    @DisplayName("실제 주제 파일의 질문은 모두 예 / 아니오로 답할 수 있는 질문이다")
+    void actualFileHasOnlyYesNoQuestions() throws Exception {
+        assertThat(readActualFile())
+                .allSatisfy(seed -> assertThat(openQuestionReason(seed.statement()))
+                        .as("%s: %s", seed.code(), seed.statement())
+                        .isNull());
+    }
+
+    @Test
+    @DisplayName("열린 질문 검사 — 의문사 · 명사 + 은 / 는 끝 · 물음표 없음은 걸러내고, 예 / 아니오 질문은 통과시킨다")
+    void openQuestionRules() {
+        assertThat(openQuestionReason("다수를 위해 한 사람의 희생을 선택해도 되는가?")).isNull();
+        assertThat(openQuestionReason("어떤 경우에도 거짓말은 나쁜가?")).isNull();
+        assertThat(openQuestionReason("AI가 그린 그림도 예술이라고 할 수 있을까?")).isNull();
+        assertThat(openQuestionReason("언론의 왜곡은 언제나 처벌해야 하는가?")).isNull();
+        assertThat(openQuestionReason("누구나 어디든 갈 자유가 있는가?")).isNull();
+
+        assertThat(openQuestionReason("AI 시대 예술의 의미는?")).contains("은 / 는");
+        assertThat(openQuestionReason("행복의 조건은 ?")).contains("은 / 는");
+        assertThat(openQuestionReason("왜 사람은 거짓말을 하는가?")).contains("왜");
+        assertThat(openQuestionReason("좋은 삶이란 무엇인가?")).contains("무엇");
+        assertThat(openQuestionReason("거짓말은 나쁘다")).contains("물음표");
+    }
+
+    /** 열린 질문으로 보이는 이유. 예 / 아니오 질문이면 null. */
+    private static String openQuestionReason(String statement) {
+        String text = statement.strip();
+        if (!text.endsWith("?")) {
+            return "물음표로 끝나지 않습니다";
+        }
+        var questionWord = QUESTION_WORD.matcher(text);
+        if (questionWord.find()) {
+            return "의문사 '" + questionWord.group() + "' 가 있습니다";
+        }
+        if (NOUN_QUESTION_END.matcher(text).find()) {
+            return "'~은 / 는?' 으로 끝나는 열린 질문입니다";
+        }
+        return null;
+    }
+
+    private List<TopicSeed> readActualFile() throws Exception {
         try (InputStream in = new ClassPathResource(TopicSeedFile.LOCATION).getInputStream()) {
-            assertThat(TopicSeedFile.read(in, objectMapper)).isNotNull();
+            return TopicSeedFile.read(in, objectMapper);
         }
     }
 
