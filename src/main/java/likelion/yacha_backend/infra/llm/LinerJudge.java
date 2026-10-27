@@ -37,7 +37,6 @@ import tools.jackson.databind.ObjectMapper;
  * 승패 계산, 재시도 및 실패 상태 관리는
  * 이 클래스를 호출하는 게임 서비스에서 담당한다.
  *
- * Spring Bean 등록은 설정 전환 단계에서 진행한다.
  */
 public class LinerJudge
         extends AbstractLinerChatClient

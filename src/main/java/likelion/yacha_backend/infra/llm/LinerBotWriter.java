@@ -23,7 +23,6 @@ import org.springframework.stereotype.Component;
  * 게임 진행, 호출 시점, 재시도 및 실패 처리는
  * 게임 서비스에서 담당한다.
  *
- * 기존 테스트 호환성을 위해 클래스 이름은 유지한다.
  */
 @Component
 @ConditionalOnProperty(
@@ -340,14 +339,6 @@ public class LinerBotWriter implements BotWriter {
 
         return builder.toString();
     }
-
-    /**
-     * 유니코드 코드 포인트 기준으로
-     * 글자 수를 제한한다.
-     *
-     * 일부 이모지는 String.length()에서
-     * 두 글자로 계산되므로 codePointCount()를 사용한다.
-     */
 
     /**
      * AI 응답의 글자 수를 제한한다.

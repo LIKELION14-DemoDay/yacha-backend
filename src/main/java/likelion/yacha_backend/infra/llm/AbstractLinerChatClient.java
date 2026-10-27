@@ -18,7 +18,7 @@ import org.springframework.web.client.RestClientResponseException;
 /**
  * Liner Model API의 Chat Completions를 호출하는 공통 클라이언트.
  *
- * 실제 요청은 OpenAI가 아닌 Liner API로 전송한다.
+ * 실제 요청은 Liner API로 전송한다.
  * 재시도 및 최종 실패 처리는 호출하는 서비스가 담당한다.
  */
 public abstract class AbstractLinerChatClient {

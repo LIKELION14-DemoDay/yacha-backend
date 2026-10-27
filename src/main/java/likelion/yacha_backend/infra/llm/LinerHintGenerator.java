@@ -14,7 +14,6 @@ import likelion.yacha_backend.domain.session.entity.Stance;
  * Liner Model API를 사용해 토론 힌트 3개를 생성한다.
  *
  * 각 힌트는 20자 이내여야 한다.
- * 실제 Spring Bean 등록은 설정 전환 단계에서 진행한다.
  */
 public class LinerHintGenerator
         extends AbstractLinerChatClient
