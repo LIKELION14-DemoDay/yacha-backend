@@ -22,6 +22,7 @@ import likelion.yacha_backend.domain.session.repository.ProposalCursorStore;
 import likelion.yacha_backend.domain.topic.entity.Subcategory;
 import likelion.yacha_backend.domain.topic.entity.Topic;
 import likelion.yacha_backend.domain.topic.repository.TopicRepository;
+import likelion.yacha_backend.domain.user.entity.PhilosopherType;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
@@ -240,9 +241,11 @@ class SessionProposalApiTest {
     class Waiting {
 
         @Test
-        @DisplayName("카테고리의 대기 방을 오래된 순으로, 내 방은 빼고 카드(방장 · 주제 · 찾는 입장)로 준다")
+        @DisplayName("카테고리의 대기 방을 오래된 순으로, 내 방은 빼고 카드(방장 · 유형 · 주제 · 찾는 입장)로 준다")
         void listsOldestFirst() throws Exception {
-            Long older = waitingRoom(Subcategory.GOOD_AND_EVIL, Stance.AGREE);
+            User kant = userRepository.getReferenceById(newUser());
+            kant.completeBalanceGame(PhilosopherType.KANT);
+            Long older = waitingRoom(Subcategory.GOOD_AND_EVIL, Stance.AGREE, kant);
             Long newer = waitingRoom(Subcategory.LYING, Stance.DISAGREE);
             waitingRoom(Subcategory.GOOD_AND_EVIL, Stance.AGREE, userRepository.getReferenceById(me));
             waitingRoom(Subcategory.HUMAN_NATURE, Stance.AGREE);
@@ -253,10 +256,12 @@ class SessionProposalApiTest {
                     .andExpect(jsonPath("$.data.rooms[0].sessionId").value(older))
                     .andExpect(jsonPath("$.data.rooms[0].wantedStance").value("DISAGREE"))
                     .andExpect(jsonPath("$.data.rooms[0].host.nickname").isNotEmpty())
-                    .andExpect(jsonPath("$.data.rooms[0].host.philosopherType").doesNotExist())
+                    .andExpect(jsonPath("$.data.rooms[0].host.philosopherType").value("KANT"))
                     .andExpect(jsonPath("$.data.rooms[0].topic.statement").value("주제 GOOD_AND_EVIL"))
                     .andExpect(jsonPath("$.data.rooms[1].sessionId").value(newer))
                     .andExpect(jsonPath("$.data.rooms[1].wantedStance").value("AGREE"))
+                    // 밸런스 게임을 안 한 방장은 유형이 없음 ("일반인")
+                    .andExpect(jsonPath("$.data.rooms[1].host.philosopherType").doesNotExist())
                     .andExpect(jsonPath("$.data.hasNext").value(false));
         }
 
