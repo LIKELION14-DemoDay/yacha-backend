@@ -14,6 +14,7 @@ import likelion.yacha_backend.domain.session.entity.DebatePhase;
  *
  * <p><b>채팅 대답</b> — 사람이 말할 때마다 번호를 올리고, 대답 타이머는 자기 번호가 마지막일 때만 대답합니다
  * (마지막 말 뒤 한 번). 대답은 한 번에 하나만 만들고, 만드는 중에 차례가 오면 끝난 뒤 바로 한 번 더 만듭니다.
+ * 실패해 다시 시도를 기다리는 동안도 만드는 중으로 봅니다.
  */
 public class BotProgress {
 
@@ -100,6 +101,11 @@ public class BotProgress {
             return false;
         }
         return startOrQueue();
+    }
+
+    /** 지금까지 사람이 말한 횟수. 대답을 다시 시도하기 전에 그 사이 사람이 또 말했는지 볼 때 씁니다. */
+    public synchronized long humanChatNo() {
+        return humanChatNo;
     }
 
     /** 첫마디 — 사람이 아직 한 번도 말하지 않았고 만드는 대답이 없을 때만 true 입니다. */

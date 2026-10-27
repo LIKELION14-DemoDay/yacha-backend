@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 import likelion.yacha_backend.domain.ai.AiException;
+import likelion.yacha_backend.domain.ai.PreparedReplies;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
@@ -316,11 +317,54 @@ class BotTest extends TimerTestSupport {
     }
 
     @Test
-    @DisplayName("대답을 만들지 못하면 그 대답만 건너뛰고, 다음 말에는 다시 대답한다")
-    void skipsFailedReply() {
+    @DisplayName("대답을 만들지 못하면 대기 뒤 한 번 다시 시도해 그 대답을 보낸다")
+    void retriesFailedReplyOnce() {
         Room room = botRoom(IN_CHAT);
         Game game = game(room);
-        doThrow(new IllegalStateException("AI 응답 없음")).doReturn("이번엔 대답할게요.")
+        doThrow(new AiException("LINER_HTTP_ERROR_429", true)).doReturn("이번엔 대답할게요.")
+                .when(botWriter).reply(any(), any(), anyLong(), anyList());
+
+        humanChat(room, "첫 번째");
+
+        waitUntil(() -> botChats(game).size() == 1);
+        assertThat(botChats(game).get(0).content()).isEqualTo("이번엔 대답할게요.");
+        verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
+    }
+
+    @Test
+    @DisplayName("다시 시도해도 실패하면 준비된 문장으로 대답한다")
+    void preparedReplyAfterRetryFails() {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new IllegalStateException("AI 응답 없음")).when(botWriter).reply(any(), any(), anyLong(), anyList());
+
+        humanChat(room, "첫 번째");
+
+        waitUntil(() -> botChats(game).size() == 1);
+        assertThat(botChats(game).get(0).content()).isEqualTo(PreparedReplies.next(0));
+        verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
+    }
+
+    @Test
+    @DisplayName("다시 시도할 수 없는 실패면 기다리지 않고 바로 준비된 문장으로 대답한다")
+    void preparedReplyWithoutRetry() {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new AiException("LINER_HTTP_ERROR_401", false)).when(botWriter).reply(any(), any(), anyLong(), anyList());
+
+        humanChat(room, "첫 번째");
+
+        waitUntil(() -> botChats(game).size() == 1);
+        assertThat(botChats(game).get(0).content()).isEqualTo(PreparedReplies.next(0));
+        verify(botWriter, after(800).times(1)).reply(any(), any(), anyLong(), anyList());
+    }
+
+    @Test
+    @DisplayName("다시 시도를 기다리는 사이 사람이 또 말하면, 다시 시도하지 않고 새 말에 대답한다")
+    void skipsRetryWhenHumanSpeaks() {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new IllegalStateException("AI 응답 없음")).doReturn("새 말에 대답할게요.")
                 .when(botWriter).reply(any(), any(), anyLong(), anyList());
 
         humanChat(room, "첫 번째");
@@ -328,7 +372,22 @@ class BotTest extends TimerTestSupport {
         humanChat(room, "두 번째");
 
         waitUntil(() -> botChats(game).size() == 1);
-        verify(botWriter, times(2)).reply(any(), any(), anyLong(), anyList());
+        assertThat(botChats(game).get(0).content()).isEqualTo("새 말에 대답할게요.");
+        verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
+    }
+
+    @Test
+    @DisplayName("첫마디도 실패하면 한 번 다시 시도하고, 또 실패하면 준비된 문장으로 말한다")
+    void preparedFirstMessage() {
+        Room room = botRoom(IN_CHAT);
+        Game game = game(room);
+        doThrow(new IllegalStateException("AI 응답 없음")).when(botWriter).reply(any(), any(), anyLong(), anyList());
+
+        botService.start(room.sessionId());
+
+        waitUntil(() -> botChats(game).size() == 1);
+        assertThat(botChats(game).get(0).content()).isEqualTo(PreparedReplies.next(0));
+        verify(botWriter, after(800).times(2)).reply(any(), any(), anyLong(), anyList());
     }
 
     @Test
