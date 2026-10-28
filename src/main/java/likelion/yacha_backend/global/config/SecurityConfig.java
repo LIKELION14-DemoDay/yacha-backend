@@ -44,6 +44,9 @@ public class SecurityConfig {
             "/api/v1/auth/password/reset",
             "/api/v1/auth/social/kakao",
             "/api/v1/auth/social/google",
+            // 로그인 전 온보딩의 밸런스 게임 결과 · 건너뛰기. 저장하지 않고 쿠키로만 내려 둠
+            "/api/v1/balance-game/preview",
+            "/api/v1/balance-game/preview/skip",
             // WebSocket 핸드셰이크. 브라우저는 핸드셰이크에 Authorization 헤더를 붙일 수 없어서
             // 여기서는 열어 두고, STOMP CONNECT 프레임의 JWT 로 인증합니다 (StompAuthChannelInterceptor).
             "/ws/**",

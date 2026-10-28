@@ -8,10 +8,14 @@ import likelion.yacha_backend.domain.balancegame.dto.BalanceGameAnswerRequest;
 import likelion.yacha_backend.domain.balancegame.dto.PhilosopherResponse;
 import likelion.yacha_backend.domain.balancegame.dto.QuestionResponse;
 import likelion.yacha_backend.domain.balancegame.service.BalanceGameService;
+import likelion.yacha_backend.domain.balancegame.service.PreviewResult;
+import likelion.yacha_backend.domain.balancegame.service.PreviewResultCookie;
 import likelion.yacha_backend.domain.user.entity.PhilosopherType;
 import likelion.yacha_backend.global.response.ApiResponse;
 import likelion.yacha_backend.global.security.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,13 +24,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "밸런스 게임", description = "질문 12개로 철학 유형 정하기 · 건너뛰기 · 유형 설명(공유)")
+@Tag(name = "밸런스 게임", description = "질문 12개로 철학 유형 정하기 · 건너뛰기 · 로그인 전 미리보기 · 유형 설명(공유)")
 @RestController
 @RequestMapping("/api/v1/balance-game")
 @RequiredArgsConstructor
 public class BalanceGameController {
 
     private final BalanceGameService balanceGameService;
+    private final PreviewResultCookie previewResultCookie;
 
     @Operation(
             summary = "질문 12개",
@@ -58,6 +63,40 @@ public class BalanceGameController {
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody BalanceGameAnswerRequest request) {
         return ApiResponse.success(balanceGameService.submit(authUser.getUserId(), request));
+    }
+
+    @Operation(
+            summary = "결과 미리보기 (로그인 전 온보딩)",
+            description = """
+                    로그인 전에 답 12개로 결과 화면 내용을 줌. 응답은 결과 제출과 같음
+                    저장하지 않고 결과를 쿠키(`balanceGamePreview`, HttpOnly, 1시간)로 내려 둠
+                    로그인 · 회원가입 · 비회원 시작 · 소셜 로그인 때 서버가 이 쿠키를 보고 계정에 저장하므로, 프론트는 따로 저장할 필요 없음
+                    다시 하면 새 결과로 덮어씀
+
+                    로그인 없이 호출 가능. 쿠키가 실리도록 `credentials: 'include'` 필요
+                    답이 12개가 아니면 `VALIDATION_FAILED`, `A` · `B` 가 아닌 값이면 `PARSING_ERROR` (쿠키는 내려가지 않음)
+                    """)
+    @PostMapping("/preview")
+    public ResponseEntity<ApiResponse<PhilosopherResponse>> preview(@Valid @RequestBody BalanceGameAnswerRequest request) {
+        PhilosopherResponse response = balanceGameService.preview(request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, previewResultCookie.create(PreviewResult.of(response.type())).toString())
+                .body(ApiResponse.success(response));
+    }
+
+    @Operation(
+            summary = "건너뛰기 미리보기 (로그인 전 온보딩)",
+            description = """
+                    온보딩의 "건너뛰기". 저장하지 않고 건너뜀을 쿠키(`balanceGamePreview`, 1시간)로 내려 둠
+                    로그인할 때 서버가 이 쿠키를 보고 건너뜀으로 저장하므로, 홈에서 다시 띄우지 않음
+
+                    로그인 없이 호출 가능. 쿠키가 실리도록 `credentials: 'include'` 필요
+                    """)
+    @PostMapping("/preview/skip")
+    public ResponseEntity<ApiResponse<Void>> previewSkip() {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, previewResultCookie.create(PreviewResult.skipped()).toString())
+                .body(ApiResponse.noContent());
     }
 
     @Operation(

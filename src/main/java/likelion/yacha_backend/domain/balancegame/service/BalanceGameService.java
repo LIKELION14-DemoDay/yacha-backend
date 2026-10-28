@@ -33,6 +33,11 @@ public class BalanceGameService {
         return PhilosopherResponse.of(type);
     }
 
+    /** 로그인 전 미리보기. 유형만 정하고 저장하지 않음. 저장은 로그인할 때 쿠키를 보고 함 */
+    public PhilosopherResponse preview(BalanceGameAnswerRequest request) {
+        return PhilosopherResponse.of(BalanceGameScorer.decide(BalanceQuestions.ALL, request.answers()));
+    }
+
     /** 건너뛰기. 다음부터 홈에서 띄우지 않습니다. 이미 결과가 있으면 그대로 둡니다. */
     public void skip(Long userId) {
         userService.skipBalanceGame(userId);
