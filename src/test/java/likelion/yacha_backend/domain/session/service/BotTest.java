@@ -59,7 +59,7 @@ class BotTest extends TimerTestSupport {
     private static final long WAIT_MILLIS = 5_000;
     /** 무작위 제출 시각(20~50초)이 지난 PREP */
     private static final long LATE_PREP = 55;
-    /** 무작위 제출 시각(100~130초)이 지난 REBUTTAL */
+    /** 무작위 제출 시각(95~120초)이 지난 REBUTTAL */
     private static final long LATE_REBUTTAL = 135;
     /** 첫마디 시각(143초 + 0.5초)이 지난 CHAT */
     private static final long IN_CHAT = 150;
@@ -163,6 +163,31 @@ class BotTest extends TimerTestSupport {
         verify(gameMessageService, timeout(WAIT_MILLIS))
                 .broadcastSubmitted(eq(room.sessionId()), eq(game.getAiParticipantId()), eq(DebatePhase.REBUTTAL));
         verify(botWriter, never()).writeArgument(any(), any());
+    }
+
+    @Test
+    @DisplayName("주장이 공개된 뒤라도 반론 구간(80초) 전에는 봇 반론을 쓰지 않는다 — 그때 다 쓰면 낼 수 없어 버려짐")
+    void doesNotWriteRebuttalBeforeRebuttalPhase() {
+        Room room = botRoom(65);
+
+        botService.start(room.sessionId());
+
+        verify(botWriter, after(1_000).never()).writeRebuttal(any(), any(), any());
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("봇 반론은 85초에 쓰기 시작하고, 제출 시각 전에 다 써도 버리지 않는다")
+    void writesRebuttalAt85(CapturedOutput output) {
+        Room room = botRoom(84);
+        Game game = game(room);
+
+        botService.start(room.sessionId());
+
+        verify(botWriter, timeout(WAIT_MILLIS)).writeRebuttal(any(), eq(Stance.DISAGREE), any());
+        verify(gameMessageService, after(500).never())
+                .broadcastSubmitted(eq(room.sessionId()), eq(game.getAiParticipantId()), eq(DebatePhase.REBUTTAL));
+        assertThat(output.getAll()).doesNotContain("REBUTTAL 이 작성 구간을 넘겨 내지 않습니다");
     }
 
     @Test

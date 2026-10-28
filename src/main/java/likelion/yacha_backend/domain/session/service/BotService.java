@@ -40,7 +40,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <pre>
  *   0초        주장 쓰기 시작 ──▶ 20~50초 무작위 시각에 제출 (늦게 끝나면 끝나는 즉시)
- *  63초 공개    반론 쓰기 시작 ──▶ 100~130초 무작위 시각에 제출 (사람 주장 원문을 보고 씀)
+ *  85초        반론 쓰기 시작 ──▶ 95~120초 무작위 시각에 제출 (63초에 공개된 사람 주장 원문을 보고 씀)
  * 143초~260초  사람이 말하면 마지막 말 3초 뒤 한 번 대답 · 사람이 10초 동안 조용하면 첫마디 한 번
  * </pre>
  *
@@ -73,9 +73,14 @@ public class BotService {
     /** 주장 제출 시각 — 시작 후 20 ~ 50초 사이 (PREP 은 60초까지). */
     private static final int ARGUMENT_SUBMIT_FROM = 20;
     private static final int ARGUMENT_SUBMIT_TO = 50;
-    /** 반론 제출 시각 — 시작 후 100 ~ 130초 사이 (REBUTTAL 은 80 ~ 140초). */
-    private static final int REBUTTAL_SUBMIT_FROM = 100;
-    private static final int REBUTTAL_SUBMIT_TO = 130;
+    /**
+     * 반론 쓰기 시작 — 시작 후 85초 (REBUTTAL 은 80 ~ 140초). 반론 구간 전(63 ~ 80초)에 다 쓰면 제출할 수 없는 시각이라
+     * 글이 버려지므로, 구간이 시작된 뒤에 씁니다.
+     */
+    private static final int REBUTTAL_WRITE_AT = 85;
+    /** 반론 제출 시각 — 시작 후 95 ~ 120초 사이. 쓰기 시작과 10초 이상 떨어뜨려 임시 글이 드물게 합니다. */
+    private static final int REBUTTAL_SUBMIT_FROM = 95;
+    private static final int REBUTTAL_SUBMIT_TO = 120;
     /** 제출 시각에 글이 아직 없을 때 먼저 내는 임시 글. */
     static final String PLACEHOLDER = "토론봇이 생각중입니다.";
     /** 작성 구간이 끝날 때까지 글을 못 썼을 때 내는 글. 공개된 뒤 게임을 무효로 끝냅니다. */
@@ -131,8 +136,8 @@ public class BotService {
             gameTimers.schedule(sessionId, DebatePhase.PREP.endAt(startedAt), () -> fail(sessionId, game, DebatePhase.PREP));
         }
         if (now.isBefore(DebatePhase.REBUTTAL.revealAt(startedAt))) {
-            // 반론은 사람 주장 원문을 봐야 하므로 주장이 공개되는 63초에 쓰기 시작합니다.
-            gameTimers.schedule(sessionId, DebatePhase.PREP.revealAt(startedAt),
+            // 반론은 공개된(63초) 사람 주장 원문을 보고, 반론 구간이 시작된 뒤(85초)에 쓰기 시작합니다.
+            gameTimers.schedule(sessionId, startedAt.plusSeconds(REBUTTAL_WRITE_AT),
                     () -> execute(sessionId, () -> write(sessionId, game, DebatePhase.REBUTTAL, 1)));
             gameTimers.schedule(sessionId, startedAt.plusSeconds(random.nextInt(REBUTTAL_SUBMIT_FROM, REBUTTAL_SUBMIT_TO + 1)),
                     () -> due(sessionId, game, DebatePhase.REBUTTAL));
