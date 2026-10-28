@@ -226,6 +226,11 @@ philosophy:
     # 첫 재시도 전 대기 시간. 다음 재시도부터 두 배 (2초 → 4초)
     retry-backoff: 2s
 
+topic:
+  seed:
+    # 서버가 뜰 때마다 DB 의 주제를 topics/topics.json 과 맞춘다 (#54). 테스트에서는 끈다
+    enabled: true
+
 spectate:
   # 관전 스위치. 관전은 사용하지 않아(10/5) 꺼 둔다. 켜면 진행 중인 랜덤 사람전을 참가자가 아니어도 볼 수 있다
   enabled: false
