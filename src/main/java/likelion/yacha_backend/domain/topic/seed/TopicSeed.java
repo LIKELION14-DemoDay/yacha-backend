@@ -7,7 +7,7 @@ import likelion.yacha_backend.domain.topic.entity.Subcategory;
  *
  * @param code         주제 키. 파일 안에서 겹치면 안 되고, 한 번 정하면 바꾸지 않습니다 (바꾸면 다른 주제로 봅니다)
  * @param subcategory  하위 카테고리. 상위 카테고리는 이 값으로 정해집니다
- * @param statement    주제 화면 · 대기 목록에 뜨는 질문. 예 / 아니오로 답할 수 있어야 합니다
+ * @param statement    주제 화면 · 대기 목록에 뜨는 질문. 예 / 아니오로 답할 수 있어야 합니다. 앞뒤 공백은 지웁니다
  * @param active       랜덤 추첨 대상 여부. 빼면 true
  */
 public record TopicSeed(
@@ -16,6 +16,10 @@ public record TopicSeed(
         String statement,
         Boolean active
 ) {
+
+    public TopicSeed {
+        statement = statement == null ? null : statement.strip();
+    }
 
     public boolean isActive() {
         return active == null || active;

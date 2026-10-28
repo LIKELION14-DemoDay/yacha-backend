@@ -9,6 +9,7 @@ import java.util.Set;
 import likelion.yacha_backend.domain.topic.entity.Topic;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -27,10 +28,13 @@ public final class TopicSeedFile {
     public static List<TopicSeed> read(InputStream in, ObjectMapper objectMapper) throws IOException {
         List<TopicSeed> seeds;
         try {
-            seeds = objectMapper.readValue(in, new TypeReference<List<TopicSeed>>() {
-            });
+            // 서버 기본 설정은 모르는 키를 무시해, "activ" 같은 오타나 예전 형식의 입장 문구가 조용히 빠지지 않게 막습니다.
+            seeds = objectMapper.readerFor(new TypeReference<List<TopicSeed>>() {
+                    })
+                    .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                    .readValue(in);
         } catch (JacksonException e) {
-            // 없는 하위 카테고리 값도 여기서 걸립니다.
+            // 없는 하위 카테고리 값 · 모르는 키도 여기서 걸립니다.
             throw new IllegalStateException("주제 파일을 읽지 못했습니다: " + e.getOriginalMessage(), e);
         }
         validate(seeds);
@@ -60,7 +64,7 @@ public final class TopicSeedFile {
             }
             if (isBlank(seed.statement())) {
                 errors.add(where + ": statement 가 없습니다");
-            } else if (!statements.add(seed.statement().strip())) {
+            } else if (!statements.add(seed.statement())) {
                 errors.add(where + ": statement 가 다른 주제와 겹칩니다");
             }
         }

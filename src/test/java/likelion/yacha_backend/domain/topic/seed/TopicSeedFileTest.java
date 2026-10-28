@@ -106,6 +106,32 @@ class TopicSeedFileTest {
     }
 
     @Test
+    @DisplayName("질문 앞뒤 공백은 지운다")
+    void stripsStatement() throws Exception {
+        List<TopicSeed> seeds = read("""
+                [ { "code": "tech-ai-01", "subcategory": "AI", "statement": "  AI 그림도 예술인가? \\n" } ]
+                """);
+
+        assertThat(seeds).extracting(TopicSeed::statement).containsExactly("AI 그림도 예술인가?");
+    }
+
+    @Test
+    @DisplayName("모르는 키가 있으면 실패한다 — 오타 · 예전 형식의 입장 문구")
+    void unknownKey() {
+        assertThatThrownBy(() -> read("""
+                [ { "code": "x-01", "subcategory": "AI", "statement": "질문인가?", "activ": false } ]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("주제 파일을 읽지 못했습니다")
+                .hasMessageContaining("activ");
+        assertThatThrownBy(() -> read("""
+                [ { "code": "x-01", "subcategory": "AI", "statement": "질문인가?", "agreeText": "그렇다" } ]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("agreeText");
+    }
+
+    @Test
     @DisplayName("없는 하위 카테고리면 실패한다")
     void unknownSubcategory() {
         assertThatThrownBy(() -> read("""
