@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import likelion.yacha_backend.domain.user.entity.BalanceGameStatus;
+import likelion.yacha_backend.domain.user.entity.PhilosopherType;
 import likelion.yacha_backend.domain.user.entity.Provider;
 import likelion.yacha_backend.domain.user.entity.User;
 import org.springframework.data.domain.Limit;
@@ -73,5 +74,26 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     default int skipBalanceGameIfNotDone(Long id, LocalDateTime now) {
         return skipBalanceGameIfNotDone(id, now, BalanceGameStatus.SKIPPED, BalanceGameStatus.DONE);
+    }
+
+    /**
+     * 로그인 전 미리보기 결과 저장 — 아직 밸런스 게임을 안 한({@code NOT_STARTED}) 계정만 바꾸고, 바꾼 행 수를 돌려줌
+     * 이미 결과가 있거나 건너뛴 계정은 0 건이고 그대로 둠. DB 의 지금 상태로 판단해 그 사이 저장된 값을 덮어쓰지 않음
+     *
+     * @param type 결과 유형. 건너뜀이면 null (상태만 바뀜)
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update User u
+               set u.philosopherType = :type, u.balanceGameStatus = :status, u.updatedAt = :now
+             where u.id = :id and u.balanceGameStatus = :notStarted
+            """)
+    int saveBalanceGameIfNotStarted(@Param("id") Long id, @Param("type") PhilosopherType type,
+                                    @Param("status") BalanceGameStatus status, @Param("now") LocalDateTime now,
+                                    @Param("notStarted") BalanceGameStatus notStarted);
+
+    default int saveBalanceGameIfNotStarted(Long id, PhilosopherType type, LocalDateTime now) {
+        BalanceGameStatus status = type == null ? BalanceGameStatus.SKIPPED : BalanceGameStatus.DONE;
+        return saveBalanceGameIfNotStarted(id, type, status, now, BalanceGameStatus.NOT_STARTED);
     }
 }
