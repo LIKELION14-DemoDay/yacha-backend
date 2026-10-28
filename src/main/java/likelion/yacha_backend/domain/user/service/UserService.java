@@ -66,6 +66,18 @@ public class UserService {
     }
 
     /**
+     * 로그인 전 온보딩에서 한 밸런스 게임 결과를 로그인할 때 저장. 아직 안 한 계정만 바꿈
+     * 이미 결과가 있거나 건너뛴 계정은 덮어쓰지 않음 (다른 기기에서 한 결과를 지키려고)
+     *
+     * @param philosopherType 결과 유형. 건너뜀이면 null
+     * @return 저장했으면 true
+     */
+    @Transactional
+    public boolean saveBalanceGameIfNotStarted(Long userId, PhilosopherType philosopherType) {
+        return userRepository.saveBalanceGameIfNotStarted(userId, philosopherType, LocalDateTime.now(clock)) == 1;
+    }
+
+    /**
      * 토큰은 유효한데 사용자 행이 없는 경우 (탈퇴 등)
      * 인증 자체가 무의미해진 상황이라 인증 도메인의 에러 코드 사용
      */

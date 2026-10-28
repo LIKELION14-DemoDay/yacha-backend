@@ -72,6 +72,11 @@ public class PreviewResultCookie {
         return build("", Duration.ZERO);
     }
 
+    /** 쿠키가 실려 왔는지 (읽을 수 있는지와 상관없이). 잘못된 쿠키를 지울지 정할 때 씀 */
+    public boolean exists(HttpServletRequest request) {
+        return findValue(request).isPresent();
+    }
+
     /**
      * 요청에 실려 온 결과
      *
