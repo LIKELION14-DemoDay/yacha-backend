@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.balancegame.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -41,6 +42,7 @@ public class BalanceGameController {
 
                     로그인 없이 호출 가능
                     """)
+    @SecurityRequirements   // 전역 bearerAuth를 끔. 인증 없이 호출
     @GetMapping("/questions")
     public ApiResponse<List<QuestionResponse>> questions() {
         return ApiResponse.success(balanceGameService.questions());
@@ -76,6 +78,7 @@ public class BalanceGameController {
                     로그인 없이 호출 가능. 쿠키가 실리도록 `credentials: 'include'` 필요
                     답이 12개가 아니면 `VALIDATION_FAILED`, `A` · `B` 가 아닌 값이면 `PARSING_ERROR` (쿠키는 내려가지 않음)
                     """)
+    @SecurityRequirements   // 전역 bearerAuth를 끔. 인증 없이 호출
     @PostMapping("/preview")
     public ResponseEntity<ApiResponse<PhilosopherResponse>> preview(@Valid @RequestBody BalanceGameAnswerRequest request) {
         PhilosopherResponse response = balanceGameService.preview(request);
@@ -92,6 +95,7 @@ public class BalanceGameController {
 
                     로그인 없이 호출 가능. 쿠키가 실리도록 `credentials: 'include'` 필요
                     """)
+    @SecurityRequirements   // 전역 bearerAuth를 끔. 인증 없이 호출
     @PostMapping("/preview/skip")
     public ResponseEntity<ApiResponse<Void>> previewSkip() {
         return ResponseEntity.ok()
