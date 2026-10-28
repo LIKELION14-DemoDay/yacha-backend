@@ -168,7 +168,8 @@ class BotTest extends TimerTestSupport {
     @Test
     @DisplayName("주장이 공개된 뒤라도 반론 구간(80초) 전에는 봇 반론을 쓰지 않는다 — 그때 다 쓰면 낼 수 없어 버려짐")
     void doesNotWriteRebuttalBeforeRebuttalPhase() {
-        Room room = botRoom(65);
+        // 79초에 시작해 80초까지 지켜봅니다. 80초 전 어느 시각에 쓰기 시작해도 걸립니다.
+        Room room = botRoom(79);
 
         botService.start(room.sessionId());
 
