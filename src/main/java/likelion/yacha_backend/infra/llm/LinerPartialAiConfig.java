@@ -3,6 +3,7 @@ package likelion.yacha_backend.infra.llm;
 
 import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.ai.Judge;
+import likelion.yacha_backend.domain.ai.PhilosophyWriter;
 import likelion.yacha_backend.infra.liner.LinerProperties;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -13,7 +14,7 @@ import org.springframework.context.annotation.Configuration;
  * AI_MODE=liner일 때 Liner AI 구현체를 등록한다.
  *
  * BotWriter는 LinerBotWriter의 @Component로 등록된다.
- * HintGenerator와 Judge는 이 설정에서 등록된다.
+ * HintGenerator와 Judge, 1분 철학 PhilosophyWriter는 이 설정에서 등록된다.
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(
@@ -47,5 +48,13 @@ public class LinerPartialAiConfig {
             LinerProperties properties
     ) {
         return new LinerJudge(properties);
+    }
+
+    /** 1분 철학 철학자 글 (#98) */
+    @Bean
+    public PhilosophyWriter linerPhilosophyWriter(
+            LinerProperties properties
+    ) {
+        return new LinerPhilosophyWriter(properties);
     }
 }

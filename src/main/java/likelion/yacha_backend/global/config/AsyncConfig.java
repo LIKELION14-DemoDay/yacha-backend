@@ -35,6 +35,8 @@ public class AsyncConfig {
 
     public static final String MAIL_EXECUTOR = "mailExecutor";
 
+    public static final String PHILOSOPHY_EXECUTOR = "philosophyExecutor";
+
     @Bean(MAIL_EXECUTOR)
     @Profile("!test")
     public TaskExecutor mailExecutor() {
@@ -57,6 +59,27 @@ public class AsyncConfig {
         // 배포로 서버가 내려갈 때 대기 중인 메일을 잃지 않도록 잠시 기다림
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(10);
+        return executor;
+    }
+
+    /**
+     * 1분 철학 글 생성 (관리자 생성 · 다시 생성, 목요일 자동 생성)
+     * AI를 여러 번 불러 몇 분까지 걸려서, 요청은 바로 응답하고 여기서 이어서 돎
+     * 요청 스레드에서 돌리면 프록시의 응답 대기(보통 60초)를 넘겨 504가 남
+     *
+     * 한 번에 하나만 돌고 대기열이 없음. 돌고 있을 때 들어온 관리자 요청은 거절되어 409로 알리고, 자동 생성은 건너뜀
+     * 생성이 겹치지 않아 AI를 두 번 부르거나 한 주에 정해진 편수보다 많이 저장되지 않음
+     * 서버가 내려가면 기다리지 않음. 다 만든 글은 이미 저장돼 있고, 모자란 편은 다시 생성하면 됨
+     */
+    @Bean(PHILOSOPHY_EXECUTOR)
+    @Profile("!test")
+    public TaskExecutor philosophyExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setThreadNamePrefix("philosophy-");
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(0);
+        executor.setTaskDecorator(copyMdc());
         return executor;
     }
 

@@ -20,6 +20,13 @@
 > - **관전은 사용하지 않는다.** 관전 코드는 지우지 않고 설정(`spectate.enabled=false`)으로 꺼 둔다. 토론방 구독 · 상태 · 메시지 · 결과는 **참가자만** 본다 (2-4).
 > - 이번에 바뀐 부분은 🟢 로 표시했다.
 >
+> 🟡 **1분 철학 (10/27)** — 2차 후보였던 1분 철학을 MVP 로 넣었다 (2-14).
+> - 매주 **주제 5편**을 월요일에 한꺼번에 공개한다. 주제마다 그 주제에 의견이 있는 철학자 2~3명의 글(철학자당 300~500자)을 보여준다.
+> - 철학자 글은 **AI(Liner)로 만들고, 팀원이 검토 · 승인한 글만 공개**한다. 목요일에 다음 주 글을 만들어 두고 금 · 주말에 검토한다.
+> - 글마다 **메모 하나 · 북마크**. 북마크는 마이페이지에서 모아 본다. 지난 글 보기가 있다. 댓글 · 하이라이트 · AI 피드백은 하지 않는다.
+> - 테이블 5개를 추가했다 (1-2). 회원 전용이다.
+> - 이번에 바뀐 부분은 🟡 로 표시했다.
+>
 > 🟠 **비회원 권한 개정 (10/2)**
 > - 비회원(게스트)은 **관전 · 게임(채팅)만** 할 수 있다. 승패 기록 · 친구 초대 · 1분 철학 등 나머지는 회원 전용이다 (2-1).
 > - 비회원의 게임 결과는 전적에 반영하지 않고, 닉네임도 바꿀 수 없다.
@@ -53,13 +60,21 @@ erDiagram
     TOPIC ||--o{ DEBATE_SESSION : "주제"
 
     DEBATE_SESSION ||--o{ DEBATE_PARTICIPANT : "참가자"
+
+    TOPIC ||--o{ PHILOSOPHY_ARTICLE : "1분 철학 주제"
+    PHILOSOPHY_ARTICLE ||--o{ PHILOSOPHER_CONTENT : "철학자 글"
+    PHILOSOPHER_CONTENT ||--o{ PHILOSOPHER_CONTENT_SECTION : "소제목 + 내용"
+    USERS ||--o{ PHILOSOPHY_MEMO : "메모"
+    PHILOSOPHY_ARTICLE ||--o{ PHILOSOPHY_MEMO : "메모"
+    USERS ||--o{ PHILOSOPHY_BOOKMARK : "북마크"
+    PHILOSOPHY_ARTICLE ||--o{ PHILOSOPHY_BOOKMARK : "북마크"
 ```
 
 > 🟣 `argument` · `evidence` · `debate_summary` · `debate_result` 테이블은 **제거**했다. 채팅 · 근거 · 요약 · 판정 상세는 게임 동안 서버 메모리에만 있다 (1-5).
 
 ---
 
-## 1-2. MVP 테이블 (🟣 4개)
+## 1-2. MVP 테이블 (🟣 4개 · 🟡 1분 철학 5개)
 
 ### users — 사용자
 
@@ -171,6 +186,62 @@ erDiagram
 >
 > 친구 방은 친구가 들어올 때까지 방장의 `stance` 가 NULL 이다. 🟢 자동 봇전은 없앴다.
 
+### 🟡 philosophy_article — 1분 철학 글 한 편
+
+| 컬럼 | 타입 | 제약 | 비고 |
+| --- | --- | --- | --- |
+| id | BIGINT | PK |  |
+| topic_id | BIGINT | FK, NN | 주제. 화면의 해시태그(카테고리 · 하위 카테고리)와 질문(`statement`)을 여기서 가져온다 |
+| week_start | DATE | NN | 공개되는 주의 **월요일**. 한 주에 여러 편(기본 5편) |
+| status | VARCHAR(20) | NN | `PENDING`(AI 가 만든 뒤 검토 전) / `APPROVED`(승인됨) |
+| approved_at | DATETIME | NULL | 승인한 시각 |
+| created_at | DATETIME | NN |  |
+| updated_at | DATETIME | NN |  |
+
+> 🟡 **공개 = 승인됐고 그 주가 시작됨** (`status = APPROVED` 이고 `week_start <= 오늘`). 사용자에게는 공개된 글만 보인다.
+> 🟡 `UNIQUE(week_start, topic_id)` — 같은 주에 같은 주제는 한 번만. 다른 주에는 같은 주제를 다시 쓸 수 있다.
+> 🟡 지난 글은 지우지 않는다. 북마크 · 지난 글 보기에서 계속 보여야 하고, 한 주에 약 25KB 라 용량 부담이 없다.
+
+### 🟡 philosopher_content — 철학자 한 명의 글 (화면의 탭 하나)
+
+| 컬럼 | 타입 | 제약 | 비고 |
+| --- | --- | --- | --- |
+| id | BIGINT | PK |  |
+| philosophy_article_id | BIGINT | FK, NN |  |
+| philosopher_name | VARCHAR(50) | NN | AI 가 고른 이름 그대로 (예: 아리스토텔레스). `users.philosopher_type` 8개와는 따로다 |
+| sort_order | INT | NN | 탭 순서 (0부터) |
+
+### 🟡 philosopher_content_section — 소제목 + 내용
+
+| 컬럼 | 타입 | 제약 | 비고 |
+| --- | --- | --- | --- |
+| philosopher_content_id | BIGINT | FK, PK |  |
+| sort_order | INT | PK | 위에서부터 순서 (0부터) |
+| subtitle | VARCHAR(100) | NN | 소제목 |
+| body | TEXT | NN | 내용. 철학자 한 명의 내용을 합쳐 300~500자 (검증은 250~600자) |
+
+### 🟡 philosophy_memo — 메모
+
+| 컬럼 | 타입 | 제약 | 비고 |
+| --- | --- | --- | --- |
+| id | BIGINT | PK |  |
+| user_id | BIGINT | FK, NN |  |
+| philosophy_article_id | BIGINT | FK, NN |  |
+| content | VARCHAR(1000) | NN | 다시 저장하면 덮어쓴다. 비우면 행을 지운다 |
+| created_at | DATETIME | NN |  |
+| updated_at | DATETIME | NN |  |
+
+### 🟡 philosophy_bookmark — 북마크
+
+| 컬럼 | 타입 | 제약 | 비고 |
+| --- | --- | --- | --- |
+| id | BIGINT | PK |  |
+| user_id | BIGINT | FK, NN |  |
+| philosophy_article_id | BIGINT | FK, NN |  |
+| created_at | DATETIME | NN | 마이페이지 목록을 최신순으로 정렬하는 데 쓴다. 해제하면 행을 지운다 |
+
+> 🟡 메모 · 북마크는 `UNIQUE(user_id, philosophy_article_id)` — 한 사람이 글마다 하나. 회원만 만들 수 있어 게스트 정리 작업과 겹치지 않는다.
+
 ---
 
 ## 1-3. 주요 인덱스
@@ -180,6 +251,8 @@ erDiagram
 | topic | 🔷 `(category, is_active)` — 카테고리 안 랜덤 추첨, 🟢 `(subcategory, is_active)` — 하위 카테고리 안 랜덤 추첨 |
 | debate_session | `(topic_id, created_at)`, 🔷 `(room_type, status, category, created_at)` — 대기열 조회 (자동 제안 · 방 찾기가 오래된 순서로 읽는다), 🟣 같은 인덱스로 관전 목록(`IN_PROGRESS`)도 조회, 🔷 `UNIQUE(invite_code)` |
 | debate_participant | `(user_id)` — 전투 기록, `(session_id)` |
+| 🟡 philosophy_article | `(status, week_start)` — 이번 주 · 지난 글, `UNIQUE(week_start, topic_id)` |
+| 🟡 philosophy_memo · philosophy_bookmark | `UNIQUE(user_id, philosophy_article_id)` |
 
 ---
 
@@ -205,6 +278,7 @@ erDiagram
 | 🟣 `debate_participant` | `result`(WIN/LOSE/DRAW) 추가 |
 | 🟢 `topic` | `subcategory`, `agree_text`, `disagree_text` 추가. 카테고리 값 `FUTURE_TECH` → `TECH_AND_FUTURE`, `TRUTH_AND_LIE` → `TRUTH_AND_BELIEF` |
 | 🟢 `users` | `philosopher_type` · `balance_game_status` 추가 (밸런스 게임, 2-13) |
+| 🟡 1분 철학 | `philosophy_article`, `philosopher_content`, `philosopher_content_section`, `philosophy_memo`, `philosophy_bookmark` 신규. PART 3 의 안(`philosopher`, `philosophy_content`, `comment`, `memo`, `ai_feedback`)을 대체한다 |
 
 ---
 
@@ -280,7 +354,7 @@ erDiagram
 | 🟠 승패 기록 (전적 반영) | ❌ | ✅ |
 | 🟠 친구 초대 (초대 코드 생성) | ❌ | ✅ |
 | 🟠 친구 초대 링크로 참여 (구현 예정) | ✅ | ✅ |
-| 🟠 1분 철학 | ❌ | ✅ |
+| 🟠 1분 철학 (🟡 2-14) | ❌ | ✅ |
 | 🟠 닉네임 · 비밀번호 변경 | ❌ | ✅ |
 
 🟢 **회원가입 이메일 중복 확인 (10/5)** — 회원가입이 여러 단계(닉네임 → 아이디 → 비밀번호)라, 마지막 단계까지 가지 않고 아이디 단계의 [다음]에서 바로 확인한다.
@@ -735,6 +809,8 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 
 공개 여부 변경(`PATCH /admin/sessions/{id}/visibility`)은 공개 페이지와 함께 제거한다. 관리자 기능이 다시 필요해지면(주제 관리 등) 그때 추가한다.
 
+> 🟡 1분 철학 검토 · 승인용 관리자 API(`/admin/philosophy/**`)를 추가했다 (2-14). `role = ADMIN` 만 부를 수 있다. 관리자 화면은 없고 Swagger 에서 쓴다.
+
 ---
 
 ## 2-9. 공통 규약
@@ -765,6 +841,7 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 | 🟢 봇 주장 · 반론 (작성 구간 안) | 10초 | 3 | 빈 글 (공개 안 함) |
 | 🟢 봇 채팅 대답 (3초 뒤) | 5초 | 2 (1초 뒤) | 준비된 문장으로 대답 (2-4) |
 | 판정 | 10초 | 3 | `FAILED`, 재요청 허용 |
+| 🟡 1분 철학 글 (주 1회, 미리 만듦) | AI 구현의 HTTP 타임아웃 | 3 (형식이 맞지 않는 응답도 1회로 셈) | 그 편만 빠진다. 관리자 생성으로 채운다 |
 
 > 시도 횟수는 **구간의 남은 시간**이 정한다.
 
@@ -787,6 +864,12 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 | `MESSAGE_LIMIT_EXCEEDED` | 409 | 🟢 참가자 한 명당 채팅 200건 초과 |
 | `GUEST_NOT_ALLOWED` | 403 | 🟠 비회원이 회원 전용 기능을 부름. 프론트는 가입 안내를 띄운다 |
 | `TOO_MANY_REQUESTS` | 429 | 🟢 같은 IP 에서 짧은 시간에 너무 많이 부름 (이메일 중복 확인, 비밀번호 찾기 ① 요청 · ② 확인) |
+| `ARTICLE_NOT_FOUND` | 404 | 🟡 없는 1분 철학 글. 사용자에게는 아직 공개되지 않은 글도 이 코드다 |
+| `INVALID_WEEK_START` | 400 | 🟡 (관리자) 주 시작일이 월요일이 아님 |
+| `PAST_WEEK` | 400 | 🟡 (관리자) 이번 주보다 앞선 주에 생성하려 함 |
+| `WEEK_ALREADY_FULL` | 409 | 🟡 (관리자) 그 주에 정해진 편수가 이미 다 있음 |
+| `ARTICLE_ALREADY_PUBLISHED` | 409 | 🟡 (관리자) 공개된 글을 다시 생성하거나 빼려 함 |
+| `GENERATION_IN_PROGRESS` | 409 | 🟡 (관리자) 다른 생성이 돌고 있음 |
 
 > 🔶 `EVIDENCE_LIMIT_EXCEEDED` 는 근거 검색이 사라져 제거했다. 🟢 `FINAL_ALREADY_SUBMITTED` 는 최종변론이 사라져 제거했다.
 > 🟣 `NOT_PARTICIPANT` 는 참가자가 아닌 사용자가 SEND 하거나 🟢 토론방 상태 · 메시지 · 힌트 · 주장 · 결과를 조회할 때 쓴다.
@@ -956,6 +1039,87 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 
 ---
 
+## 2-14. 🟡 1분 철학
+
+주제마다 그 주제에 의견이 있는 철학자 2~3명의 글을 보여준다. **회원 전용**이다 (게스트는 `GUEST_NOT_ALLOWED`).
+
+**한 주의 흐름**
+
+| 언제 | 무엇 |
+| --- | --- |
+| 목요일 10:00 | 다음 주 글 **5편**을 자동으로 만든다. 모두 검토 전(`PENDING`) |
+| 금 · 주말 | 팀원이 관리자 API 로 읽어 보고 **승인**한다. 내용이 이상하면 다시 생성, 주제가 맞지 않으면 빼고 모자란 만큼 생성 |
+| 월요일 00:00 | 승인된 글이 한꺼번에 공개된다. 1분 철학 첫 화면이 새 주로 바뀐다 |
+
+**규칙**
+
+- **공개 = 승인됐고 그 주가 시작됨.** 사용자에게는 공개된 글만 보인다. 승인됐어도 다음 주 글은 id 로 직접 불러도 `ARTICLE_NOT_FOUND` 다.
+- **이번 주 = 공개된 글이 있는 주 중 가장 최근 주.** 월요일이 왔는데 새 글이 하나도 승인되지 않았으면 지난주 글이 그대로 보인다 (빈 화면 방지). 5편 중 일부만 승인되면 승인된 것만 보인다.
+- **주제 고르기**: 아직 1분 철학에 쓰지 않은 활성 주제에서 서로 겹치지 않게 랜덤으로 고른다. 모자라면 이미 쓴 주제에서 채운다 (같은 주에 이미 있는 주제는 빼고).
+- **AI 글**: 그 주제에 실제로 입장을 밝힌 철학자 2~3명, 철학자마다 "소제목 + 내용" 묶음으로 300~500자. 형식(철학자 수 · 길이 250~600자 · 빈 값)이 맞지 않으면 다시 만든다. 한 편이 끝내 실패해도 나머지 편은 만들어진다.
+- 철학자 글은 AI 가 정리한 글이므로 **화면에 그렇게 표시**한다.
+- **공개된 글은 다시 생성하거나 뺄 수 없다** (메모 · 북마크가 달려 있을 수 있어서). 그래서 북마크한 글이 사라지지 않는다.
+- **런칭 첫 주**: 스케줄러를 기다리지 않고 관리자가 이번 주 월요일로 생성 → 승인한다.
+- 설정: `philosophy.generation.cron`(목요일 10시) · `topics-per-week`(5) · `max-attempts`(3) · `retry-backoff`(2초).
+
+**API — 사용자**
+
+| Method | Path | 설명 | 인증 |
+| --- | --- | --- | --- |
+| GET | `/philosophy/this-week` | 1분 철학 첫 화면. 이번 주 글 카드 (보통 5개). 공개된 글이 없으면 `weekStart: null`, 빈 목록 | ✅ (회원) |
+| GET | `/philosophy/past?page=` | 지난 글 보기. 이번 주보다 앞선 주의 카드, 최신 주부터 20개씩 (`page` 는 0부터), `hasNext` | ✅ (회원) |
+| GET | `/philosophy/{id}` | 글 상세. 철학자 탭 · 소제목 + 내용 · 내 메모 · 북마크 여부 | ✅ (회원) |
+| PUT | `/philosophy/{id}/memo` | 메모 저장 `{ content }` (1000자). 글마다 하나, 덮어쓴다. 앞뒤 공백은 지우고, 비어 있으면 메모를 지운다 | ✅ (회원) |
+| PUT · DELETE | `/philosophy/{id}/bookmark` | 북마크 추가 · 해제. 여러 번 불러도 같다 | ✅ (회원) |
+| GET | `/philosophy/bookmarks?page=` | 마이페이지 북마크 목록. 북마크한 순서 최신부터 20개씩 | ✅ (회원) |
+
+> 메모 · 북마크도 공개된 글에만 할 수 있다 (아니면 `ARTICLE_NOT_FOUND`).
+
+**카드** (`this-week` · `past` · `bookmarks` 공통)
+
+```json
+{ "id": 31, "weekStart": "2026-11-02",
+  "topic": { "topicId": 12, "category": "ETHICS", "categoryName": "윤리",
+             "subcategory": "LYING", "subcategoryName": "거짓말",
+             "statement": "행복을 위해 거짓말을 해도 될까?" },
+  "philosophers": ["아리스토텔레스", "플라톤"], "bookmarked": false }
+```
+
+- `GET /philosophy/this-week` → `{ "weekStart": "2026-11-02", "articles": [카드] }`
+- `GET /philosophy/past` · `/philosophy/bookmarks` → `{ "articles": [카드], "hasNext": true }`. 지난 글은 `weekStart` 로 주별로 묶어 보여준다
+- 해시태그는 카테고리 · 하위 카테고리 이름이 둘 다 온다. 어느 쪽을 쓸지는 화면에서 정한다
+
+**상세** (`GET /philosophy/{id}`)
+
+```json
+{ "id": 31, "weekStart": "2026-11-02",
+  "topic": { "topicId": 12, "category": "ETHICS", "categoryName": "윤리",
+             "subcategory": "LYING", "subcategoryName": "거짓말",
+             "statement": "행복을 위해 거짓말을 해도 될까?" },
+  "philosophers": [
+    { "name": "아리스토텔레스",
+      "sections": [ { "subtitle": "중용에서 답을 찾다", "body": "..." },
+                    { "subtitle": "습관이 사람을 만든다", "body": "..." } ] },
+    { "name": "플라톤", "sections": [ { "subtitle": "...", "body": "..." } ] } ],
+  "memo": "내 생각은...", "bookmarked": true }
+```
+
+- 메모 저장 응답 `{ "memo": "저장된 내용" }` (지웠으면 `null`), 북마크 응답 `{ "bookmarked": true | false }`
+
+**API — 관리자** (`role = ADMIN`, Swagger 에서 사용)
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| GET | `/admin/philosophy?weekStart=` | 그 주 글 전체를 철학자 글 내용까지 (검토 전 · 승인됨 모두). `weekStart` 를 빼면 다음 주 |
+| POST | `/admin/philosophy/{id}/approve` | 승인. 그 주 월요일부터 공개된다 |
+| POST | `/admin/philosophy/{id}/regenerate` | 같은 주제로 글을 다시 만들고 검토 전으로 되돌린다. **202**, 1~2분 뒤 목록에서 확인. 실패하면 이전 글이 그대로 남는다 |
+| DELETE | `/admin/philosophy/{id}` | 주제째 뺀다. 공개 전 글만 |
+| POST | `/admin/philosophy/generate?weekStart=` | 그 주가 5편이 되도록 모자란 만큼 만든다. `weekStart` 를 빼면 다음 주, 이번 주보다 앞선 주는 안 된다. **202**, 몇 분 뒤 목록에서 확인 |
+
+> 생성 · 다시 생성은 AI 를 여러 번 불러 몇 분까지 걸려서, 바로 `202` 로 응답하고 서버가 이어서 만든다 (프록시의 응답 대기 60초를 넘기지 않게). 한 번에 하나만 돌고, 돌고 있을 때 또 부르면 `GENERATION_IN_PROGRESS` 다. 실패는 서버 로그에 남는다.
+
+---
+
 # PART 3. 2차 (런칭 후) · 🔷 신규 기능 후보
 
 | 기능 | 내용 | 필요 테이블 |
@@ -963,12 +1127,12 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 | **도전장 공유** | 링크로 친구에게 반박 요청. 🔷 친구와 야차(초대 링크)와 겹치므로 합칠지 검토 | `challenge_link` |
 | **알림** | 07~09시 · 17~19시 푸시 | `push_subscription`, `notification_setting`, `notification` |
 | 🔷 **밸런스 게임** | ~~랜덤 주제에 예 / 아니오 → 같은 선택을 한 비율(%) 표시~~ 🟢 **질문 12개로 철학자 유형을 정하는 방식으로 MVP 에 넣었다 (2-13)** | 🟢 테이블 없음 (`users.philosopher_type` · `balance_game_status`) |
-| 🔷 **1분 철학** | 주제마다 여러 철학자를 제시하고 각자의 내용을 제공 (확정). 후보: 댓글, 개인 메모 · 하이라이트, 내 생각에 대한 AI 철학자 피드백(MY 에서 확인) | `philosopher`, `philosophy_content`, `comment`, `memo`, `ai_feedback` (안) |
+| 🔷 **1분 철학** | 🟡 **MVP 로 이동했다** (2-14). 주간 5편 · AI 글(검토 후 공개) · 메모 · 북마크로 확정. 댓글 · 하이라이트 · AI 피드백은 하지 않는다 | 🟡 1-2 의 테이블 5개 |
 | **신고 · 차단** | 사용자 신고 · 차단. 🟣 채팅 내용을 저장하지 않으므로 **내용 기반 신고는 대안 필요** (PART 5) | `report`, `user_block` |
 
 > 🔶 **PVP 실시간 토론은 MVP 로 이동**했다. 🟣 관전(보기만)은 MVP 에 포함했다가 🟢 **10/5 에 사용하지 않기로** 했다 (코드는 설정으로 꺼 둠). 투표는 제외한다 (`vote` 테이블도 불필요).
 > 🔷 **봇전(AI 토론)도 MVP 로 이동**했다 (대기 중 AI 전환 · 🟢 바로 봇전). 🟢 자동 봇전 · 근거 검색 · compose 는 없앴다.
-> 🔴 **실시간 토론과 신고 기능은 세트로 연다.** PVP 를 먼저 여는 만큼 `report`, `user_block` 을 MVP 에 넣을지 **결정 필요** (PART 5). 1분 철학에 댓글을 넣으면 신고 대상도 늘어난다.
+> 🔴 **실시간 토론과 신고 기능은 세트로 연다.** PVP 를 먼저 여는 만큼 `report`, `user_block` 을 MVP 에 넣을지 **결정 필요** (PART 5). 1분 철학에 댓글을 넣으면 신고 대상도 늘어난다 (🟡 댓글은 넣지 않기로 했다).
 
 ---
 
@@ -1064,6 +1228,7 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 - [x] 🟣 **근거 인용 방식** — `used_argument_id` 가 테이블과 함께 사라져 해당 없음.
 - [x] 🟠 **비회원 권한** — 관전 · 게임만. 결과는 전적에 반영하지 않고, 닉네임 변경 불가, 소셜 승격 없음, 오래된 계정은 정리 (2-1).
 - [x] 🟠 **비회원의 친구 초대** — 초대 링크로 참여는 허용, 초대 생성은 회원 전용 (2-1).
+- [x] 🟡 **1분 철학** — MVP 에 넣는다. 매주 5편을 월요일에 공개, 철학자 글은 AI 로 만들고 팀원이 검토 · 승인한 뒤 공개, 메모 · 북마크 · 지난 글 보기. 댓글 · 하이라이트 · AI 피드백은 하지 않는다 (2-14).
 
 **미정 — 🟣 관전 · 비저장으로 새로 생긴 것**
 
@@ -1082,7 +1247,7 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 - [ ] **`/topics/today` 유지 여부** — 주제 풀로 바뀐 뒤에도 "오늘의 야차판" 을 따로 보여줄지. 유지하면 "A/B 선택 현황" 을 무엇으로 바꿀지.
 - [x] **아이디 · 비밀번호 찾기** — 🟢 이메일 인증번호 방식 (6자리 · 3분 · 5번). 이메일이 아이디라 비밀번호 재설정만 한다 (2-1).
 - [x] **밸런스 게임** — 🟢 질문 12개로 철학자 유형을 정한다. 투표 비율 방식이 아니라 중복 투표 문제가 없다 (2-13).
-- [ ] **1분 철학** — 댓글 · 메모 · AI 피드백 중 MVP 범위, 철학자 의견을 직접 쓸지 AI 로 정리할지.
+- [x] **1분 철학** — 🟡 위 확정으로 옮겼다.
 
 **미정 — 🔶 PVP 우선에서 이어진 것**
 
