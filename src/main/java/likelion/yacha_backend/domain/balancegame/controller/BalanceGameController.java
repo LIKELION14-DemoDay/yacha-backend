@@ -32,9 +32,9 @@ public class BalanceGameController {
             summary = "질문 12개",
             description = """
                     밸런스 게임 질문을 순서대로 줌. `optionA` 는 왼쪽 카드, `optionB` 는 오른쪽 카드 (배점은 주지 않음)
-                    홈에 들어왔을 때 `GET /users/me` 의 `balanceGameRequired` 가 true 면 이 화면을 띄움
+                    로그인 전 온보딩에서 쓰고, 홈에 들어왔을 때 `GET /users/me` 의 `balanceGameRequired` 가 true 면 이 화면을 띄움
 
-                    로그인 필요 (게스트 가능)
+                    로그인 없이 호출 가능
                     """)
     @GetMapping("/questions")
     public ApiResponse<List<QuestionResponse>> questions() {

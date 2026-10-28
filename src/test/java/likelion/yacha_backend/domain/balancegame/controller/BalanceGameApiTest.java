@@ -55,9 +55,9 @@ class BalanceGameApiTest {
     }
 
     @Test
-    @DisplayName("질문 12개를 순서대로, 배점 없이 준다")
+    @DisplayName("질문 12개를 로그인 없이 순서대로, 배점 없이 준다 (로그인 전 온보딩)")
     void questions() throws Exception {
-        mockMvc.perform(get("/api/v1/balance-game/questions").header(HttpHeaders.AUTHORIZATION, guest))
+        mockMvc.perform(get("/api/v1/balance-game/questions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(12))
                 .andExpect(jsonPath("$.data[0].number").value(1))
@@ -148,9 +148,18 @@ class BalanceGameApiTest {
     }
 
     @Test
-    @DisplayName("질문 · 결과 · 건너뛰기는 로그인이 필요하다")
+    @DisplayName("질문은 만료 · 잘못된 토큰이 붙어 와도 로그인 없이 준다")
+    void questionsIgnoreInvalidToken() throws Exception {
+        mockMvc.perform(get("/api/v1/balance-game/questions").header(HttpHeaders.AUTHORIZATION, "Bearer invalid"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(12));
+    }
+
+    @Test
+    @DisplayName("결과 · 건너뛰기는 저장하므로 로그인이 필요하다")
     void requiresLogin() throws Exception {
-        mockMvc.perform(get("/api/v1/balance-game/questions")).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/balance-game/result").contentType(MediaType.APPLICATION_JSON).content(ALL_A))
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/v1/balance-game/skip")).andExpect(status().isUnauthorized());
     }
 }
