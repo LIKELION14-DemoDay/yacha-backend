@@ -72,7 +72,7 @@ public class LinerHintGenerator
                 위 입장에 도움이 되는 힌트 3개를 생성하세요.
                 """.formatted(
                 topic.statement(),
-                topic.stanceText(stance)
+                topic.stanceDescription(stance)
         );
 
         String response = chat(

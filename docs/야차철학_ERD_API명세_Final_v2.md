@@ -98,11 +98,12 @@ erDiagram
 | 컬럼 | 타입 | 제약 | 비고 |
 | --- | --- | --- | --- |
 | id | BIGINT | PK |  |
+| code | VARCHAR(50) | UNIQUE, NULL | 🟢 주제 파일(`topics/topics.json`)의 주제 키 (예: `tech-ai-01`). 서버가 뜰 때마다 이 키로 DB 를 파일과 맞춘다 — 파일에만 있으면 넣고, 둘 다 있으면 파일 내용으로 고치고, 파일에서 빠지면 `is_active = false` 로 내린다 (#54). 파일에는 `code` · `subcategory` · `statement` (· `active`) 만 적는다. 파일 밖에서 넣은 주제는 NULL 이고 건드리지 않는다 |
 | category | VARCHAR(20) | NN | 🔷 **8개로 확정** — `HUMAN`(인간) / `RELATIONSHIP`(관계) / `ETHICS`(윤리) / `SOCIETY`(사회) / `LIFE_AND_DEATH`(삶과 죽음) / 🟢 `TECH_AND_FUTURE`(기술과 미래) / `MONEY_AND_SUCCESS`(돈과 성공) / 🟢 `TRUTH_AND_BELIEF`(진실과 믿음) |
 | subcategory | VARCHAR(30) | NN | 🟢 **하위 카테고리** (아래 표). 상위 카테고리는 하위 카테고리로 정해진다 |
 | statement | TEXT | NN | 🔷 동의 / 비동의로 답하는 **명제**. 🟢 주제 화면 · 대기 목록에 뜨는 질문형 문장 (예: "지구가 평평하다는 말, 진실인가?") |
-| agree_text | VARCHAR(100) | NN | 🟢 찬성(예) 입장 문구 (예: "지구는 평평하다!") |
-| disagree_text | VARCHAR(100) | NN | 🟢 반대(아니오) 입장 문구 (예: "지구는 평평하지 않다!") |
+| agree_text | VARCHAR(100) | NN | 🟢 찬성(예) 입장 문구. 화면에 긴 문장을 다 보여 줄 수 없어 답은 예 / 아니오로만 받으므로, 주제 파일의 주제는 서버가 `"예"` 로 채운다 (#54) |
+| disagree_text | VARCHAR(100) | NN | 🟢 반대(아니오) 입장 문구. 주제 파일의 주제는 서버가 `"아니오"` 로 채운다 (#54) |
 | is_active | BOOLEAN | NN | 🔷 랜덤 추첨 대상 여부. 내린 주제는 `false` |
 | created_at | DATETIME | NN |  |
 | updated_at | DATETIME | NN | 🟢 다른 테이블과 같은 생성 · 수정 시각 (`BaseTimeEntity`) |
