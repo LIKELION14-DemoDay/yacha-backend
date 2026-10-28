@@ -54,5 +54,15 @@
   {"code": "ethics-right-wrong-03", "subcategory": "RIGHT_AND_WRONG", "statement": "누군가를 보호하기 위해 다른 사람에게 피해를 주는 행동은 정당화될 수 있는가?"},
   {"code": "ethics-right-wrong-04", "subcategory": "RIGHT_AND_WRONG", "statement": "모두를 똑같이 대하는 것이 가장 정의로운 방식이라고 생각하는가?"},
   {"code": "ethics-right-wrong-05", "subcategory": "RIGHT_AND_WRONG", "statement": "과거에 불이익을 받은 사람에게 더 많은 기회를 주는 것은 정의로운가?"},
-  {"code": "ethics-right-wrong-06", "subcategory": "RIGHT_AND_WRONG", "statement": "법적으로 무죄라면 도덕적으로도 비난받아서는 안 된다고 생각하는가?"}
+  {"code": "ethics-right-wrong-06", "subcategory": "RIGHT_AND_WRONG", "statement": "법적으로 무죄라면 도덕적으로도 비난받아서는 안 된다고 생각하는가?"},
+  {"code": "relationship-dating-01", "subcategory": "DATING", "statement": "애인이 내 친구에게 새우 껍질을 까 주는 것은 과도한 친절일까?"},
+  {"code": "relationship-dating-02", "subcategory": "DATING", "statement": "모든 걸 공유하는 연애는 과연 건강한 연애인가?"},
+  {"code": "relationship-friendship-01", "subcategory": "FRIENDSHIP", "statement": "당일에 약속을 취소한 친구는 진정한 친구인가?"},
+  {"code": "relationship-friendship-02", "subcategory": "FRIENDSHIP", "statement": "피치 못할 사정으로 늦은 친구에게 싫증을 내는 것은 옳은가?"},
+  {"code": "relationship-friendship-03", "subcategory": "FRIENDSHIP", "statement": "친구가 내 전 애인과 사귀는 것은 나와 상관없는 일인가?"},
+  {"code": "relationship-family-01", "subcategory": "FAMILY", "statement": "부모님이 연애에 반대하는 것은 정말 나를 위한 일인가?"},
+  {"code": "relationship-family-02", "subcategory": "FAMILY", "statement": "혈육 간의 서열은 꼭 필요한가?"},
+  {"code": "relationship-trust-01", "subcategory": "TRUST", "statement": "선의의 거짓말을 자주 하는 다정한 애인은 정말 다정한 걸까?"},
+  {"code": "relationship-trust-02", "subcategory": "TRUST", "statement": "연인 간의 24시간 위치 공유는 프라이버시 침해일까?"},
+  {"code": "relationship-trust-03", "subcategory": "TRUST", "statement": "큰 거짓말을 딱 한 번 한 친구는 용서할 수 있는가?"}
 ]
