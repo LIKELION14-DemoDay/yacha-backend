@@ -44,6 +44,9 @@ public class SecurityConfig {
             "/api/v1/auth/password/reset",
             "/api/v1/auth/social/kakao",
             "/api/v1/auth/social/google",
+            // 로그인 전 온보딩의 밸런스 게임 결과 · 건너뛰기. 저장하지 않고 쿠키로만 내려 둠
+            "/api/v1/balance-game/preview",
+            "/api/v1/balance-game/preview/skip",
             // WebSocket 핸드셰이크. 브라우저는 핸드셰이크에 Authorization 헤더를 붙일 수 없어서
             // 여기서는 열어 두고, STOMP CONNECT 프레임의 JWT 로 인증합니다 (StompAuthChannelInterceptor).
             "/ws/**",
@@ -53,10 +56,14 @@ public class SecurityConfig {
             "/actuator/health",
     };
 
-    /** 인증 없이 GET만 허용할 경로. 카테고리 목록 · 회원가입 이메일 중복 확인 · 밸런스 게임 유형 설명(공유 링크) */
+    /**
+     * 인증 없이 GET만 허용할 경로
+     * 카테고리 목록 · 회원가입 이메일 중복 확인 · 밸런스 게임 질문(로그인 전 온보딩) · 유형 설명(공유 링크)
+     */
     private static final String[] PUBLIC_GET_ENDPOINTS = {
             "/api/v1/categories",
             "/api/v1/auth/email/availability",
+            "/api/v1/balance-game/questions",
             "/api/v1/balance-game/philosophers/**",
     };
 
@@ -77,7 +84,7 @@ public class SecurityConfig {
             "/api/v1/auth/upgrade",
             // 게임 · 관전 (방 · 상태 · 메시지 · 주장 등)
             "/api/v1/sessions/**",
-            // 밸런스 게임 (질문 · 결과 · 건너뛰기). 게스트도 유형을 가짐. 공유용 유형 설명은 위에서 로그인 없이 열어 둠
+            // 밸런스 게임 (결과 · 건너뛰기). 게스트도 유형을 가짐. 질문 · 공유용 유형 설명은 위에서 로그인 없이 열어 둠
             "/api/v1/balance-game/**",
     };
 

@@ -1,11 +1,17 @@
 package likelion.yacha_backend.domain.balancegame.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import jakarta.servlet.http.Cookie;
+import java.util.Optional;
+import likelion.yacha_backend.domain.balancegame.service.PreviewResult;
+import likelion.yacha_backend.domain.balancegame.service.PreviewResultCookie;
+import likelion.yacha_backend.domain.user.entity.PhilosopherType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
@@ -32,6 +39,9 @@ class BalanceGameApiTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private PreviewResultCookie previewResultCookie;
 
     private String guest;
 
@@ -55,9 +65,9 @@ class BalanceGameApiTest {
     }
 
     @Test
-    @DisplayName("질문 12개를 순서대로, 배점 없이 준다")
+    @DisplayName("질문 12개를 로그인 없이 순서대로, 배점 없이 준다 (로그인 전 온보딩)")
     void questions() throws Exception {
-        mockMvc.perform(get("/api/v1/balance-game/questions").header(HttpHeaders.AUTHORIZATION, guest))
+        mockMvc.perform(get("/api/v1/balance-game/questions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(12))
                 .andExpect(jsonPath("$.data[0].number").value(1))
@@ -133,6 +143,65 @@ class BalanceGameApiTest {
         me(guest).andExpect(jsonPath("$.data.balanceGameRequired").value(true));
     }
 
+    /** 응답의 미리보기 쿠키를 다음 요청에 실은 것처럼 읽음 */
+    private Optional<PreviewResult> readPreviewCookie(MvcResult result) {
+        Cookie cookie = result.getResponse().getCookie(PreviewResultCookie.COOKIE_NAME);
+        assertThat(cookie).isNotNull();
+        assertThat(cookie.getPath()).isEqualTo("/api/v1/auth");
+        assertThat(cookie.isHttpOnly()).isTrue();
+        MockHttpServletRequest next = new MockHttpServletRequest();
+        next.setCookies(cookie);
+        return previewResultCookie.read(next);
+    }
+
+    @Test
+    @DisplayName("미리보기는 로그인 없이 결과 제출과 같은 응답을 주고, 결과를 쿠키로 내려 준다")
+    void preview() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/balance-game/preview")
+                        .contentType(MediaType.APPLICATION_JSON).content(ALL_A))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.type").value("HOBBES"))
+                .andExpect(jsonPath("$.data.name").value("홉스"))
+                .andExpect(jsonPath("$.data.sections.length()").value(3))
+                .andReturn();
+
+        assertThat(readPreviewCookie(result)).contains(PreviewResult.of(PhilosopherType.HOBBES));
+    }
+
+    @Test
+    @DisplayName("미리보기는 저장하지 않는다 (로그인한 채로 불러도 그대로)")
+    void previewDoesNotSave() throws Exception {
+        mockMvc.perform(post("/api/v1/balance-game/preview").header(HttpHeaders.AUTHORIZATION, guest)
+                        .contentType(MediaType.APPLICATION_JSON).content(ALL_A))
+                .andExpect(status().isOk());
+
+        me(guest)
+                .andExpect(jsonPath("$.data.philosopher.type").doesNotExist())
+                .andExpect(jsonPath("$.data.balanceGameRequired").value(true));
+    }
+
+    @Test
+    @DisplayName("건너뛰기 미리보기는 로그인 없이 건너뜀을 쿠키로 내려 준다")
+    void previewSkip() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/balance-game/preview/skip"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(readPreviewCookie(result)).hasValueSatisfying(preview -> assertThat(preview.isSkipped()).isTrue());
+    }
+
+    @Test
+    @DisplayName("미리보기 답이 잘못되면 결과 제출과 같은 에러이고 쿠키를 내려 주지 않는다")
+    void previewInvalidAnswers() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/balance-game/preview")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"answers\": [\"A\",\"B\"]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andReturn();
+
+        assertThat(result.getResponse().getCookie(PreviewResultCookie.COOKIE_NAME)).isNull();
+    }
+
     @Test
     @DisplayName("공유용 유형 설명은 로그인 없이 볼 수 있고, 없는 유형이면 BINDING_ERROR")
     void describeWithoutLogin() throws Exception {
@@ -148,9 +217,18 @@ class BalanceGameApiTest {
     }
 
     @Test
-    @DisplayName("질문 · 결과 · 건너뛰기는 로그인이 필요하다")
+    @DisplayName("질문은 만료 · 잘못된 토큰이 붙어 와도 로그인 없이 준다")
+    void questionsIgnoreInvalidToken() throws Exception {
+        mockMvc.perform(get("/api/v1/balance-game/questions").header(HttpHeaders.AUTHORIZATION, "Bearer invalid"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(12));
+    }
+
+    @Test
+    @DisplayName("결과 · 건너뛰기는 저장하므로 로그인이 필요하다")
     void requiresLogin() throws Exception {
-        mockMvc.perform(get("/api/v1/balance-game/questions")).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/balance-game/result").contentType(MediaType.APPLICATION_JSON).content(ALL_A))
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/v1/balance-game/skip")).andExpect(status().isUnauthorized());
     }
 }

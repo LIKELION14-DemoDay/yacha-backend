@@ -65,8 +65,8 @@ public class AuthController {
                     """)
     @SecurityRequirements   // 전역 bearerAuth를 끔. 인증 없이 호출
     @PostMapping("/guest")
-    public ResponseEntity<ApiResponse<AuthResponse>> createGuest() {
-        return withRefreshCookie(authService.createGuest());
+    public ResponseEntity<ApiResponse<AuthResponse>> createGuest(HttpServletRequest httpRequest) {
+        return forLogin(authService.createGuest(), httpRequest);
     }
 
     @Operation(
@@ -87,8 +87,9 @@ public class AuthController {
                     """)
     @SecurityRequirements
     @PostMapping("/signup")
-    public ResponseEntity<ApiResponse<AuthResponse>> signup(@Valid @RequestBody SignupRequest request) {
-        return withRefreshCookie(authService.signup(request));
+    public ResponseEntity<ApiResponse<AuthResponse>> signup(@Valid @RequestBody SignupRequest request,
+                                                            HttpServletRequest httpRequest) {
+        return forLogin(authService.signup(request), httpRequest);
     }
 
     @Operation(
@@ -133,8 +134,9 @@ public class AuthController {
                     """)
     @SecurityRequirements
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
-        return withRefreshCookie(authService.login(request));
+    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request,
+                                                           HttpServletRequest httpRequest) {
+        return forLogin(authService.login(request), httpRequest);
     }
 
     @Operation(
@@ -147,8 +149,9 @@ public class AuthController {
                     """)
     @SecurityRequirements
     @PostMapping("/token")
-    public ResponseEntity<ApiResponse<AuthResponse>> token(@Valid @RequestBody LoginRequest request) {
-        return withRefreshCookie(authService.login(request));
+    public ResponseEntity<ApiResponse<AuthResponse>> token(@Valid @RequestBody LoginRequest request,
+                                                           HttpServletRequest httpRequest) {
+        return forLogin(authService.login(request), httpRequest);
     }
 
     @Operation(
@@ -178,8 +181,9 @@ public class AuthController {
     @SecurityRequirements
     @PostMapping("/social")
     public ResponseEntity<ApiResponse<AuthResponse>> socialLogin(
-            @Valid @RequestBody SocialLoginRequest request) {
-        return withRefreshCookie(authService.socialLogin(request));
+            @Valid @RequestBody SocialLoginRequest request,
+            HttpServletRequest httpRequest) {
+        return forLogin(authService.socialLogin(request), httpRequest);
     }
 
     @Operation(
@@ -208,8 +212,9 @@ public class AuthController {
     @SecurityRequirements
     @PostMapping("/social/kakao")
     public ResponseEntity<ApiResponse<AuthResponse>> kakaoCodeLogin(
-            @Valid @RequestBody KakaoCodeLoginRequest request) {
-        return withRefreshCookie(kakaoLoginService.login(request));
+            @Valid @RequestBody KakaoCodeLoginRequest request,
+            HttpServletRequest httpRequest) {
+        return forLogin(kakaoLoginService.login(request), httpRequest);
     }
 
     @Operation(
@@ -239,8 +244,9 @@ public class AuthController {
     @SecurityRequirements
     @PostMapping("/social/google")
     public ResponseEntity<ApiResponse<AuthResponse>> googleCodeLogin(
-            @Valid @RequestBody GoogleCodeLoginRequest request) {
-        return withRefreshCookie(googleLoginService.login(request));
+            @Valid @RequestBody GoogleCodeLoginRequest request,
+            HttpServletRequest httpRequest) {
+        return forLogin(googleLoginService.login(request), httpRequest);
     }
 
     @Operation(
@@ -384,11 +390,17 @@ public class AuthController {
     @PostMapping("/upgrade")
     public ResponseEntity<ApiResponse<AuthResponse>> upgrade(
             @AuthenticationPrincipal AuthUser authUser,
-            @Valid @RequestBody UpgradeRequest request) {
-        return withRefreshCookie(authService.upgrade(authUser.getUserId(), request));
+            @Valid @RequestBody UpgradeRequest request,
+            HttpServletRequest httpRequest) {
+        return forLogin(authService.upgrade(authUser.getUserId(), request), httpRequest);
     }
 
     private ResponseEntity<ApiResponse<AuthResponse>> withRefreshCookie(IssuedTokens tokens) {
         return authResponseFactory.withRefreshCookie(tokens);
+    }
+
+    /** 로그인되는 응답. 로그인 전 밸런스 게임 결과 쿠키가 있으면 계정에 저장함 */
+    private ResponseEntity<ApiResponse<AuthResponse>> forLogin(IssuedTokens tokens, HttpServletRequest httpRequest) {
+        return authResponseFactory.forLogin(tokens, httpRequest);
     }
 }
