@@ -241,3 +241,13 @@ storage:
     region: ${AWS_REGION:ap-northeast-2}
     profile-prefix: profiles
     presigned-url-validity: 1h
+
+# Add to src/main/resources/application.yaml (replace the older adsense: block).
+adsense:
+  enabled: ${ADSENSE_ENABLED:false}
+  client-id: ${ADSENSE_CLIENT_ID:}
+  client-secret: ${ADSENSE_CLIENT_SECRET:}
+  redirect-uri: ${ADSENSE_REDIRECT_URI:http://localhost:8080/api/v1/adsense/oauth/callback}
+  expected-account-name: ${ADSENSE_EXPECTED_ACCOUNT_NAME:}
+  token-encryption-key: ${ADSENSE_TOKEN_ENCRYPTION_KEY:}
+  cookie-secure: ${ADSENSE_COOKIE_SECURE:true}

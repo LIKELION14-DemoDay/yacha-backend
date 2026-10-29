@@ -54,6 +54,8 @@ public class SecurityConfig {
             "/swagger-ui.html",
             "/v3/api-docs/**",
             "/actuator/health",
+            // Google AdSense OAuth 콜백
+            "/api/v1/adsense/oauth/callback",
     };
 
     /**
