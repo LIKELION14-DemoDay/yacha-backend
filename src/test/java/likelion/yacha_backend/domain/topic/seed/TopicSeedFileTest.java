@@ -21,10 +21,10 @@ class TopicSeedFileTest {
 
     /**
      * 열린 질문에 자주 나오는 의문사. "어떤" 은 "어떤 경우에도 ~인가?" 처럼 예 / 아니오 질문에도 자주 써서 뺍니다.
-     * 의문사가 아닌 말(왜곡 · 어떻게든 · 누구나 · 언제나 · 어디든 · 몇몇)은 뺍니다. 그 밖에 잘못 걸리면 문장을 바꿉니다.
+     * 의문사가 아닌 말(왜곡 · 어떻게든 · 누구나 · 누구에게나 · 언제나 · 어디든 · 몇몇)은 뺍니다. 그 밖에 잘못 걸리면 문장을 바꿉니다.
      */
     private static final Pattern QUESTION_WORD =
-            Pattern.compile("무엇|뭐|왜(?!곡)|어떻게(?!든)|누구(?![나든])|언제(?![나든])|어디(?!든)|얼마나|몇(?!몇)");
+            Pattern.compile("무엇|뭐|왜(?!곡)|어떻게(?!든)|누구(?![나든]|에게나)|언제(?![나든])|어디(?!든)|얼마나|몇(?!몇)");
 
     /** "~의 의미는?" 처럼 명사 + 은 / 는 으로 끝나는 열린 질문. "~하는가?" 는 "가?" 로 끝나 걸리지 않습니다. */
     private static final Pattern NOUN_QUESTION_END = Pattern.compile("[은는]\\s*\\?$");
@@ -58,6 +58,7 @@ class TopicSeedFileTest {
         assertThat(openQuestionReason("AI가 그린 그림도 예술이라고 할 수 있을까?")).isNull();
         assertThat(openQuestionReason("언론의 왜곡은 언제나 처벌해야 하는가?")).isNull();
         assertThat(openQuestionReason("누구나 어디든 갈 자유가 있는가?")).isNull();
+        assertThat(openQuestionReason("누구에게나 절대적으로 악한 행동이 존재하는가?")).isNull();
 
         assertThat(openQuestionReason("AI 시대 예술의 의미는?")).contains("은 / 는");
         assertThat(openQuestionReason("행복의 조건은 ?")).contains("은 / 는");
