@@ -13,6 +13,8 @@ import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
+import likelion.yacha_backend.domain.user.entity.PhilosopherType;
+import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
 import likelion.yacha_backend.global.security.jwt.Role;
 import org.junit.jupiter.api.AfterEach;
@@ -55,6 +57,9 @@ class SessionApiTest {
 
     @Autowired
     private DebateParticipantRepository participantRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     private Room room;
 
@@ -176,6 +181,39 @@ class SessionApiTest {
         }
 
         @Test
+        @DisplayName("참가자마다 닉네임 · 철학자 유형 · 자기 유형 말투의 입장 문구를 주고, 유형이 없으면 일반인 문구")
+        void participantProfiles() throws Exception {
+            room = fixture.randomHuman(IN_PREP);
+            userRepository.findById(room.hostUserId()).orElseThrow().completeBalanceGame(PhilosopherType.HOBBES);
+            String host = "$.data.participants[?(@.participantId == %d)]".formatted(room.hostParticipantId());
+            String opponent = "$.data.participants[?(@.participantId == %d)]".formatted(room.opponentParticipantId());
+
+            getAs(room.opponentUserId(), room.sessionId() + "/state")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath(host + ".nickname").value(
+                            userRepository.findById(room.hostUserId()).orElseThrow().getNickname()))
+                    .andExpect(jsonPath(host + ".philosopherType").value("HOBBES"))
+                    .andExpect(jsonPath(host + ".stanceText").value("질서를 위해 따르겠소"))
+                    .andExpect(jsonPath(opponent + ".nickname").value(
+                            userRepository.findById(room.opponentUserId()).orElseThrow().getNickname()))
+                    .andExpect(jsonPath(opponent + ".philosopherType").value((Object) null))
+                    .andExpect(jsonPath(opponent + ".stanceText").value("반대해요"));
+        }
+
+        @Test
+        @DisplayName("봇은 닉네임 · 유형이 null 이고 기계 말투 문구를 받는다")
+        void botProfile() throws Exception {
+            room = fixture.autoBot(IN_PREP);
+
+            getAs(room.hostUserId(), room.sessionId() + "/state")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.participants[?(@.type == 'AI')].nickname").value((Object) null))
+                    .andExpect(jsonPath("$.data.participants[?(@.type == 'AI')].philosopherType").value((Object) null))
+                    .andExpect(jsonPath("$.data.participants[?(@.type == 'AI')].stanceText").value("계산 결과, 반대입니다"))
+                    .andExpect(jsonPath("$.data.participants[?(@.type == 'USER')].stanceText").value("찬성해요"));
+        }
+
+        @Test
         @DisplayName("상대 게스트 계정이 정리돼 참가 기록의 user 가 비어도 200 (내 참가자 id 도 정상)")
         void detachedOpponent() throws Exception {
             room = fixture.randomHuman(IN_CHAT);
@@ -185,7 +223,11 @@ class SessionApiTest {
             getAs(room.opponentUserId(), room.sessionId() + "/state")
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.myParticipantId").value(room.opponentParticipantId()))
-                    .andExpect(jsonPath("$.data.participants.length()").value(2));
+                    .andExpect(jsonPath("$.data.participants.length()").value(2))
+                    .andExpect(jsonPath("$.data.participants[?(@.participantId == %d)].nickname"
+                            .formatted(room.hostParticipantId())).value((Object) null))
+                    .andExpect(jsonPath("$.data.participants[?(@.participantId == %d)].stanceText"
+                            .formatted(room.hostParticipantId())).value("찬성해요"));
         }
 
         @Test

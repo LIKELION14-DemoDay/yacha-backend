@@ -256,6 +256,13 @@ public class SessionController {
                     재접속 · 새로고침 때 구간과 남은 시간을 맞춤
                     남은 시간은 `endsAt - serverNow` 로 계산 (시각은 KST, `+09:00`)
 
+                    참가자마다 `nickname` · `philosopherType` · `stanceText` 를 줌
+                    - 로딩 화면(매칭 → 채팅방)은 양쪽 각자 `stanceText` (자기 유형 말투의 찬성 / 반대 문구)
+                    - 채팅은 `senderId` 로 참가자를 찾아 프로필(유형 이미지) · 닉네임 · 입장을 붙임
+                    - 유형이 없으면(일반인) `philosopherType` null, 문구는 "찬성해요" / "반대해요"
+                    - 봇은 `nickname` · `philosopherType` null, 문구는 "계산 결과, 찬성입니다" / "계산 결과, 반대입니다"
+                    - 입장이 없으면(친구 방에서 친구가 들어오기 전) `stanceText` null
+
                     참가자만 조회 가능 (`NOT_PARTICIPANT`)
                     """)
     @GetMapping("/{sessionId}/state")

@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.session.dto;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.ParticipantRole;
 import likelion.yacha_backend.domain.session.entity.ParticipantType;
@@ -11,6 +12,8 @@ import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.domain.topic.dto.TopicResponse;
 import likelion.yacha_backend.domain.topic.entity.Category;
+import likelion.yacha_backend.domain.user.entity.PhilosopherType;
+import likelion.yacha_backend.domain.user.entity.User;
 
 /**
  * {@code GET /sessions/{id}/state} — 세션 정보와 현재 구간 (재접속 · 새로고침용).
@@ -49,13 +52,52 @@ public record SessionStateResponse(
      * @param stance        동의 / 비동의. 친구 방은 친구가 들어오기 전까지 null
      * @param submitted     지금 작성 구간(구간 종료 뒤 3초 유예 포함)에 주장 · 반론을 제출했는지.
      *                      작성 구간이 아니면 null. 재접속해도 "상대방이 아직 작성중입니다" 화면을 맞추는 용도라 내용은 없습니다
+     * @param nickname        닉네임. AI 참가자와 계정이 정리된 참가자는 null
+     * @param philosopherType 철학자 유형 (밸런스 게임 결과). 안 했거나 건너뛰었으면 null("일반인"), 봇은 항상 null (프론트가 봇 이미지를 씀)
+     * @param stanceText      로딩 화면의 입장 문구. 참가자 본인의 유형 말투이고, 유형이 없으면 "찬성해요" / "반대해요",
+     *                        봇은 "계산 결과, 찬성입니다" / "계산 결과, 반대입니다". 입장이 없으면 null
      */
     public record ParticipantResponse(
             Long participantId,
             ParticipantType type,
             ParticipantRole role,
             Stance stance,
-            Boolean submitted
+            Boolean submitted,
+            String nickname,
+            PhilosopherType philosopherType,
+            String stanceText
     ) {
+
+        /** 봇의 찬성 문구. 철학자 말투와 구분되는 기계 말투입니다. */
+        public static final String BOT_AGREE_TEXT = "계산 결과, 찬성입니다";
+
+        /** 봇의 반대 문구. */
+        public static final String BOT_DISAGREE_TEXT = "계산 결과, 반대입니다";
+
+        /** 계정({@link DebateParticipant#getUser()})을 함께 읽은 참가자로 만듭니다. */
+        public static ParticipantResponse of(DebateParticipant participant, Boolean submitted) {
+            User user = participant.getUser();
+            PhilosopherType philosopherType = user == null ? null : user.getPhilosopherType();
+            return new ParticipantResponse(participant.getId(), participant.getParticipantType(), participant.getRole(),
+                    participant.getStance(), submitted,
+                    user == null ? null : user.getNickname(),
+                    philosopherType,
+                    stanceText(participant, philosopherType));
+        }
+
+        private static String stanceText(DebateParticipant participant, PhilosopherType philosopherType) {
+            Stance stance = participant.getStance();
+            if (stance == null) {
+                return null;
+            }
+            boolean agree = stance == Stance.AGREE;
+            if (participant.isAi()) {
+                return agree ? BOT_AGREE_TEXT : BOT_DISAGREE_TEXT;
+            }
+            if (philosopherType == null) {
+                return agree ? PhilosopherType.NONE_AGREE_TEXT : PhilosopherType.NONE_DISAGREE_TEXT;
+            }
+            return agree ? philosopherType.getAgreeText() : philosopherType.getDisagreeText();
+        }
     }
 }
