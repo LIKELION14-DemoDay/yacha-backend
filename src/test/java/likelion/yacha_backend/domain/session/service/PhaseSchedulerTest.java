@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.session.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.verify;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -142,7 +144,8 @@ class PhaseSchedulerTest extends TimerTestSupport {
         SessionStateResponse state = sessionQueryService.getState(room.sessionId(), room.hostUserId());
         assertThat(state.phase()).isEqualTo(DebatePhase.REVEAL);
         assertThat(state.endsAt().toLocalDateTime()).isEqualTo(revealEndsAt);
-        assertThat(state.startedAt().toLocalDateTime()).isEqualTo(game.getStartedAt());
+        // 응답의 startedAt 은 DB 값이라 마이크로초까지만 남습니다 (게임의 시각은 OS 에 따라 나노초까지 있음).
+        assertThat(state.startedAt().toLocalDateTime()).isCloseTo(game.getStartedAt(), within(1, ChronoUnit.MILLIS));
 
         // 원래 시간표의 60초 · 63초가 지나도 REVEAL 알림은 한 번뿐이고 주장도 다시 공개하지 않습니다.
         verify(gameMessageService, after(4_500).times(1))
