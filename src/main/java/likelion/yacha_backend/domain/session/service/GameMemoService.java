@@ -9,6 +9,7 @@ import likelion.yacha_backend.domain.session.exception.SessionErrorCode;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameMemo;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
+import likelion.yacha_backend.domain.session.game.PhaseAdvance;
 import likelion.yacha_backend.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,8 @@ public class GameMemoService {
 
     private final GameRegistry gameRegistry;
     private final GameMessageService gameMessageService;
+    private final PhaseScheduler phaseScheduler;
+    private final BotService botService;
     private final Clock clock;
 
     /**
@@ -36,6 +39,9 @@ public class GameMemoService {
      * <p>시각은 게임 락을 잡은 뒤에 구합니다. 락 밖에서 구하면 기다리는 사이 공개됐는데도 이전 시각으로
      * 저장될 수 있습니다 ({@link GameMessageService} 와 같은 규칙). 제출하기 전에 공개할 때가 된 글을 먼저
      * 공개해 보내므로, 반론 제출이 주장 공개를 앞지르지 않습니다.
+     *
+     * <p>이 제출로 양쪽이 다 냈으면 같은 락 안에서 바로 다음 구간으로 넘깁니다 — {@code ARGUMENT_SUBMITTED} →
+     * {@code PHASE_CHANGED} → {@code ARGUMENT} 순. 넘어가지 않았고 봇전이면 봇 제출을 앞당깁니다.
      */
     public MemoResponse saveMemo(Long sessionId, Long userId, String content) {
         Game game = findGame(sessionId);
@@ -44,6 +50,13 @@ public class GameMemoService {
             gameMessageService.broadcastAll(sessionId, game.revealArguments(now));
             GameMemo memo = game.saveMemo(userId, content, now);
             gameMessageService.broadcastSubmitted(sessionId, game.participantIdOf(userId), memo.phase());
+            PhaseAdvance advance = game.advanceIfAllSubmitted(memo.phase(), now);
+            if (advance != null) {
+                phaseScheduler.advanced(sessionId, game, advance);
+                botService.timelineChanged(sessionId);
+            } else {
+                botService.humanSubmitted(sessionId, memo.phase());
+            }
             return MemoResponse.from(memo, clock.getZone());
         }
     }

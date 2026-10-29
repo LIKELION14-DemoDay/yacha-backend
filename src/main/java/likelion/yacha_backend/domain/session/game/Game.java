@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.session.game;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -38,6 +39,10 @@ import lombok.Getter;
  * 양쪽 글을 {@link MessageType#ARGUMENT} 메시지로 기록합니다 (주장 63초, 반론 143초). 채팅은 반론이 공개된 뒤에만
  * 받고, 기록하기 전에 공개부터 하므로 스케줄러보다 채팅이 먼저 와도 반론이 앞 {@code seqNo} 를 받습니다.
  *
+ * <p><b>시간표</b> — 구간은 {@code startedAt} 이 아니라 바뀔 수 있는 기준 시각으로 계산합니다 ({@link #timeline()}).
+ * 작성 구간에 양쪽이 모두 진짜 글을 내면 남은 시간만큼 기준을 앞당겨 바로 다음 구간으로 넘기고, 그 구간 글은
+ * 유예 없이 공개합니다 ({@link #advanceIfAllSubmitted}). 봇의 임시 글("생각중") · 실패 글은 제출로 치지 않습니다.
+ *
  * <p><b>봇</b> — 봇전은 봇 몫의 주장 · 반론 · 채팅을 AI 참가자 id 로 기록합니다({@link #saveBotMemo} ·
  * {@link #appendBotChat}). 규칙(구간 · 글자 수 · 채팅 수)은 사람과 같고, 공개 · 순서 · 판정 입력도 같습니다.
  *
@@ -55,9 +60,16 @@ public class Game {
     @Getter
     private final Long sessionId;
 
-    /** 구간 계산 기준. {@code DebateSession.startedAt} 과 같은 값입니다. */
+    /** 게임이 시작된 시각. {@code DebateSession.startedAt} 과 같은 값이고 시간표가 앞당겨져도 바뀌지 않습니다. */
     @Getter
     private final LocalDateTime startedAt;
+
+    /** 구간 계산 기준 시각. 처음엔 {@link #startedAt} 이고, 작성 구간이 일찍 닫히면 남은 시간만큼 앞당깁니다. */
+    private LocalDateTime timelineBase;
+    /** 시간표 버전. 기준 시각을 앞당길 때마다 올립니다. */
+    private long timelineVersion;
+    /** 양쪽이 다 내서 일찍 닫힌 작성 구간. */
+    private final Set<DebatePhase> closedEarlyPhases = EnumSet.noneOf(DebatePhase.class);
 
     /**
      * 사람 참가자의 userId → participantId. 채팅마다 DB 를 조회하지 않고 여기서 참가자인지 확인합니다.
@@ -90,6 +102,8 @@ public class Game {
     private final Map<Long, Map<DebatePhase, GameMemo>> memosByParticipantId = new HashMap<>();
     /** 이미 공개한 작성 구간. 구간마다 한 번만 공개합니다. */
     private final Set<DebatePhase> revealedPhases = EnumSet.noneOf(DebatePhase.class);
+    /** 봇이 지금 임시 글(생각중 · 실패 글)을 내 둔 작성 구간. 진짜 글로 덮어쓰면 빠집니다. */
+    private final Set<DebatePhase> provisionalBotPhases = EnumSet.noneOf(DebatePhase.class);
     private boolean finished;
     /** 판정 상태. 판정을 시작하기 전에는 null 입니다. */
     private JudgeStatus judgeStatus;
@@ -111,6 +125,7 @@ public class Game {
          int chatMaxLength, int maxChatsPerParticipant, int argumentMaxLength, int rebuttalMaxLength) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
+        this.timelineBase = startedAt;
         this.participantIdByUserId = Map.copyOf(participantIdByUserId);
         this.aiParticipantId = aiParticipantId;
         this.botProgress = aiParticipantId == null ? null : new BotProgress();
@@ -143,10 +158,11 @@ public class Game {
 
     private GameMessage appendChatOf(Long participantId, String content, LocalDateTime now) {
         revealArguments(now);
-        if (!DebatePhase.isChatOpen(startedAt, now)) {
+        DebatePhase phase = DebatePhase.at(timelineBase, now).phase();
+        // 반론이 공개된 뒤에만 받습니다. 바로 위에서 공개할 때가 된 글은 공개했으므로 공개 여부로 봅니다.
+        if (!phase.isChatAllowed() || !revealedPhases.contains(DebatePhase.REBUTTAL)) {
             throw new BusinessException(SessionErrorCode.INVALID_PHASE);
         }
-        DebatePhase phase = DebatePhase.at(startedAt, now).phase();
         checkLength(content, chatMaxLength);
         int chatCount = chatCountByParticipantId.getOrDefault(participantId, 0);
         if (chatCount >= maxChatsPerParticipant) {
@@ -177,7 +193,22 @@ public class Game {
      * @throws IllegalStateException 사람전 (AI 참가자가 없음)
      */
     public synchronized GameMemo saveBotMemo(String content, LocalDateTime now) {
-        return saveMemoOf(checkBotWritable(), content, now);
+        return saveBotMemo(content, false, now);
+    }
+
+    /**
+     * 봇 글을 제출합니다. {@code provisional} 이면 임시 글(생각중 · 실패 글)이라 구간을 일찍 넘기는 제출로 치지 않습니다.
+     *
+     * @throws IllegalStateException 사람전 (AI 참가자가 없음)
+     */
+    public synchronized GameMemo saveBotMemo(String content, boolean provisional, LocalDateTime now) {
+        GameMemo memo = saveMemoOf(checkBotWritable(), content, now);
+        if (provisional) {
+            provisionalBotPhases.add(memo.phase());
+        } else {
+            provisionalBotPhases.remove(memo.phase());
+        }
+        return memo;
     }
 
     /** 봇전의 봇 글 진행 상태. 사람전이면 null 입니다. */
@@ -197,7 +228,7 @@ public class Game {
     }
 
     private GameMemo saveMemoOf(Long participantId, String content, LocalDateTime now) {
-        DebatePhase phase = DebatePhase.memoPhaseAt(startedAt, now);
+        DebatePhase phase = memoPhaseAt(now);
         if (phase == null || revealedPhases.contains(phase)) {
             throw new BusinessException(SessionErrorCode.INVALID_PHASE);
         }
@@ -224,7 +255,7 @@ public class Game {
      * 내용은 주지 않습니다 — "상대방이 아직 작성중입니다" 화면용입니다.
      */
     public synchronized Set<Long> submittedParticipantIds(LocalDateTime now) {
-        DebatePhase phase = DebatePhase.memoPhaseAt(startedAt, now);
+        DebatePhase phase = memoPhaseAt(now);
         if (phase == null) {
             return null;
         }
@@ -253,7 +284,7 @@ public class Game {
         }
         List<GameMessage> revealed = new ArrayList<>();
         for (DebatePhase memoPhase : DebatePhase.values()) {
-            if (!memoPhase.isMemoAllowed() || now.isBefore(memoPhase.revealAt(startedAt))
+            if (!memoPhase.isMemoAllowed() || now.isBefore(timeline().revealAt(memoPhase))
                     || !revealedPhases.add(memoPhase)) {
                 continue;
             }
@@ -267,6 +298,43 @@ public class Game {
                     });
         }
         return List.copyOf(revealed);
+    }
+
+    /**
+     * 지금 작성 구간에 양쪽 모두 진짜 글을 냈으면 남은 시간을 건너뛰고 다음 구간으로 넘깁니다. 넘겼으면 그 결과를,
+     * 아니면 null 을 돌려줍니다. 주장 · 반론을 제출한 직후 같은 락 안에서 부릅니다.
+     *
+     * <p>기준 시각을 남은 시간만큼 앞당기고 버전을 올립니다. 닫힌 구간은 유예 없이 지금 공개하므로 그 뒤로는 고칠 수
+     * 없습니다. 작성 구간이 이미 끝나 유예 중이면(3초) 넘기지 않습니다 — 다음 구간 알림이 이미 나갔습니다.
+     *
+     * @param phase 방금 제출한 글의 작성 구간
+     */
+    public synchronized PhaseAdvance advanceIfAllSubmitted(DebatePhase phase, LocalDateTime now) {
+        if (finished || !phase.isMemoAllowed() || DebatePhase.at(timelineBase, now).phase() != phase
+                || !allSubmitted(phase)) {
+            return null;
+        }
+        timelineBase = timelineBase.minus(Duration.between(now, phase.endAt(timelineBase)));
+        timelineVersion++;
+        closedEarlyPhases.add(phase);
+        List<GameMessage> revealed = revealArguments(now);
+        DebatePhase next = DebatePhase.at(timelineBase, now).phase();
+        return new PhaseAdvance(next, next.endAt(timelineBase), now, revealed);
+    }
+
+    /** 지금 시간표. 기준 시각 · 버전 · 일찍 닫힌 구간을 한 번에 찍어 줍니다. */
+    public synchronized GameTimeline timeline() {
+        return new GameTimeline(timelineBase, timelineVersion, closedEarlyPhases);
+    }
+
+    /** {@code now} 에 제출을 받는 작성 구간. 작성 구간(유예 포함)이 아니거나 일찍 닫혔으면 null 입니다. */
+    public synchronized DebatePhase memoPhase(LocalDateTime now) {
+        return memoPhaseAt(now);
+    }
+
+    /** 이 작성 구간의 글을 이미 공개했는가. */
+    public synchronized boolean isRevealed(DebatePhase phase) {
+        return revealedPhases.contains(phase);
     }
 
     /** {@code seqNo > afterSeq} 인 메시지를 오름차순으로. 재접속 보충용입니다. */
@@ -403,6 +471,24 @@ public class Game {
     /** 판정 결과. {@code READY} 가 아니면 null 입니다. */
     public synchronized Verdict verdict() {
         return verdict;
+    }
+
+    private DebatePhase memoPhaseAt(LocalDateTime now) {
+        DebatePhase phase = DebatePhase.memoPhaseAt(timelineBase, now);
+        return phase == null || closedEarlyPhases.contains(phase) ? null : phase;
+    }
+
+    /** 참가자 모두(사람 · 봇) 이 작성 구간에 글을 냈는가. 봇의 임시 글은 치지 않습니다. */
+    private boolean allSubmitted(DebatePhase phase) {
+        List<Long> participantIds = new ArrayList<>(participantIdByUserId.values());
+        if (aiParticipantId != null) {
+            if (provisionalBotPhases.contains(phase)) {
+                return false;
+            }
+            participantIds.add(aiParticipantId);
+        }
+        return participantIds.stream()
+                .allMatch(id -> memosByParticipantId.getOrDefault(id, Map.of()).containsKey(phase));
     }
 
     /** 글자 수. 이모지처럼 두 칸(char)을 쓰는 문자도 한 글자로 셉니다. */

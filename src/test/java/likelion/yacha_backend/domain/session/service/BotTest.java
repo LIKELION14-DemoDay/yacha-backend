@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.session.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -29,6 +30,7 @@ import likelion.yacha_backend.domain.ai.PreparedReplies;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
+import likelion.yacha_backend.domain.session.dto.PhaseChangedEvent;
 import likelion.yacha_backend.domain.session.dto.SessionFinishedEvent;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
@@ -71,6 +73,9 @@ class BotTest extends TimerTestSupport {
 
     @Autowired
     private BotService botService;
+
+    @Autowired
+    private GameMemoService gameMemoService;
 
     @Autowired
     private SessionMatchFacade sessionMatchFacade;
@@ -189,6 +194,70 @@ class BotTest extends TimerTestSupport {
         verify(gameMessageService, after(500).never())
                 .broadcastSubmitted(eq(room.sessionId()), eq(game.getAiParticipantId()), eq(DebatePhase.REBUTTAL));
         assertThat(output.getAll()).doesNotContain("REBUTTAL 이 작성 구간을 넘겨 내지 않습니다");
+    }
+
+    @Test
+    @DisplayName("사람이 먼저 내면 봇도 무작위 시각(20~50초)을 기다리지 않고 내고, 바로 REVEAL 로 넘어가 주장이 공개된다")
+    void humanFirstAdvancesPrep() throws Exception {
+        Room room = botRoom(10);
+        Game game = game(room);
+        botService.start(room.sessionId());
+        verify(botWriter, timeout(WAIT_MILLIS)).writeArgument(any(), eq(Stance.DISAGREE));
+        Thread.sleep(200);
+
+        gameMemoService.saveMemo(room.sessionId(), room.hostUserId(), "거짓말은 신뢰를 무너뜨린다");
+
+        // 봇 글이 준비돼 있으므로 2~5초 뒤에 냅니다.
+        verify(gameMessageService, after(1_500).never())
+                .broadcastSubmitted(eq(room.sessionId()), eq(game.getAiParticipantId()), eq(DebatePhase.PREP));
+        verify(gameMessageService, timeout(WAIT_MILLIS)).broadcastEvent(eq(room.sessionId()), argThat(event ->
+                event instanceof PhaseChangedEvent changed && changed.phase() == DebatePhase.REVEAL));
+        assertThat(game.messagesAfter(0)).extracting(GameMessage::type, GameMessage::phase)
+                .containsOnly(tuple(MessageType.ARGUMENT, DebatePhase.PREP)).hasSize(2);
+        assertThat(game.timeline().version()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("사람이 먼저 냈는데 봇 글이 아직 없으면, 임시 글 없이 다 쓰는 즉시 내고 넘어간다")
+    void humanFirstBotNotReady() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            release.await();
+            return "봇 주장";
+        }).when(botWriter).writeArgument(any(), any());
+        Room room = botRoom(10);
+        Game game = game(room);
+        botService.start(room.sessionId());
+        verify(botWriter, timeout(WAIT_MILLIS)).writeArgument(any(), any());
+
+        gameMemoService.saveMemo(room.sessionId(), room.hostUserId(), "거짓말은 신뢰를 무너뜨린다");
+        verify(gameMessageService, after(500).never())
+                .broadcastSubmitted(eq(room.sessionId()), eq(game.getAiParticipantId()), eq(DebatePhase.PREP));
+        release.countDown();
+
+        verify(gameMessageService, timeout(1_500)).broadcastEvent(eq(room.sessionId()), argThat(event ->
+                event instanceof PhaseChangedEvent changed && changed.phase() == DebatePhase.REVEAL));
+        assertThat(game.messagesAfter(0)).extracting(GameMessage::content)
+                .containsExactly("거짓말은 신뢰를 무너뜨린다", "봇 주장");
+    }
+
+    @Test
+    @DisplayName("주장이 일찍 넘어가면 반론 구간도 앞당겨지고(지금 + 20초), 봇은 반론 구간 전에 반론을 쓰지 않는다")
+    void rebuttalFollowsAdvancedTimeline() {
+        // 58초에 봇 · 사람이 다 내 2초 일찍 넘깁니다. 원래 반론 쓰기(85초)는 시간표 버전이 바뀌어 무시됩니다.
+        Room room = botRoom(58);
+        Game game = game(room);
+        LocalDateTime now = LocalDateTime.now(clock);
+        game.saveBotMemo("봇 주장", false, now);
+
+        gameMemoService.saveMemo(room.sessionId(), room.hostUserId(), "거짓말은 신뢰를 무너뜨린다");
+
+        assertThat(game.timeline().version()).isEqualTo(1);
+        assertThat(game.timeline().startAt(DebatePhase.REBUTTAL)).isAfterOrEqualTo(now.plusSeconds(20));
+        verify(gameMessageService).broadcastEvent(eq(room.sessionId()), argThat(event ->
+                event instanceof PhaseChangedEvent changed && changed.phase() == DebatePhase.REVEAL));
+        // 앞당긴 반론 구간은 지금부터 20초 뒤라 몇 초 안에는 쓰지 않습니다 (원래 85초 시각도 26초 뒤).
+        verify(botWriter, after(1_000).never()).writeRebuttal(any(), any(), any());
     }
 
     @Test
