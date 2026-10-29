@@ -256,6 +256,14 @@ public class SessionController {
                     재접속 · 새로고침 때 구간과 남은 시간을 맞춤
                     남은 시간은 `endsAt - serverNow` 로 계산 (시각은 KST, `+09:00`)
 
+                    참가자마다 `nickname` · `philosopherType` · `stanceText` 를 줌
+                    - 로딩 화면(매칭 → 채팅방)은 양쪽 각자 `stanceText` (자기 유형 말투의 찬성 / 반대 문구)
+                    - 채팅은 `senderId` 로 참가자를 찾아 프로필(유형 이미지) · 닉네임 · 입장을 붙임
+                    - 유형이 없으면(일반인) `philosopherType` null, 문구는 "찬성해요" / "반대해요"
+                    - 봇은 `nickname` "야차봇" · `philosopherType` null, 문구는 "계산 결과, 찬성입니다" / "계산 결과, 반대입니다"
+                    - 계정이 정리된 사람 참가자(게스트 정리 · 가입 뒤 끝난 게임)는 `nickname` · `philosopherType` null, 문구는 일반인 문구
+                    - 입장이 없으면(친구 방에서 친구가 들어오기 전) `stanceText` null
+
                     참가자만 조회 가능 (`NOT_PARTICIPANT`)
                     """)
     @GetMapping("/{sessionId}/state")
@@ -324,7 +332,7 @@ public class SessionController {
                     판정이 실패하면 다시 부를 때 판정을 다시 시작하고 `PENDING`
                     점수 · 요약은 10분 동안만 있고, 그 뒤에는 승패만 (`criteria` · `scores` · `total` null, 게스트는 승패도 없음)
                     결과를 낼 수 없으면 `FAILED` (판정 중 서버 재시작 · 무효 게임 `ABORTED`)
-                    `philosopherType` 은 밸런스 게임 결과 (안 했으면 null = "일반인"), 봇은 `nickname` · `philosopherType` 모두 null
+                    `philosopherType` 은 밸런스 게임 결과 (안 했으면 null = "일반인"), 봇은 `nickname` "야차봇" · `philosopherType` null, 계정이 정리된 사람 참가자는 `nickname` · `philosopherType` null
 
                     참가자만 (`NOT_PARTICIPANT`), 아직 끝나지 않은 토론이면 `SESSION_NOT_FINISHED`
                     """)

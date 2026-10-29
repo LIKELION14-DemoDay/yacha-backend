@@ -49,7 +49,7 @@ public record SessionResultResponse(
     }
 
     /**
-     * @param nickname        닉네임. AI 참가자와 계정이 정리된 참가자는 null
+     * @param nickname        닉네임. 봇은 "야차봇", 계정이 정리된 사람 참가자는 null
      * @param philosopherType 철학자 유형 (밸런스 게임 결과). 안 했거나 건너뛰었으면 null("일반인"), 봇은 항상 null (프론트가 봇 이미지를 씀)
      * @param isMe            조회한 사용자 본인인지
      * @param result          승패. 보관 시간이 지난 뒤 게스트는 DB 에 기록이 없어 null
