@@ -88,6 +88,7 @@ public class AdSenseReportClient {
                 .queryParam("endDate.month", endDate.getMonthValue())
                 .queryParam("endDate.day", endDate.getDayOfMonth())
                 .queryParam("dimensions", "DATE")
+                .queryParam("filters", "OWNED_SITE_DOMAIN_NAME==yachapan.cloud")
                 .queryParam("metrics", "PAGE_VIEWS")
                 .queryParam("metrics", "IMPRESSIONS")
                 .queryParam("metrics", "CLICKS")
