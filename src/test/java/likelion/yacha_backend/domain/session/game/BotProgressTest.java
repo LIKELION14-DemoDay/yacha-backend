@@ -19,7 +19,7 @@ class BotProgressTest {
         BotProgress progress = new BotProgress();
         assertThat(progress.prepared(DebatePhase.PREP, "주장")).isNull();
 
-        assertThat(progress.due(DebatePhase.PREP, PLACEHOLDER)).isEqualTo(new Submission("주장", true));
+        assertThat(progress.due(DebatePhase.PREP, PLACEHOLDER)).isEqualTo(new Submission("주장", true, false));
         assertThat(progress.due(DebatePhase.PREP, PLACEHOLDER)).isNull();
         assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isNull();
     }
@@ -29,8 +29,8 @@ class BotProgressTest {
     void placeholderThenText() {
         BotProgress progress = new BotProgress();
 
-        assertThat(progress.due(DebatePhase.REBUTTAL, PLACEHOLDER)).isEqualTo(new Submission(PLACEHOLDER, true));
-        assertThat(progress.prepared(DebatePhase.REBUTTAL, "반론")).isEqualTo(new Submission("반론", false));
+        assertThat(progress.due(DebatePhase.REBUTTAL, PLACEHOLDER)).isEqualTo(new Submission(PLACEHOLDER, true, true));
+        assertThat(progress.prepared(DebatePhase.REBUTTAL, "반론")).isEqualTo(new Submission("반론", false, false));
         assertThat(progress.fail(DebatePhase.REBUTTAL, FAILURE)).isNull();
         assertThat(progress.isFailed()).isFalse();
     }
@@ -41,7 +41,7 @@ class BotProgressTest {
         BotProgress progress = new BotProgress();
         progress.due(DebatePhase.PREP, PLACEHOLDER);
 
-        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, false));
+        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, false, true));
         assertThat(progress.isFailed()).isTrue();
         assertThat(progress.prepared(DebatePhase.PREP, "늦은 주장")).isNull();
         assertThat(progress.due(DebatePhase.REBUTTAL, PLACEHOLDER)).isNull();
@@ -52,7 +52,7 @@ class BotProgressTest {
     void failBeforePlaceholderNotifies() {
         BotProgress progress = new BotProgress();
 
-        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, true));
+        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, true, true));
     }
 
     @Test
@@ -65,7 +65,7 @@ class BotProgressTest {
         progress.rejected(DebatePhase.PREP, text);
 
         // 임시 글이 이미 알림을 보냈으므로 실패 글은 알림 없이 덮어씁니다.
-        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, false));
+        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, false, true));
     }
 
     @Test
@@ -74,11 +74,11 @@ class BotProgressTest {
         BotProgress progress = new BotProgress();
         progress.prepared(DebatePhase.PREP, "너무 긴 주장");
         Submission text = progress.due(DebatePhase.PREP, PLACEHOLDER);
-        assertThat(text).isEqualTo(new Submission("너무 긴 주장", true));
+        assertThat(text).isEqualTo(new Submission("너무 긴 주장", true, false));
 
         progress.rejected(DebatePhase.PREP, text);
 
-        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, true));
+        assertThat(progress.fail(DebatePhase.PREP, FAILURE)).isEqualTo(new Submission(FAILURE, true, true));
     }
 
     @Test

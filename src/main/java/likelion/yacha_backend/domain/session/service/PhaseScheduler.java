@@ -13,7 +13,9 @@ import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameMessage;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
+import likelion.yacha_backend.domain.session.game.GameTimeline;
 import likelion.yacha_backend.domain.session.game.GameTimers;
+import likelion.yacha_backend.domain.session.game.PhaseAdvance;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import likelion.yacha_backend.global.util.DateTimes;
 import org.springframework.stereotype.Service;
@@ -33,6 +35,11 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p><b>공개 · 전송은 게임 락 안에서</b> 합니다 ({@link GameMessageService} 와 같은 규칙). 채팅 · 제출 처리도
  * 먼저 공개하므로 둘이 겹쳐도 글은 한 번만 공개되고, 항상 채팅보다 앞 {@code seqNo} 를 받습니다.
+ *
+ * <p><b>앞당긴 시간표</b> — 양쪽이 작성 구간을 일찍 마치면 게임의 시간표가 앞당겨지고 버전이 오릅니다
+ * ({@link Game#advanceIfAllSubmitted}). {@link #advanced} 가 다음 구간 알림 · 공개를 보내고 남은 시각을 새 기준으로
+ * 다시 겁니다. 구간 알림 · 최종반론 · 종료 타이머는 등록할 때의 버전을 들고 있다가 버전이 바뀌었으면 아무것도 하지 않습니다.
+ * 공개는 몇 번 불려도 한 번만 공개하므로 버전과 상관없이 둡니다.
  *
  * <p>작업은 실행할 때 게임을 다시 확인하고, 없거나 끝난 게임이면 아무것도 하지 않습니다.
  * 종료는 {@code finishIfInProgress} 조건부 UPDATE 라 나가기 · 끊김 처리와 겹쳐도 한쪽만 끝냅니다.
@@ -64,30 +71,65 @@ public class PhaseScheduler {
     }
 
     /**
-     * 게임의 남은 시간표를 등록합니다. 게임을 만든 직후(커밋 뒤) 부릅니다.
+     * 게임의 남은 시간표를 등록합니다. 게임을 만든 직후(커밋 뒤) 부릅니다. 게임이 없으면 아무것도 하지 않습니다.
      * 이미 지난 구간 알림은 보내지 않고, 공개 · 종료는 지났어도 등록해 바로 실행합니다 (빠지면 안 되는 일이라서).
      */
-    public void register(Long sessionId, LocalDateTime startedAt) {
-        LocalDateTime now = LocalDateTime.now(clock);
-        for (DebatePhase phase : new DebatePhase[]{DebatePhase.REVEAL, DebatePhase.REBUTTAL, DebatePhase.CHAT}) {
-            LocalDateTime at = phase.startAt(startedAt);
-            if (!at.isBefore(now)) {
-                gameTimers.schedule(sessionId, at, () -> phaseChanged(sessionId, phase, phase.endAt(startedAt)));
-            }
-        }
-        gameTimers.schedule(sessionId, DebatePhase.PREP.revealAt(startedAt), () -> reveal(sessionId));
-        gameTimers.schedule(sessionId, DebatePhase.REBUTTAL.revealAt(startedAt), () -> reveal(sessionId));
-        LocalDateTime finalNoticeAt = DebatePhase.finalNoticeAt(startedAt);
-        if (!finalNoticeAt.isBefore(now)) {
-            gameTimers.schedule(sessionId, finalNoticeAt,
-                    () -> finalNotice(sessionId, DebatePhase.CHAT.endAt(startedAt)));
-        }
-        gameTimers.schedule(sessionId, DebatePhase.JUDGING.startAt(startedAt), () -> finish(sessionId));
+    public void register(Long sessionId) {
+        gameRegistry.find(sessionId).ifPresent(game -> schedule(sessionId, game, true));
     }
 
-    private void phaseChanged(Long sessionId, DebatePhase phase, LocalDateTime endsAt) {
+    /**
+     * 양쪽이 작성 구간을 일찍 마쳐 다음 구간으로 넘어갔습니다. 제출을 처리한 게임 락 안에서 {@code ARGUMENT_SUBMITTED}
+     * 를 보낸 뒤 부릅니다 — {@code PHASE_CHANGED(다음 구간)} → 공개한 {@code ARGUMENT} 순으로 보내고, 남은 시간표를
+     * 앞당긴 기준으로 다시 겁니다. 이전 버전의 타이머는 실행돼도 아무것도 하지 않습니다.
+     */
+    public void advanced(Long sessionId, Game game, PhaseAdvance advance) {
+        ZoneId zone = clock.getZone();
+        gameMessageService.broadcastEvent(sessionId, PhaseChangedEvent.of(advance.phase(),
+                DateTimes.withOffset(advance.endsAt(), zone), DateTimes.withOffset(advance.at(), zone)));
+        gameMessageService.broadcastAll(sessionId, advance.revealed());
+        schedule(sessionId, game, false);
+    }
+
+    /**
+     * 게임의 지금 시간표로 남은 일을 겁니다.
+     *
+     * @param includeNow 지금 시작하는 구간의 알림도 보낼까. 처음 등록할 때만 true — 앞당길 때는 다음 구간 알림을 이미 보냈습니다
+     */
+    private void schedule(Long sessionId, Game game, boolean includeNow) {
+        GameTimeline timeline = game.timeline();
+        long version = timeline.version();
+        LocalDateTime now = LocalDateTime.now(clock);
+        for (DebatePhase phase : new DebatePhase[]{DebatePhase.REVEAL, DebatePhase.REBUTTAL, DebatePhase.CHAT}) {
+            LocalDateTime at = timeline.startAt(phase);
+            if (at.isAfter(now) || (includeNow && at.isEqual(now))) {
+                gameTimers.schedule(sessionId, at,
+                        () -> phaseChanged(sessionId, version, phase, timeline.endAt(phase)));
+            }
+        }
+        for (DebatePhase memoPhase : new DebatePhase[]{DebatePhase.PREP, DebatePhase.REBUTTAL}) {
+            if (!game.isRevealed(memoPhase)) {
+                gameTimers.schedule(sessionId, timeline.revealAt(memoPhase), () -> reveal(sessionId));
+            }
+        }
+        LocalDateTime finalNoticeAt = timeline.finalNoticeAt();
+        if (!finalNoticeAt.isBefore(now)) {
+            gameTimers.schedule(sessionId, finalNoticeAt,
+                    () -> finalNotice(sessionId, version, timeline.endAt(DebatePhase.CHAT)));
+        }
+        gameTimers.schedule(sessionId, timeline.startAt(DebatePhase.JUDGING), () -> {
+            if (game.timeline().version() == version) {
+                finish(sessionId);
+            }
+        });
+    }
+
+    private void phaseChanged(Long sessionId, long version, DebatePhase phase, LocalDateTime endsAt) {
         activeGame(sessionId).ifPresent(game -> {
             synchronized (game) {
+                if (game.timeline().version() != version) {
+                    return;
+                }
                 ZoneId zone = clock.getZone();
                 gameMessageService.broadcastEvent(sessionId, PhaseChangedEvent.of(phase,
                         DateTimes.withOffset(endsAt, zone), DateTimes.withOffset(LocalDateTime.now(clock), zone)));
@@ -103,9 +145,12 @@ public class PhaseScheduler {
         });
     }
 
-    private void finalNotice(Long sessionId, LocalDateTime chatEndsAt) {
+    private void finalNotice(Long sessionId, long version, LocalDateTime chatEndsAt) {
         activeGame(sessionId).ifPresent(game -> {
             synchronized (game) {
+                if (game.timeline().version() != version) {
+                    return;
+                }
                 gameMessageService.broadcastEvent(sessionId,
                         FinalNoticeEvent.of(DateTimes.withOffset(chatEndsAt, clock.getZone())));
             }

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
@@ -22,6 +23,7 @@ import likelion.yacha_backend.domain.session.dto.FinalNoticeEvent;
 import likelion.yacha_backend.domain.session.dto.PhaseChangedEvent;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
 import likelion.yacha_backend.domain.session.dto.SessionFinishedEvent;
+import likelion.yacha_backend.domain.session.dto.SessionStateResponse;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
@@ -37,6 +39,7 @@ import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -65,6 +68,12 @@ class PhaseSchedulerTest extends TimerTestSupport {
     @Autowired
     private Clock clock;
 
+    @Autowired
+    private GameMemoService gameMemoService;
+
+    @Autowired
+    private SessionQueryService sessionQueryService;
+
     private final List<Room> rooms = new ArrayList<>();
     private final List<Long> sessionIds = new ArrayList<>();
 
@@ -86,7 +95,7 @@ class PhaseSchedulerTest extends TimerTestSupport {
     }
 
     private void register(Room room) {
-        phaseScheduler.register(room.sessionId(), game(room).getStartedAt());
+        phaseScheduler.register(room.sessionId());
     }
 
     private DebateSession session(Long sessionId) {
@@ -113,6 +122,47 @@ class PhaseSchedulerTest extends TimerTestSupport {
         assertThat(game.messagesAfter(0)).extracting(GameMessage::type)
                 .containsExactly(MessageType.ARGUMENT, MessageType.ARGUMENT);
         assertThat(game.messagesAfter(0)).extracting(GameMessage::phase).containsOnly(DebatePhase.PREP);
+    }
+
+    @Test
+    @DisplayName("양쪽이 주장을 일찍 내면 ARGUMENT_SUBMITTED → REVEAL → 주장 공개 순으로 바로 넘기고, 원래 60초 알림 · 63초 공개는 다시 하지 않는다")
+    void advancesWhenBothSubmitted() {
+        Room room = startedRoom(56);
+        Game game = game(room);
+        register(room);
+
+        gameMemoService.saveMemo(room.sessionId(), room.hostUserId(), "거짓말은 신뢰를 무너뜨린다");
+        gameMemoService.saveMemo(room.sessionId(), room.opponentUserId(), "선의의 거짓말도 있다");
+
+        InOrder inOrder = inOrder(gameMessageService);
+        inOrder.verify(gameMessageService).broadcastSubmitted(room.sessionId(), room.opponentParticipantId(), DebatePhase.PREP);
+        inOrder.verify(gameMessageService).broadcastEvent(eq(room.sessionId()), phaseChanged(DebatePhase.REVEAL));
+        inOrder.verify(gameMessageService).broadcastAll(eq(room.sessionId()), argThat(messages -> messages.size() == 2));
+        LocalDateTime revealEndsAt = game.timeline().endAt(DebatePhase.REVEAL);
+        SessionStateResponse state = sessionQueryService.getState(room.sessionId(), room.hostUserId());
+        assertThat(state.phase()).isEqualTo(DebatePhase.REVEAL);
+        assertThat(state.endsAt().toLocalDateTime()).isEqualTo(revealEndsAt);
+        assertThat(state.startedAt().toLocalDateTime()).isEqualTo(game.getStartedAt());
+
+        // 원래 시간표의 60초 · 63초가 지나도 REVEAL 알림은 한 번뿐이고 주장도 다시 공개하지 않습니다.
+        verify(gameMessageService, after(4_500).times(1))
+                .broadcastEvent(eq(room.sessionId()), phaseChanged(DebatePhase.REVEAL));
+        assertThat(game.messagesAfter(0)).hasSize(2);
+        verify(gameMessageService, never()).broadcastEvent(eq(room.sessionId()), phaseChanged(DebatePhase.REBUTTAL));
+    }
+
+    @Test
+    @DisplayName("한쪽만 내면 넘기지 않고 원래 60초에 REVEAL 로 바뀐다")
+    void noAdvanceWithOneSubmission() {
+        Room room = startedRoom(57);
+        Game game = game(room);
+        register(room);
+
+        gameMemoService.saveMemo(room.sessionId(), room.hostUserId(), "거짓말은 신뢰를 무너뜨린다");
+
+        assertThat(game.timeline().version()).isZero();
+        verify(gameMessageService, timeout(WAIT_MILLIS)).broadcastEvent(eq(room.sessionId()), phaseChanged(DebatePhase.REVEAL));
+        assertThat(game.timeline().version()).isZero();
     }
 
     @Test
@@ -196,7 +246,7 @@ class PhaseSchedulerTest extends TimerTestSupport {
         sessionIds.addAll(List.of(joined, bot, converted));
 
         for (Long sessionId : List.of(joined, bot, converted)) {
-            verify(phaseScheduler).register(sessionId, session(sessionId).getStartedAt());
+            verify(phaseScheduler).register(sessionId);
         }
     }
 
@@ -207,7 +257,7 @@ class PhaseSchedulerTest extends TimerTestSupport {
         Long sessionId = sessionMatchFacade.create(hostId,
                 new SessionCreateRequest(RoomType.RANDOM, fixture.topic().getId(), Stance.AGREE));
         sessionIds.add(sessionId);
-        doThrow(new IllegalStateException("등록 실패")).when(phaseScheduler).register(eq(sessionId), any());
+        doThrow(new IllegalStateException("등록 실패")).when(phaseScheduler).register(sessionId);
 
         assertThat(sessionMatchFacade.join(fixture.newUser(), sessionId)).isEqualTo(sessionId);
 

@@ -11,6 +11,7 @@ import likelion.yacha_backend.domain.session.entity.DebatePhase;
  * {@link #prepared} 와 {@link #due} 중 나중에 불린 쪽이 제출할 글을 받습니다. 제출 시각에 글이 아직 없으면
  * 임시 글("생각중")을 먼저 내고, 글이 끝나면 그 글로 덮어씁니다. 작성 구간이 끝날 때까지 글이 없으면
  * {@link #fail} 로 실패 글을 내고, 그 뒤로는 봇이 아무것도 하지 않습니다 (게임은 무효로 끝남).
+ * 사람이 먼저 내면 제출 시각을 앞당깁니다 ({@link #humanSubmitted}).
  *
  * <p><b>채팅 대답</b> — 사람이 말할 때마다 번호를 올리고, 대답 타이머는 자기 번호가 마지막일 때만 대답합니다
  * (마지막 말 뒤 한 번). 대답은 한 번에 하나만 만들고, 만드는 중에 차례가 오면 끝난 뒤 바로 한 번 더 만듭니다.
@@ -48,7 +49,23 @@ public class BotProgress {
             return text;
         }
         draft.shown = true;
-        return new Submission(placeholder, true);
+        return new Submission(placeholder, true, true);
+    }
+
+    /**
+     * 사람이 이 작성 구간의 글을 먼저 냈습니다. 봇 글이 이미 준비돼 있으면 true — 부르는 쪽이 곧 낼 시각을 잡습니다.
+     * 아직 쓰는 중이면 다 쓰는 즉시 내도록 표시하고 false 입니다. 이미 냈거나 실패했으면 false 입니다.
+     */
+    public synchronized boolean humanSubmitted(DebatePhase phase) {
+        Draft draft = drafts.get(phase);
+        if (draft.submitted || failed) {
+            return false;
+        }
+        if (draft.text != null) {
+            return true;
+        }
+        draft.due = true;
+        return false;
     }
 
     /**
@@ -63,7 +80,7 @@ public class BotProgress {
         failed = true;
         boolean announce = !draft.shown;
         draft.shown = true;
-        return new Submission(failureText, announce);
+        return new Submission(failureText, announce, true);
     }
 
     /**
@@ -140,9 +157,10 @@ public class BotProgress {
      * 게임에 넣을 봇 글.
      *
      * @param text   글
-     * @param announce {@code ARGUMENT_SUBMITTED} 를 보내는가. 임시 글을 덮어쓸 때는 이미 보냈으므로 false
+     * @param announce    {@code ARGUMENT_SUBMITTED} 를 보내는가. 임시 글을 덮어쓸 때는 이미 보냈으므로 false
+     * @param provisional 임시 글(생각중 · 실패 글)인가. 구간을 일찍 넘기는 제출로 치지 않습니다
      */
-    public record Submission(String text, boolean announce) {
+    public record Submission(String text, boolean announce, boolean provisional) {
     }
 
     private final class Draft {
@@ -161,7 +179,7 @@ public class BotProgress {
             submitted = true;
             boolean announce = !shown;
             shown = true;
-            return new Submission(text, announce);
+            return new Submission(text, announce, false);
         }
     }
 }

@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import likelion.yacha_backend.domain.session.dto.CurrentSessionResponse;
 import likelion.yacha_backend.domain.session.dto.GameMessageResponse;
@@ -16,6 +17,7 @@ import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.PhaseState;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.session.exception.SessionErrorCode;
+import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
 import likelion.yacha_backend.domain.topic.dto.TopicResponse;
@@ -84,12 +86,13 @@ public class SessionQueryService {
         LocalDateTime endsAt = null;
         Set<Long> submitted = null;
         if (session.isInProgress() && session.getStartedAt() != null) {
-            PhaseState state = DebatePhase.at(session.getStartedAt(), now);
+            // 양쪽이 일찍 제출해 시간표가 앞당겨졌을 수 있어 게임의 시간표를 따릅니다. 게임이 없으면(서버 재시작 등) 원래 시간표.
+            Optional<Game> game = gameRegistry.find(sessionId);
+            PhaseState state = game.map(found -> found.timeline().phaseAt(now))
+                    .orElseGet(() -> DebatePhase.at(session.getStartedAt(), now));
             phase = state.phase();
             endsAt = state.endsAt();
-            submitted = gameRegistry.find(sessionId)
-                    .map(game -> game.submittedParticipantIds(now))
-                    .orElse(null);
+            submitted = game.map(found -> found.submittedParticipantIds(now)).orElse(null);
         }
         Set<Long> submittedIds = submitted;
 
