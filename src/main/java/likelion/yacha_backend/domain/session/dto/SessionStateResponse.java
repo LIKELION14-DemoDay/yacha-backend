@@ -52,7 +52,7 @@ public record SessionStateResponse(
      * @param stance        동의 / 비동의. 친구 방은 친구가 들어오기 전까지 null
      * @param submitted     지금 작성 구간(구간 종료 뒤 3초 유예 포함)에 주장 · 반론을 제출했는지.
      *                      작성 구간이 아니면 null. 재접속해도 "상대방이 아직 작성중입니다" 화면을 맞추는 용도라 내용은 없습니다
-     * @param nickname        닉네임. AI 참가자와 계정이 정리된 참가자는 null
+     * @param nickname        닉네임. 봇은 "야차봇", 계정이 정리된 사람 참가자는 null
      * @param philosopherType 철학자 유형 (밸런스 게임 결과). 안 했거나 건너뛰었으면 null("일반인"), 봇은 항상 null (프론트가 봇 이미지를 씀)
      * @param stanceText      로딩 화면의 입장 문구. 참가자 본인의 유형 말투이고, 유형이 없으면 "찬성해요" / "반대해요",
      *                        봇은 "계산 결과, 찬성입니다" / "계산 결과, 반대입니다". 입장이 없으면 null
@@ -80,7 +80,7 @@ public record SessionStateResponse(
             PhilosopherType philosopherType = user == null ? null : user.getPhilosopherType();
             return new ParticipantResponse(participant.getId(), participant.getParticipantType(), participant.getRole(),
                     participant.getStance(), submitted,
-                    user == null ? null : user.getNickname(),
+                    participant.displayNickname(),
                     philosopherType,
                     stanceText(participant, philosopherType));
         }

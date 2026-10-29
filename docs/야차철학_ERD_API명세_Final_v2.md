@@ -481,7 +481,7 @@ erDiagram
 | POST | `/sessions/{id}/ai` | 🔷 **AI 대결로 전환** — 방장만, `WAITING` 일 때만 | ✅ |
 | DELETE | `/sessions/{id}` | 대기 취소 — 방장만, `WAITING` 일 때만 | ✅ |
 | POST | `/sessions/{id}/leave` | 🟢 **게임 중 나가기** — 참가자만, `IN_PROGRESS` 일 때. 바로 몰수패 (2-11) | ✅ |
-| GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용). 세션 상세(방 정보 · 참가자 · 🟢 주제 찬성 / 반대 문구 · 참가자 `nickname` · `philosopherType` · `stanceText`(로딩 화면의 유형 말투 입장 문구, #119))와 🟢 지금 작성 구간의 제출 여부(`participants[].submitted` — 작성 구간이 아니면 `null`)도 여기서 준다. 승패 · 사용자 id 는 넣지 않는다 | ✅ |
+| GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용). 세션 상세(방 정보 · 참가자 · 🟢 주제 찬성 / 반대 문구 · 참가자 `nickname` · `philosopherType` · `stanceText`(로딩 화면의 유형 말투 입장 문구, #119). 봇 `nickname` 은 "야차봇", 계정이 정리된 사람 참가자는 `nickname` · `philosopherType` null)와 🟢 지금 작성 구간의 제출 여부(`participants[].submitted` — 작성 구간이 아니면 `null`)도 여기서 준다. 승패 · 사용자 id 는 넣지 않는다 | ✅ |
 | GET | ~~`/sessions/live?category=&page=`~~ | 🟣 관전 목록 — 🟢 **관전 미사용으로 구현하지 않는다** | — |
 | GET | ~~`/sessions/me`~~ | 판별 전투 기록 목록 — 🟢 **만들지 않는다.** 마이페이지는 승리 · 패배 수만 보여주고, 그 수는 `GET /users/me` 의 `stats` 에 있다 | — |
 
@@ -784,7 +784,7 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 
 - 무승부면 `winnerParticipantId` 가 null 이고 두 사람 모두 `DRAW` 다. 막대 · 요약은 승리 화면과 같다.
 - 🟢 **몰수패**(`finishReason: FORFEIT`)는 남은 사람이 **무조건 승리**다. 판정을 하지 않으므로 `criteria` · `scores` · `total` 이 null 이다.
-- 봇은 `philosopherType` 이 null 이고, 프론트가 봇 전용 이미지를 쓴다.
+- 봇은 `philosopherType` 이 null 이고, 프론트가 봇 전용 이미지를 쓴다. 🟢 봇 `nickname` 은 모든 사용자에게 **"야차봇"** 이다 (#123). 계정이 정리된 사람 참가자(게스트 정리 · 가입 뒤 끝난 게임)는 `nickname` · `philosopherType` 이 null 이다.
 
 🟣 **무엇이 남는가**
 

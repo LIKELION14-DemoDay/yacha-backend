@@ -201,13 +201,13 @@ class SessionApiTest {
         }
 
         @Test
-        @DisplayName("봇은 닉네임 · 유형이 null 이고 기계 말투 문구를 받는다")
+        @DisplayName("봇은 닉네임 \"야차봇\" · 유형 null 이고 기계 말투 문구를 받는다")
         void botProfile() throws Exception {
             room = fixture.autoBot(IN_PREP);
 
             getAs(room.hostUserId(), room.sessionId() + "/state")
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.participants[?(@.type == 'AI')].nickname").value((Object) null))
+                    .andExpect(jsonPath("$.data.participants[?(@.type == 'AI')].nickname").value("야차봇"))
                     .andExpect(jsonPath("$.data.participants[?(@.type == 'AI')].philosopherType").value((Object) null))
                     .andExpect(jsonPath("$.data.participants[?(@.type == 'AI')].stanceText").value("계산 결과, 반대입니다"))
                     .andExpect(jsonPath("$.data.participants[?(@.type == 'USER')].stanceText").value("찬성해요"));
