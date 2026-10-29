@@ -127,7 +127,7 @@ public class LinerHintGenerator
             if (length > HINT_MAX_LENGTH) {
                 throw new IllegalStateException(
                         "힌트가 " + HINT_MAX_LENGTH
-                                + "자를 초과했습니다."
+                                + "자를 초과했습니다. 실제 길이: " + length
                 );
             }
         }

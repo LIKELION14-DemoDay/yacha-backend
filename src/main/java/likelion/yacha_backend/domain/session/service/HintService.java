@@ -129,17 +129,34 @@ public class HintService {
             } catch (RuntimeException e) {
                 last = e;
             }
-            log.warn("[힌트] {}/{}번째 시도가 실패했습니다. sessionId={}, error={}",
-                    attempt, properties.maxAttempts(), sessionId, last.getClass().getSimpleName());
+            // 예외 메시지에는 힌트 본문이 없고 원인(개수 · 글자 수 · HTTP 상태 등)만 있습니다.
+            log.warn("[힌트] {}/{}번째 시도가 실패했습니다. sessionId={}, error={}: {}",
+                    attempt, properties.maxAttempts(), sessionId, last.getClass().getSimpleName(), last.getMessage());
         }
         throw last;
     }
 
-    /** 개수 · 글자 수 상한을 확인합니다. 이모지처럼 두 칸(char)을 쓰는 문자도 한 글자로 셉니다. */
+    /**
+     * 개수 · 글자 수 상한을 확인합니다. 이모지처럼 두 칸(char)을 쓰는 문자도 한 글자로 셉니다.
+     * 실패 메시지는 원인별로 나누고, 로그에 남으므로 본문 없이 숫자만 넣습니다.
+     */
     private static List<String> checked(List<String> hints) {
-        if (hints == null || hints.size() != HintGenerator.HINT_COUNT || hints.stream().anyMatch(hint ->
-                hint == null || hint.isBlank() || hint.codePointCount(0, hint.length()) > HintGenerator.HINT_MAX_LENGTH)) {
-            throw new IllegalStateException("힌트 형식이 맞지 않습니다.");
+        if (hints == null) {
+            throw new IllegalStateException("힌트가 비어 있습니다.");
+        }
+        if (hints.size() != HintGenerator.HINT_COUNT) {
+            throw new IllegalStateException(
+                    "힌트는 정확히 " + HintGenerator.HINT_COUNT + "개여야 합니다. 실제 개수: " + hints.size());
+        }
+        for (String hint : hints) {
+            if (hint == null || hint.isBlank()) {
+                throw new IllegalStateException("빈 힌트는 사용할 수 없습니다.");
+            }
+            int length = hint.codePointCount(0, hint.length());
+            if (length > HintGenerator.HINT_MAX_LENGTH) {
+                throw new IllegalStateException(
+                        "힌트가 " + HintGenerator.HINT_MAX_LENGTH + "자를 초과했습니다. 실제 길이: " + length);
+            }
         }
         return hints;
     }
