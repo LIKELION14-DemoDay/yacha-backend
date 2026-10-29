@@ -33,7 +33,7 @@ class StubAiTest {
     class Hint {
 
         @Test
-        @DisplayName("3개, 각 20자 이내다")
+        @DisplayName("3개, 각 100자 이내다")
         void countAndLength() {
             List<String> hints = new StubHintGenerator().generate(LONG_TOPIC, Stance.AGREE);
 

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import likelion.yacha_backend.domain.ai.AiTopic;
+import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.session.entity.Stance;
 
 import org.junit.jupiter.api.DisplayName;
@@ -102,10 +103,10 @@ class LinerHintGeneratorTest {
     }
 
     @Test
-    @DisplayName("힌트가 20자를 초과하면 예외를 발생시킨다")
+    @DisplayName("힌트가 100자를 초과하면 예외를 발생시킨다")
     void hintTooLong() {
         LinerHintGenerator generator = fakeGenerator(
-                "가".repeat(21)
+                "가".repeat(HintGenerator.HINT_MAX_LENGTH + 1)
                         + "\n재교육 비용\n소득 불균형"
         );
 

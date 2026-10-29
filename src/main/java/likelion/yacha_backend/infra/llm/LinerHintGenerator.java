@@ -13,7 +13,7 @@ import likelion.yacha_backend.domain.session.entity.Stance;
 /**
  * Liner Model API를 사용해 토론 힌트 3개를 생성한다.
  *
- * 각 힌트는 20자 이내여야 한다.
+ * 각 힌트는 {@link HintGenerator#HINT_MAX_LENGTH}자 이내여야 한다.
  */
 public class LinerHintGenerator
         extends AbstractLinerChatClient
@@ -30,7 +30,10 @@ public class LinerHintGenerator
 
             다음 규칙을 반드시 지키세요.
             1. 힌트는 정확히 3개 생성합니다.
-            2. 각 힌트는 20자 이내로 작성합니다.
+            2. 각 힌트는 70~90자 정도의 한 문장으로 작성하고,
+               100자를 넘기지 않습니다.
+               짧은 키워드가 아니라 이유, 사례, 비교 같은
+               근거가 담긴 문장으로 작성합니다.
             3. 한 줄에 힌트 하나만 작성합니다.
             4. 번호, 글머리표, 따옴표는 사용하지 않습니다.
             5. 추가 설명, 제목, 머리말은 작성하지 않습니다.
@@ -123,7 +126,8 @@ public class LinerHintGenerator
 
             if (length > HINT_MAX_LENGTH) {
                 throw new IllegalStateException(
-                        "힌트가 20자를 초과했습니다."
+                        "힌트가 " + HINT_MAX_LENGTH
+                                + "자를 초과했습니다."
                 );
             }
         }

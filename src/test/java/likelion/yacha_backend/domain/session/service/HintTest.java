@@ -18,6 +18,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import likelion.yacha_backend.domain.ai.AiException;
+import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
@@ -193,7 +194,7 @@ class HintTest extends TimerTestSupport {
     @Test
     @DisplayName("개수 · 글자 수 상한을 어긴 응답은 실패한 시도로 본다")
     void rejectsMalformedHints() {
-        doReturn(List.of("하나", "둘")).doReturn(List.of("하나", "둘", "이 힌트는 스무 글자를 훌쩍 넘어가는 아주 긴 문장입니다"))
+        doReturn(List.of("하나", "둘")).doReturn(List.of("하나", "둘", "가".repeat(HintGenerator.HINT_MAX_LENGTH + 1)))
                 .when(hintGenerator).generate(any(), any());
         Long userId = fixture.newUser();
 
