@@ -80,7 +80,7 @@ public class SessionQueryService {
 
         LocalDateTime now = LocalDateTime.now(clock);
         ZoneId zone = clock.getZone();
-        List<DebateParticipant> participants = participantRepository.findAllBySession_Id(sessionId);
+        List<DebateParticipant> participants = participantRepository.findAllWithUserBySessionId(sessionId);
 
         DebatePhase phase = null;
         LocalDateTime endsAt = null;
@@ -109,7 +109,7 @@ public class SessionQueryService {
                 DateTimes.withOffset(now, zone),
                 myParticipantId(participants, userId),
                 participants.stream()
-                        .map(p -> new ParticipantResponse(p.getId(), p.getParticipantType(), p.getRole(), p.getStance(),
+                        .map(p -> ParticipantResponse.of(p,
                                 submittedIds == null ? null : submittedIds.contains(p.getId())))
                         .toList());
     }

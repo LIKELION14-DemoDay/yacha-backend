@@ -17,7 +17,7 @@ public interface HintGenerator {
     int HINT_COUNT = 3;
 
     /** 힌트 한 개의 글자 수 상한 */
-    int HINT_MAX_LENGTH = 20;
+    int HINT_MAX_LENGTH = 100;
 
     /**
      * @param topic  주제

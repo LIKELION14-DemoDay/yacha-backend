@@ -43,6 +43,9 @@ import org.hibernate.type.SqlTypes;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DebateParticipant {
 
+    /** 봇 닉네임. 봇은 계정이 없어 모든 사용자 화면에 이 이름으로 보입니다. */
+    public static final String BOT_NICKNAME = "야차봇";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -147,6 +150,14 @@ public class DebateParticipant {
 
     public boolean isAi() {
         return participantType == ParticipantType.AI;
+    }
+
+    /** 화면에 보일 닉네임. 봇은 {@link #BOT_NICKNAME}, 계정이 정리된 사람 참가자는 null 입니다. */
+    public String displayNickname() {
+        if (isAi()) {
+            return BOT_NICKNAME;
+        }
+        return user == null ? null : user.getNickname();
     }
 
     /**

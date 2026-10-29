@@ -130,7 +130,7 @@ public class SessionResultService {
                 .map(p -> {
                     Detail detail = detailOf.apply(p);
                     return new ParticipantResultResponse(p.getId(),
-                            p.getUser() == null ? null : p.getUser().getNickname(),
+                            p.displayNickname(),
                             p.getUser() == null ? null : p.getUser().getPhilosopherType(),
                             p.getStance(), p.isUser(userId),
                             detail.result(), detail.scores(), detail.total());
