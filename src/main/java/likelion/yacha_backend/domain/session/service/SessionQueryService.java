@@ -121,7 +121,7 @@ public class SessionQueryService {
                                         p.getUser().getPhilosopherType()
                                 );
                             } else {
-                                imageUrl = null;
+                                imageUrl = philosopherImageUrlService.readUrl(null);
                             }
 
                             return ParticipantResponse.of(
