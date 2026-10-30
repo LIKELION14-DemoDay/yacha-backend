@@ -56,6 +56,7 @@ public record SessionResultResponse(
      * @param scores          기준별 점수 (0 ~ 25). 보관 시간이 지났거나 몰수패면 null
      * @param total           총점 (0 ~ 100). {@code scores} 와 같이 null 일 수 있음
      */
+
     public record ParticipantResultResponse(
             Long participantId,
             String nickname,
@@ -64,7 +65,9 @@ public record SessionResultResponse(
             boolean isMe,
             DebateResult result,
             Map<JudgeCriterion, Integer> scores,
-            Integer total
+            Integer total,
+            String imageUrl
     ) {
     }
+
 }

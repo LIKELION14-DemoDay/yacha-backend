@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import likelion.yacha_backend.domain.user.service.PhilosopherImageUrlService;
 /**
  * 남이 만든 대기 방 찾기 — 자동 제안 · 제안 거절 · 방 찾기 (명세 2-3-2). 입장은 {@code POST /sessions/{id}/join} 입니다.
  *
@@ -39,7 +39,7 @@ public class SessionProposalService {
     static final int WAITING_PAGE_SIZE = 20;
 
     private static final Category[] CATEGORIES = Category.values();
-
+    private final PhilosopherImageUrlService philosopherImageUrlService;
     private final DebateSessionRepository sessionRepository;
     private final DebateParticipantRepository participantRepository;
     private final ProposalCursorStore cursorStore;
@@ -73,13 +73,28 @@ public class SessionProposalService {
      *
      * @param page 0 부터. 음수면 {@code VALIDATION_FAILED}
      */
-    public WaitingRoomsResponse findWaiting(Long userId, Category category, int page) {
+
+    public WaitingRoomsResponse findWaiting(
+            Long userId,
+            Category category,
+            int page
+    ) {
         if (page < 0) {
-            throw new BusinessException(GlobalErrorCode.VALIDATION_FAILED);
+            throw new BusinessException(
+                    GlobalErrorCode.VALIDATION_FAILED
+            );
         }
-        return WaitingRoomsResponse.from(participantRepository.findWaitingHosts(category, userId,
-                PageRequest.of(page, WAITING_PAGE_SIZE)));
+
+        return WaitingRoomsResponse.from(
+                participantRepository.findWaitingHosts(
+                        category,
+                        userId,
+                        PageRequest.of(page, WAITING_PAGE_SIZE)
+                ),
+                philosopherImageUrlService::readUrl
+        );
     }
+
 
     private ProposalResponse proposeFrom(Long userId, ProposalCursor cursor) {
         for (int offset = cursor.nextOffset(); offset < CATEGORIES.length; offset++) {

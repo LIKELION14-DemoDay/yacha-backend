@@ -241,3 +241,7 @@ storage:
     region: ${AWS_REGION:ap-northeast-2}
     profile-prefix: profiles
     presigned-url-validity: 1h
+
+philosopher:
+  image:
+    base-url: ${PHILOSOPHER_IMAGE_BASE_URL:http://localhost:8080/api/v1/philosopher-images}

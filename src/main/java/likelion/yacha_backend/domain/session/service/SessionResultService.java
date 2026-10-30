@@ -23,7 +23,7 @@ import likelion.yacha_backend.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import likelion.yacha_backend.domain.user.service.PhilosopherImageUrlService;
 /**
  * 결과 화면 조회 (명세 2-6). 그 세션의 참가자만 봅니다 — 관전 스위치와 상관없습니다.
  *
@@ -45,7 +45,7 @@ public class SessionResultService {
     private final DebateParticipantRepository participantRepository;
     private final GameRegistry gameRegistry;
     private final JudgeService judgeService;
-
+    private final PhilosopherImageUrlService philosopherImageUrlService;
     public SessionResultResponse getResult(Long sessionId, Long userId) {
         DebateSession session = sessionAccessService.getSession(sessionId);
         List<DebateParticipant> participants = participantRepository.findAllBySession_Id(sessionId);
@@ -84,7 +84,7 @@ public class SessionResultService {
     }
 
     /** 보관 시간 안 — 메모리의 판정 결과. 게스트도 여기서는 승패가 보입니다. */
-    private static SessionResultResponse judged(FinishReason finishReason, Verdict verdict,
+    private SessionResultResponse judged(FinishReason finishReason, Verdict verdict,
                                                 List<DebateParticipant> participants, Long userId) {
         JudgeResult judgeResult = verdict.judgeResult();
         return new SessionResultResponse(JudgeStatus.READY, finishReason, verdict.winnerParticipantId(),
@@ -96,7 +96,7 @@ public class SessionResultService {
     }
 
     /** 보관 시간 뒤 · 몰수패 — DB 의 승패만. */
-    private static SessionResultResponse recordedOnly(FinishReason finishReason, List<DebateParticipant> participants,
+    private SessionResultResponse recordedOnly(FinishReason finishReason, List<DebateParticipant> participants,
                                                       Long userId) {
         return new SessionResultResponse(JudgeStatus.READY, finishReason, recordedWinner(participants), null,
                 responses(participants, userId, p -> new Detail(p.getResult(), null, null)));
@@ -124,19 +124,44 @@ public class SessionResultService {
                 .orElse(null);
     }
 
-    private static List<ParticipantResultResponse> responses(List<DebateParticipant> participants, Long userId,
-                                                             Function<DebateParticipant, Detail> detailOf) {
+
+    private List<ParticipantResultResponse> responses(
+            List<DebateParticipant> participants,
+            Long userId,
+            Function<DebateParticipant, Detail> detailOf
+    ) {
         return participants.stream()
                 .map(p -> {
                     Detail detail = detailOf.apply(p);
-                    return new ParticipantResultResponse(p.getId(),
+
+                    String imageUrl;
+                    if (p.isAi()) {
+                        imageUrl = philosopherImageUrlService.botUrl();
+                    } else if (p.getUser() != null) {
+                        imageUrl = philosopherImageUrlService.readUrl(
+                                p.getUser().getPhilosopherType()
+                        );
+                    } else {
+                        imageUrl = null;
+                    }
+
+                    return new ParticipantResultResponse(
+                            p.getId(),
                             p.displayNickname(),
-                            p.getUser() == null ? null : p.getUser().getPhilosopherType(),
-                            p.getStance(), p.isUser(userId),
-                            detail.result(), detail.scores(), detail.total());
+                            p.getUser() == null
+                                    ? null
+                                    : p.getUser().getPhilosopherType(),
+                            p.getStance(),
+                            p.isUser(userId),
+                            detail.result(),
+                            detail.scores(),
+                            detail.total(),
+                            imageUrl
+                    );
                 })
                 .toList();
     }
+
 
     private record Detail(DebateResult result, Map<JudgeCriterion, Integer> scores, Integer total) {
     }
