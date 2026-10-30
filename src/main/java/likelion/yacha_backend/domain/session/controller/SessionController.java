@@ -78,7 +78,7 @@ public class SessionController {
                     - `PROPOSAL`: 그 카테고리에서 가장 오래 기다린 방. `myStance` 는 들어가면 맡을 입장(방장의 반대)
                       승낙은 `POST /sessions/{id}/join`, 거절은 `POST /sessions/{id}/reject`
                       제안된 방의 카테고리가 고른 카테고리와 달라도 그 방의 주제로 토론
-                    - `NEW_TOPIC`: 한 바퀴를 다 돌았거나 대기 방이 없음. 고른 카테고리의 새 주제 → 주제 화면(내 방 만들기 · 봇전)
+                    - `NEW_TOPIC`: 한 바퀴를 다 돌았거나 대기 방이 없음. 고른 카테고리의 새 주제 → 주제 화면(내 방 만들기)
                     - 다시 부르면 처음부터 다시 돎. 방을 잡아 두지 않으므로, 입장이 `SESSION_NOT_WAITING` 이면 다시 부르면 됨
 
                     로그인 필요 (게스트 가능)
