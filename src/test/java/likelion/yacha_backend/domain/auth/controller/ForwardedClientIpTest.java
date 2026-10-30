@@ -21,7 +21,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
  * server.forward-headers-strategy=native 는 Tomcat 이 처리해서 MockMvc 로는 확인할 수 없음
  * 그래서 실제 서버를 띄우고 HTTP 로 부름. 테스트 요청은 127.0.0.1 에서 오므로 프록시를 거친 요청과 같음
  */
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT, properties = "auth.email-check.max-requests=3")
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT, properties = "auth.email-check.ip-limit.max-requests=3")
 @DisplayName("프록시 뒤 클라이언트 IP")
 class ForwardedClientIpTest {
 

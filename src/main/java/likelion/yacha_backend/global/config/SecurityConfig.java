@@ -54,6 +54,8 @@ public class SecurityConfig {
             "/swagger-ui.html",
             "/v3/api-docs/**",
             "/actuator/health",
+            // Google AdSense OAuth 콜백
+            "/api/v1/adsense/oauth/callback",
     };
 
     /**
@@ -65,6 +67,7 @@ public class SecurityConfig {
             "/api/v1/auth/email/availability",
             "/api/v1/balance-game/questions",
             "/api/v1/balance-game/philosophers/**",
+            "/api/v1/philosopher-images/*",
     };
 
     /**

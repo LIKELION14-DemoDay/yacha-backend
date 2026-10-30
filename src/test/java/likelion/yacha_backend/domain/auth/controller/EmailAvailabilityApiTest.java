@@ -17,7 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest(properties = "auth.email-check.max-requests=3")
+@SpringBootTest(properties = "auth.email-check.ip-limit.max-requests=3")
 @AutoConfigureMockMvc
 @Transactional
 @DisplayName("회원가입 이메일 중복 확인")
