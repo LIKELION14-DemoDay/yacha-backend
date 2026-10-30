@@ -7,7 +7,6 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
 import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
-import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
@@ -31,10 +30,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 랜덤 방 생성 · 입장 · 대기 취소 · 봇전 시작의 DB 작업 (명세 2-3-4). 게임 생성 · 알림처럼 커밋 뒤에 할 일은
+ * 랜덤 방 생성 · 입장 · 대기 취소 · AI 전환의 DB 작업 (명세 2-3-4). 게임 생성 · 알림처럼 커밋 뒤에 할 일은
  * {@link SessionMatchFacade} 가 맡습니다.
  *
- * <p><b>같은 사용자의 요청이 겹칠 때</b> — 생성 · 입장 · 봇전 시작은 먼저 사용자 행을 잠급니다({@code SELECT ... FOR UPDATE}).
+ * <p><b>같은 사용자의 요청이 겹칠 때</b> — 생성 · 입장은 먼저 사용자 행을 잠급니다({@code SELECT ... FOR UPDATE}).
  * "참여 중인 세션 확인 → 저장" 사이에 같은 사용자의 다른 요청이 끼어들면 방이 두 개 생기거나 게임 두 개에 들어가기 때문입니다.
  * 잠금은 커밋까지 유지되므로 뒤 요청은 앞 요청이 저장한 세션을 보고 {@code ALREADY_IN_SESSION} 을 받습니다.
  * 이때 잠금은 반드시 트랜잭션의 첫 쿼리여야 합니다. MySQL REPEATABLE READ 에서는 첫 SELECT 때 스냅샷이 잡히므로,
@@ -55,6 +54,7 @@ public class SessionCommandService {
     private final TopicRepository topicRepository;
     private final DebateSessionRepository sessionRepository;
     private final DebateParticipantRepository participantRepository;
+    private final WaitTimerProperties waitTimerProperties;
     private final Clock clock;
 
     /** 만든 대기 방. 커밋 뒤 대기 타이머를 등록하는 데 씁니다 ({@code createdAt} 이 타이머 기준). */
@@ -121,25 +121,8 @@ public class SessionCommandService {
     }
 
     /**
-     * 바로 봇전. 대기 방 없이 사용자 참가자와 AI 참가자(반대 입장)를 함께 만들고 바로 시작합니다.
-     * 랜덤 방 생성과 같이 사용자 행을 잠그고 {@code ALREADY_IN_SESSION} 을 검사합니다.
-     */
-    public Matched startBot(Long userId, BotMatchRequest request) {
-        User user = lockUser(userId);
-        checkNotInSession(userId);
-        Topic topic = activeTopic(request.topicId());
-
-        LocalDateTime now = startTime();
-        DebateSession session = sessionRepository.save(DebateSession.createAiMatch(topic, now));
-        DebateParticipant participant = participantRepository.save(
-                DebateParticipant.initiator(session, user, request.stance(), now));
-        DebateParticipant ai = participantRepository.save(
-                DebateParticipant.ai(session, request.stance().opposite(), now));
-        return new Matched(session.getId(), now, userId, Map.of(userId, participant.getId()), ai.getId());
-    }
-
-    /**
      * 방장이 기다리던 방을 봇전으로 바꿉니다. AI 는 방장의 반대 입장입니다.
+     * 방을 만들고 첫 대기 알림({@code WAIT_PROMPT}, 30초)이 나가기 전이면 {@code BOT_NOT_AVAILABLE_YET} 입니다.
      * 그 순간 사람이 들어와도 조건부 UPDATE 로 한쪽만 성공하고, 늦은 쪽은 {@code SESSION_NOT_WAITING} 입니다.
      */
     public Matched convertToAi(Long userId, Long sessionId) {
@@ -150,8 +133,12 @@ public class SessionCommandService {
             throw new BusinessException(SessionErrorCode.NOT_ROOM_OWNER);
         }
         // 친구 방은 대기 팝업이 없어 봇전으로 바꾸지 않습니다.
-        if (session.getRoomType() != RoomType.RANDOM) {
+        if (session.getRoomType() != RoomType.RANDOM || !session.isWaiting()) {
             throw new BusinessException(SessionErrorCode.SESSION_NOT_WAITING);
+        }
+        // 봇전 버튼은 첫 대기 알림과 같이 뜹니다. 그 전에 부르면 버튼 없이 부른 것이라 막습니다.
+        if (LocalDateTime.now(clock).isBefore(session.getCreatedAt().plus(waitTimerProperties.promptInterval()))) {
+            throw new BusinessException(SessionErrorCode.BOT_NOT_AVAILABLE_YET);
         }
 
         // UPDATE 가 영속성 컨텍스트를 비우므로 필요한 값은 미리 꺼내 둡니다.

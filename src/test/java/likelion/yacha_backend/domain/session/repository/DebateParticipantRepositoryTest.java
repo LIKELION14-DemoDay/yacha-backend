@@ -97,7 +97,8 @@ class DebateParticipantRepositoryTest {
     @Test
     @DisplayName("끝난 세션만 있으면 참여 중이 아니다")
     void finishedSessionIsNotActive() {
-        Long finishedId = sessionRepository.save(DebateSession.createAiMatch(newTopic(), NOW)).getId();
+        Long finishedId = sessionRepository.save(DebateSession.createRandom(newTopic())).getId();
+        sessionRepository.startIfWaiting(finishedId, NOW);
         sessionRepository.finishIfInProgress(finishedId, FinishReason.COMPLETED, NOW.plusMinutes(9));
         DebateSession finished = sessionRepository.getReferenceById(finishedId);
         participantRepository.saveAndFlush(DebateParticipant.initiator(finished, guest, Stance.AGREE, NOW));

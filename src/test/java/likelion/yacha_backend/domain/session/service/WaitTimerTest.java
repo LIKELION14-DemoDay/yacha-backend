@@ -130,6 +130,7 @@ class WaitTimerTest extends TimerTestSupport {
     void convertStopsTimers() {
         Long hostId = fixture.newUser();
         Long sessionId = createRoom(hostId);
+        fixture.backdate(sessionId, 1);
 
         sessionMatchFacade.convertToAi(hostId, sessionId);
 
