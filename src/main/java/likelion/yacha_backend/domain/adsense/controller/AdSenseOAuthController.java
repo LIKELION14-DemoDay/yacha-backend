@@ -2,6 +2,8 @@
 package likelion.yacha_backend.domain.adsense.controller;
 
 import java.time.Duration;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -28,6 +30,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "AdSense 관리", description = "관리자용 OAuth 연결 및 Google 콜백")
 @RestController
 public class AdSenseOAuthController {
 
@@ -42,6 +45,7 @@ public class AdSenseOAuthController {
         this.properties = properties;
     }
 
+    @Operation(summary = "AdSense 인증 URL 발급", description = "관리자 JWT가 필요하며, 반환된 URL을 반드시 같은 브라우저에서 열어야 합니다.")
     @PostMapping("/api/v1/admin/ads/oauth/authorize")
     public ResponseEntity<ApiResponse<AuthorizeUrlResponse>> authorize(
             @AuthenticationPrincipal AuthUser admin
@@ -67,6 +71,7 @@ public class AdSenseOAuthController {
                 );
     }
 
+    @Operation(summary = "Google AdSense OAuth 콜백", description = "Google에서 전달한 코드를 처리하고 브라우저 쿠키와 Redis state를 검증합니다.")
     @GetMapping(
             value = AdSenseOAuthService.CALLBACK_PATH,
             produces = MediaType.TEXT_PLAIN_VALUE

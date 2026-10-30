@@ -252,5 +252,6 @@ adsense:
   client-secret: ${ADSENSE_CLIENT_SECRET:}
   redirect-uri: ${ADSENSE_REDIRECT_URI:http://localhost:8080/api/v1/adsense/oauth/callback}
   expected-account-name: ${ADSENSE_EXPECTED_ACCOUNT_NAME:}
+  site-domain: ${ADSENSE_SITE_DOMAIN:yachapan.cloud}
   token-encryption-key: ${ADSENSE_TOKEN_ENCRYPTION_KEY:}
   cookie-secure: ${ADSENSE_COOKIE_SECURE:true}

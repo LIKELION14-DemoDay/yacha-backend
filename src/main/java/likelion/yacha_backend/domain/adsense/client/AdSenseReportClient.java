@@ -1,12 +1,18 @@
 package likelion.yacha_backend.domain.adsense.client;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import likelion.yacha_backend.domain.adsense.config.AdSenseProperties;
 import likelion.yacha_backend.domain.adsense.service.AdSenseOAuthException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -22,6 +28,14 @@ import org.springframework.web.util.UriComponentsBuilder;
 /** AdSense 읽기 전용 통계 조회. Refresh Token과 Access Token은 로그/응답에 쓰지 않는다. */
 @Component
 public class AdSenseReportClient {
+    private static final Logger log = LoggerFactory.getLogger(AdSenseReportClient.class);
+    // Only log Google error identifiers, never credentials, tokens or response bodies.
+    private static final Pattern GOOGLE_ERROR_PATTERN =
+            Pattern.compile("\"(?:error|status)\"\\s*:\\s*\"([A-Za-z0-9_-]{1,64})\"");
+
+    @Value("${adsense.site-domain:yachapan.cloud}")
+    private String siteDomain = "yachapan.cloud";
+
     private final RestClient restClient;
     private final AdSenseProperties properties;
 
@@ -53,6 +67,8 @@ public class AdSenseReportClient {
             }
             return value;
         } catch (RestClientResponseException e) {
+            log.warn("AdSense token refresh failed: httpStatus={}, googleError={}",
+                    e.getStatusCode().value(), googleErrorCode(e));
             if (e.getStatusCode().is4xxClientError()) {
                 throw new AdSenseOAuthException(HttpStatus.SERVICE_UNAVAILABLE,
                         "AdSense 인증을 갱신할 수 없습니다. 관리자 OAuth 연결을 다시 확인해 주세요.");
@@ -60,9 +76,13 @@ public class AdSenseReportClient {
             throw new AdSenseOAuthException(HttpStatus.BAD_GATEWAY,
                     "Google 인증 서버가 정상적으로 응답하지 않았습니다.");
         } catch (ResourceAccessException e) {
+            log.warn("AdSense token refresh connection failed: exceptionType={}",
+                    e.getClass().getSimpleName());
             throw new AdSenseOAuthException(HttpStatus.BAD_GATEWAY,
                     "Google 인증 서버에 연결할 수 없습니다.");
         } catch (RestClientException e) {
+            log.warn("AdSense token refresh response failed: exceptionType={}",
+                    e.getClass().getSimpleName());
             throw new AdSenseOAuthException(HttpStatus.BAD_GATEWAY,
                     "Google 인증 응답을 처리할 수 없습니다.");
         }
@@ -88,7 +108,7 @@ public class AdSenseReportClient {
                 .queryParam("endDate.month", endDate.getMonthValue())
                 .queryParam("endDate.day", endDate.getDayOfMonth())
                 .queryParam("dimensions", "DATE")
-                .queryParam("filters", "OWNED_SITE_DOMAIN_NAME==yachapan.cloud")
+                .queryParam("filters", "OWNED_SITE_DOMAIN_NAME==" + siteDomain)
                 .queryParam("metrics", "PAGE_VIEWS")
                 .queryParam("metrics", "IMPRESSIONS")
                 .queryParam("metrics", "CLICKS")
@@ -108,6 +128,8 @@ public class AdSenseReportClient {
             }
             return result;
         } catch (RestClientResponseException e) {
+            log.warn("AdSense report request failed: httpStatus={}, googleError={}",
+                    e.getStatusCode().value(), googleErrorCode(e));
             if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
                 throw new AdSenseOAuthException(HttpStatus.SERVICE_UNAVAILABLE,
                         "AdSense 보고서 접근 권한을 확인할 수 없습니다. 관리자 OAuth 재연결이 필요할 수 있습니다.");
@@ -119,11 +141,25 @@ public class AdSenseReportClient {
             throw new AdSenseOAuthException(HttpStatus.BAD_GATEWAY,
                     "AdSense 보고서 조회에 실패했습니다.");
         } catch (ResourceAccessException e) {
+            log.warn("AdSense report connection failed: exceptionType={}",
+                    e.getClass().getSimpleName());
             throw new AdSenseOAuthException(HttpStatus.BAD_GATEWAY,
                     "AdSense 보고서 서버에 연결할 수 없습니다.");
         } catch (RestClientException e) {
+            log.warn("AdSense report response failed: exceptionType={}",
+                    e.getClass().getSimpleName());
             throw new AdSenseOAuthException(HttpStatus.BAD_GATEWAY,
                     "AdSense 보고서 응답을 처리할 수 없습니다.");
+        }
+    }
+
+    private static String googleErrorCode(RestClientResponseException exception) {
+        try {
+            Matcher matcher = GOOGLE_ERROR_PATTERN.matcher(
+                    exception.getResponseBodyAsString(StandardCharsets.UTF_8));
+            return matcher.find() ? matcher.group(1) : "unknown";
+        } catch (RuntimeException ignored) {
+            return "unknown";
         }
     }
 
