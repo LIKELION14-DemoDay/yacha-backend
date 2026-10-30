@@ -1,3 +1,4 @@
+
 package likelion.yacha_backend.domain.adsense.entity;
 
 import jakarta.persistence.Column;
@@ -5,7 +6,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+
 import java.time.LocalDateTime;
+
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -15,6 +18,7 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AdSenseCredential {
+
     public static final String SINGLE_ACCOUNT_ID = "primary";
 
     @Id
@@ -36,17 +40,32 @@ public class AdSenseCredential {
     @Version
     private Long version;
 
-    public static AdSenseCredential initial(String accountName, String ciphertext, Long connectedBy) {
+    public static AdSenseCredential initial(
+            String accountName,
+            String ciphertext,
+            Long connectedBy,
+            LocalDateTime connectedAt
+    ) {
         AdSenseCredential result = new AdSenseCredential();
         result.id = SINGLE_ACCOUNT_ID;
-        result.update(accountName, ciphertext, connectedBy);
+        result.update(
+                accountName,
+                ciphertext,
+                connectedBy,
+                connectedAt
+        );
         return result;
     }
 
-    public void update(String accountName, String ciphertext, Long connectedBy) {
+    public void update(
+            String accountName,
+            String ciphertext,
+            Long connectedBy,
+            LocalDateTime connectedAt
+    ) {
         this.accountName = accountName;
         this.encryptedRefreshToken = ciphertext;
         this.connectedBy = connectedBy;
-        this.connectedAt = LocalDateTime.now();
+        this.connectedAt = connectedAt;
     }
 }
