@@ -1,3 +1,4 @@
+
 package likelion.yacha_backend.domain.session.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,6 +15,7 @@ import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.game.JudgeStatus;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
+import likelion.yacha_backend.domain.user.service.PhilosopherImageUrlService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,13 +27,31 @@ class SessionResultServiceTest {
     private static final Long SESSION_ID = 1L;
     private static final Long USER_ID = 10L;
 
-    private final SessionAccessService sessionAccessService = mock(SessionAccessService.class);
-    private final DebateParticipantRepository participantRepository = mock(DebateParticipantRepository.class);
-    private final GameRegistry gameRegistry = mock(GameRegistry.class);
-    private final JudgeService judgeService = mock(JudgeService.class);
+    private final SessionAccessService sessionAccessService =
+            mock(SessionAccessService.class);
+
+    private final DebateParticipantRepository participantRepository =
+            mock(DebateParticipantRepository.class);
+
+    private final GameRegistry gameRegistry =
+            mock(GameRegistry.class);
+
+    private final JudgeService judgeService =
+            mock(JudgeService.class);
+
+    private final PhilosopherImageUrlService philosopherImageUrlService =
+            mock(PhilosopherImageUrlService.class);
+
     private final Game game = mock(Game.class);
+
     private final SessionResultService service =
-            new SessionResultService(sessionAccessService, participantRepository, gameRegistry, judgeService);
+            new SessionResultService(
+                    sessionAccessService,
+                    participantRepository,
+                    gameRegistry,
+                    judgeService,
+                    philosopherImageUrlService
+            );
 
     @BeforeEach
     void setUp() {
@@ -39,9 +59,12 @@ class SessionResultServiceTest {
         when(session.getStatus()).thenReturn(SessionStatus.FINISHED);
         when(session.getFinishReason()).thenReturn(FinishReason.COMPLETED);
         when(sessionAccessService.getSession(SESSION_ID)).thenReturn(session);
+
         DebateParticipant participant = mock(DebateParticipant.class);
         when(participant.isUser(USER_ID)).thenReturn(true);
-        when(participantRepository.findAllBySession_Id(SESSION_ID)).thenReturn(List.of(participant));
+        when(participantRepository.findAllBySession_Id(SESSION_ID))
+                .thenReturn(List.of(participant));
+
         when(gameRegistry.find(SESSION_ID)).thenReturn(Optional.of(game));
         when(judgeService.start(SESSION_ID)).thenReturn(false);
     }
@@ -49,9 +72,11 @@ class SessionResultServiceTest {
     @Test
     @DisplayName("FAILED 를 읽었지만 다른 조회가 먼저 재판정을 시작했으면 PENDING")
     void otherRequestRestarted() {
-        when(game.judgeStatus()).thenReturn(JudgeStatus.FAILED, JudgeStatus.PENDING);
+        when(game.judgeStatus())
+                .thenReturn(JudgeStatus.FAILED, JudgeStatus.PENDING);
 
-        assertThat(service.getResult(SESSION_ID, USER_ID).status()).isEqualTo(JudgeStatus.PENDING);
+        assertThat(service.getResult(SESSION_ID, USER_ID).status())
+                .isEqualTo(JudgeStatus.PENDING);
     }
 
     @Test
@@ -59,6 +84,7 @@ class SessionResultServiceTest {
     void stillFailed() {
         when(game.judgeStatus()).thenReturn(JudgeStatus.FAILED);
 
-        assertThat(service.getResult(SESSION_ID, USER_ID).status()).isEqualTo(JudgeStatus.FAILED);
+        assertThat(service.getResult(SESSION_ID, USER_ID).status())
+                .isEqualTo(JudgeStatus.FAILED);
     }
 }

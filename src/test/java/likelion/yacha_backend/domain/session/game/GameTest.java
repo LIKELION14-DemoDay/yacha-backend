@@ -608,4 +608,115 @@ class GameTest {
 
         assertThat(message.toString()).doesNotContain("비밀스러운 주장").contains("length=8");
     }
+
+    @Nested
+    @DisplayName("양쪽 제출 시 구간 일찍 넘기기")
+    class EarlyAdvance {
+
+        private static final long AI_PARTICIPANT = 13L;
+        private static final LocalDateTime EARLY_PREP = STARTED_AT.plusSeconds(30);
+
+        private Game botGame() {
+            return new Game(1L, STARTED_AT, Map.of(ALICE, ALICE_PARTICIPANT), AI_PARTICIPANT, 100, 200, 200, 250);
+        }
+
+        @Test
+        @DisplayName("주장 구간에 양쪽이 다 내면 REVEAL 로 넘기고, 남은 시간만큼 시간표를 당기고, 주장을 바로 공개한다")
+        void advancesPrep() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "주장 A", EARLY_PREP);
+            assertThat(game.advanceIfAllSubmitted(DebatePhase.PREP, EARLY_PREP)).isNull();
+            game.saveMemo(BOB, "주장 B", EARLY_PREP);
+
+            PhaseAdvance advance = game.advanceIfAllSubmitted(DebatePhase.PREP, EARLY_PREP);
+
+            assertThat(advance.phase()).isEqualTo(DebatePhase.REVEAL);
+            assertThat(advance.endsAt()).isEqualTo(EARLY_PREP.plusSeconds(20));
+            assertThat(advance.at()).isEqualTo(EARLY_PREP);
+            assertThat(advance.revealed()).extracting(GameMessage::participantId, GameMessage::type, GameMessage::content)
+                    .containsExactly(tuple(ALICE_PARTICIPANT, MessageType.ARGUMENT, "주장 A"),
+                            tuple(BOB_PARTICIPANT, MessageType.ARGUMENT, "주장 B"));
+            GameTimeline timeline = game.timeline();
+            assertThat(timeline.base()).isEqualTo(STARTED_AT.minusSeconds(30));
+            assertThat(timeline.version()).isEqualTo(1);
+            assertThat(timeline.phaseAt(EARLY_PREP).phase()).isEqualTo(DebatePhase.REVEAL);
+            assertThat(timeline.startAt(DebatePhase.REBUTTAL)).isEqualTo(EARLY_PREP.plusSeconds(20));
+            assertThat(game.getStartedAt()).isEqualTo(STARTED_AT);
+        }
+
+        @Test
+        @DisplayName("일찍 닫힌 주장은 유예(3초) 안에도 고칠 수 없고, 제출 여부도 주지 않는다")
+        void closedPrepRejectsMemo() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "주장 A", EARLY_PREP);
+            game.saveMemo(BOB, "주장 B", EARLY_PREP);
+            game.advanceIfAllSubmitted(DebatePhase.PREP, EARLY_PREP);
+
+            assertError(() -> game.saveMemo(ALICE, "고친 주장", EARLY_PREP.plusSeconds(1)), SessionErrorCode.INVALID_PHASE);
+            assertThat(game.submittedParticipantIds(EARLY_PREP.plusSeconds(1))).isNull();
+            assertThat(game.memosOf(ALICE)).extracting(GameMemo::content).containsExactly("주장 A");
+        }
+
+        @Test
+        @DisplayName("반론까지 일찍 넘기면 시간표가 두 번 당겨지고, 채팅이 바로 열린다")
+        void advancesRebuttalAfterPrep() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "주장 A", EARLY_PREP);
+            game.saveMemo(BOB, "주장 B", EARLY_PREP);
+            game.advanceIfAllSubmitted(DebatePhase.PREP, EARLY_PREP);
+            // 앞당긴 시간표로 반론 구간은 50 ~ 110초. 70초에 둘 다 냅니다.
+            LocalDateTime rebuttal = STARTED_AT.plusSeconds(70);
+            game.saveMemo(ALICE, "반론 A", rebuttal);
+            game.saveMemo(BOB, "반론 B", rebuttal);
+
+            PhaseAdvance advance = game.advanceIfAllSubmitted(DebatePhase.REBUTTAL, rebuttal);
+
+            assertThat(advance.phase()).isEqualTo(DebatePhase.CHAT);
+            assertThat(advance.endsAt()).isEqualTo(rebuttal.plusSeconds(120));
+            assertThat(advance.revealed()).extracting(GameMessage::phase).containsOnly(DebatePhase.REBUTTAL);
+            assertThat(game.timeline().base()).isEqualTo(STARTED_AT.minusSeconds(70));
+            assertThat(game.timeline().version()).isEqualTo(2);
+            assertThat(game.appendChat(ALICE, "안녕", rebuttal).phase()).isEqualTo(DebatePhase.CHAT);
+        }
+
+        @Test
+        @DisplayName("작성 구간이 끝나 유예 중에 두 번째 제출이 오면 넘기지 않는다")
+        void noAdvanceInGrace() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "주장 A", PREP);
+            game.saveMemo(BOB, "주장 B", PREP_GRACE);
+
+            assertThat(game.advanceIfAllSubmitted(DebatePhase.PREP, PREP_GRACE)).isNull();
+            assertThat(game.timeline().version()).isZero();
+            assertThat(game.revealArguments(PREP_GRACE)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("봇의 임시 글은 제출로 치지 않고, 진짜 글로 덮어쓰는 순간 넘어간다")
+        void botPlaceholderDoesNotCount() {
+            Game game = botGame();
+            game.saveMemo(ALICE, "주장 A", EARLY_PREP);
+            game.saveBotMemo("토론봇이 생각중입니다.", true, EARLY_PREP);
+
+            assertThat(game.advanceIfAllSubmitted(DebatePhase.PREP, EARLY_PREP)).isNull();
+            assertThat(game.submittedParticipantIds(EARLY_PREP)).containsExactlyInAnyOrder(ALICE_PARTICIPANT, AI_PARTICIPANT);
+
+            game.saveBotMemo("봇 주장", false, EARLY_PREP);
+            PhaseAdvance advance = game.advanceIfAllSubmitted(DebatePhase.PREP, EARLY_PREP);
+
+            assertThat(advance.phase()).isEqualTo(DebatePhase.REVEAL);
+            assertThat(advance.revealed()).extracting(GameMessage::content).containsExactly("주장 A", "봇 주장");
+        }
+
+        @Test
+        @DisplayName("끝난 게임은 넘기지 않는다")
+        void noAdvanceWhenFinished() {
+            Game game = newGame();
+            game.saveMemo(ALICE, "주장 A", EARLY_PREP);
+            game.saveMemo(BOB, "주장 B", EARLY_PREP);
+            game.finish();
+
+            assertThat(game.advanceIfAllSubmitted(DebatePhase.PREP, EARLY_PREP)).isNull();
+        }
+    }
 }

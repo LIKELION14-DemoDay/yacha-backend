@@ -20,8 +20,10 @@ import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameMemo;
 import likelion.yacha_backend.domain.session.game.GameMessage;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
+import likelion.yacha_backend.domain.session.game.GameTimeline;
 import likelion.yacha_backend.domain.session.game.GameTimers;
 import likelion.yacha_backend.domain.session.game.MessageType;
+import likelion.yacha_backend.domain.session.game.PhaseAdvance;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import likelion.yacha_backend.domain.topic.entity.Topic;
@@ -44,6 +46,11 @@ import org.springframework.transaction.support.TransactionTemplate;
  *              (반론 구간 시작 80초 기준 +5초 · +15~40초. 구간 길이가 바뀌면 같이 움직임)
  * 143초~260초  사람이 말하면 마지막 말 3초 뒤 한 번 대답 · 사람이 10초 동안 조용하면 첫마디 한 번
  * </pre>
+ *
+ * <p><b>사람이 먼저 내면</b> — 봇 글이 준비돼 있으면 2~5초 무작위 뒤(작성 구간 끝까지), 아직 쓰는 중이면 다 쓰는 즉시
+ * 냅니다. 봇까지 진짜 글을 내면 구간이 일찍 넘어가고({@link Game#advanceIfAllSubmitted}), 남은 봇 일정은 앞당긴 시간표로
+ * 다시 겁니다. 시간표에 맞춘 타이머는 등록할 때의 시간표 버전을 들고 있다가 버전이 바뀌었으면 아무것도 하지 않습니다.
+ * 위 시각은 앞당기지 않았을 때 기준입니다.
  *
  * <p>봇 글은 사람 글과 똑같이 게임에 기록되고({@link Game#saveBotMemo} · {@link Game#appendBotChat}) 같은 이벤트로
  * 갑니다. 그래서 공개 · {@code /state} 의 {@code submitted} · {@code seqNo} 순서 · 판정 입력이 그대로 맞습니다.
@@ -85,6 +92,9 @@ public class BotService {
      */
     private static final int REBUTTAL_SUBMIT_FROM = 15;
     private static final int REBUTTAL_SUBMIT_TO = 40;
+    /** 사람이 먼저 냈을 때 준비된 봇 글을 내는 시각 — 2 ~ 5초 뒤. 바로 내면 봇 티가 납니다. */
+    private static final int EARLY_SUBMIT_FROM = 2;
+    private static final int EARLY_SUBMIT_TO = 5;
     /** 제출 시각에 글이 아직 없을 때 먼저 내는 임시 글. */
     static final String PLACEHOLDER = "토론봇이 생각중입니다.";
     /** 작성 구간이 끝날 때까지 글을 못 썼을 때 내는 글. 공개된 뒤 게임을 무효로 끝냅니다. */
@@ -94,6 +104,7 @@ public class BotService {
     private final GameTimers gameTimers;
     private final GameMessageService gameMessageService;
     private final GameExitService gameExitService;
+    private final PhaseScheduler phaseScheduler;
     private final BotWriter botWriter;
     private final DebateSessionRepository sessionRepository;
     private final DebateParticipantRepository participantRepository;
@@ -104,7 +115,8 @@ public class BotService {
     private final Clock clock;
 
     public BotService(GameRegistry gameRegistry, GameTimers gameTimers, GameMessageService gameMessageService,
-                      GameExitService gameExitService, BotWriter botWriter, DebateSessionRepository sessionRepository,
+                      GameExitService gameExitService, PhaseScheduler phaseScheduler, BotWriter botWriter,
+                      DebateSessionRepository sessionRepository,
                       DebateParticipantRepository participantRepository, PlatformTransactionManager transactionManager,
                       @Qualifier(GameSchedulerConfig.BOT_EXECUTOR) Executor botExecutor, BotProperties properties,
                       RandomGenerator random, Clock clock) {
@@ -112,6 +124,7 @@ public class BotService {
         this.gameTimers = gameTimers;
         this.gameMessageService = gameMessageService;
         this.gameExitService = gameExitService;
+        this.phaseScheduler = phaseScheduler;
         this.botWriter = botWriter;
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
@@ -131,26 +144,73 @@ public class BotService {
         if (game == null) {
             return;
         }
-        LocalDateTime startedAt = game.getStartedAt();
-        LocalDateTime now = LocalDateTime.now(clock);
-        if (now.isBefore(DebatePhase.PREP.revealAt(startedAt))) {
+        if (LocalDateTime.now(clock).isBefore(game.timeline().revealAt(DebatePhase.PREP))) {
             execute(sessionId, () -> write(sessionId, game, DebatePhase.PREP, 1));
-            gameTimers.schedule(sessionId, startedAt.plusSeconds(random.nextInt(ARGUMENT_SUBMIT_FROM, ARGUMENT_SUBMIT_TO + 1)),
-                    () -> due(sessionId, game, DebatePhase.PREP));
-            gameTimers.schedule(sessionId, DebatePhase.PREP.endAt(startedAt), () -> fail(sessionId, game, DebatePhase.PREP));
         }
-        if (now.isBefore(DebatePhase.REBUTTAL.revealAt(startedAt))) {
+        schedule(sessionId, game);
+    }
+
+    /**
+     * 사람이 주장 · 반론을 냈는데 구간이 넘어가지 않았습니다(봇이 아직 진짜 글을 안 냄). 봇전이면 봇 제출을 앞당깁니다 —
+     * 글이 준비돼 있으면 2~5초 무작위 뒤(작성 구간 끝까지), 아직 쓰는 중이면 다 쓰는 즉시 냅니다.
+     */
+    public void humanSubmitted(Long sessionId, DebatePhase phase) {
+        Game game = activeBotGame(sessionId);
+        if (game == null || !game.botProgress().humanSubmitted(phase)) {
+            return;
+        }
+        GameTimeline timeline = game.timeline();
+        LocalDateTime at = LocalDateTime.now(clock).plusSeconds(random.nextInt(EARLY_SUBMIT_FROM, EARLY_SUBMIT_TO + 1));
+        if (at.isAfter(timeline.endAt(phase))) {
+            at = timeline.endAt(phase);
+        }
+        gameTimers.schedule(sessionId, at, onTimeline(game, timeline, () -> due(sessionId, game, phase)));
+    }
+
+    /** 사람 제출로 구간이 일찍 넘어갔습니다. 봇전이면 남은 봇 일정을 앞당긴 시간표로 다시 겁니다. */
+    public void timelineChanged(Long sessionId) {
+        Game game = activeBotGame(sessionId);
+        if (game != null) {
+            schedule(sessionId, game);
+        }
+    }
+
+    /**
+     * 지금 시간표로 남은 봇 일정을 겁니다. 이미 공개된(또는 일찍 닫힌) 작성 구간의 글은 쓰지 않습니다.
+     * 시간표가 다시 바뀌면 여기서 건 타이머는 아무것도 하지 않습니다.
+     */
+    private void schedule(Long sessionId, Game game) {
+        GameTimeline timeline = game.timeline();
+        LocalDateTime now = LocalDateTime.now(clock);
+        if (now.isBefore(timeline.revealAt(DebatePhase.PREP))) {
+            gameTimers.schedule(sessionId,
+                    timeline.base().plusSeconds(random.nextInt(ARGUMENT_SUBMIT_FROM, ARGUMENT_SUBMIT_TO + 1)),
+                    onTimeline(game, timeline, () -> due(sessionId, game, DebatePhase.PREP)));
+            gameTimers.schedule(sessionId, timeline.endAt(DebatePhase.PREP),
+                    onTimeline(game, timeline, () -> fail(sessionId, game, DebatePhase.PREP)));
+        }
+        if (now.isBefore(timeline.revealAt(DebatePhase.REBUTTAL))) {
             // 반론은 공개된(63초) 사람 주장 원문을 보고, 반론 구간이 시작된 뒤(85초)에 쓰기 시작합니다.
-            LocalDateTime rebuttalStart = DebatePhase.REBUTTAL.startAt(startedAt);
-            gameTimers.schedule(sessionId, rebuttalStart.plusSeconds(REBUTTAL_WRITE_AFTER),
-                    () -> execute(sessionId, () -> write(sessionId, game, DebatePhase.REBUTTAL, 1)));
-            gameTimers.schedule(sessionId, rebuttalStart.plusSeconds(random.nextInt(REBUTTAL_SUBMIT_FROM, REBUTTAL_SUBMIT_TO + 1)),
-                    () -> due(sessionId, game, DebatePhase.REBUTTAL));
-            gameTimers.schedule(sessionId, DebatePhase.REBUTTAL.endAt(startedAt),
-                    () -> fail(sessionId, game, DebatePhase.REBUTTAL));
+            LocalDateTime rebuttalStart = timeline.startAt(DebatePhase.REBUTTAL);
+            gameTimers.schedule(sessionId, rebuttalStart.plusSeconds(REBUTTAL_WRITE_AFTER), onTimeline(game, timeline,
+                    () -> execute(sessionId, () -> write(sessionId, game, DebatePhase.REBUTTAL, 1))));
+            gameTimers.schedule(sessionId,
+                    rebuttalStart.plusSeconds(random.nextInt(REBUTTAL_SUBMIT_FROM, REBUTTAL_SUBMIT_TO + 1)),
+                    onTimeline(game, timeline, () -> due(sessionId, game, DebatePhase.REBUTTAL)));
+            gameTimers.schedule(sessionId, timeline.endAt(DebatePhase.REBUTTAL),
+                    onTimeline(game, timeline, () -> fail(sessionId, game, DebatePhase.REBUTTAL)));
         }
-        gameTimers.schedule(sessionId, DebatePhase.REBUTTAL.revealAt(startedAt).plus(properties.firstMessageDelay()),
-                () -> firstMessage(sessionId, game));
+        gameTimers.schedule(sessionId, timeline.revealAt(DebatePhase.REBUTTAL).plus(properties.firstMessageDelay()),
+                onTimeline(game, timeline, () -> firstMessage(sessionId, game)));
+    }
+
+    /** 시간표가 {@code timeline} 그대로일 때만 실행합니다. 그 사이 앞당겨졌으면 새 시간표로 건 타이머가 맡습니다. */
+    private static Runnable onTimeline(Game game, GameTimeline timeline, Runnable task) {
+        return () -> {
+            if (game.timeline().version() == timeline.version()) {
+                task.run();
+            }
+        };
     }
 
     /** 사람이 채팅했습니다. 봇전이면 {@code game.bot.reply-delay} 뒤에, 그때까지 또 말하지 않았으면 대답합니다. */
@@ -203,7 +263,7 @@ public class BotService {
     /** 다음 시도를 예약합니다. 대기 뒤가 작성 구간 끝을 넘으면 예약하지 않습니다 ({@link #fail} 이 맡음). */
     private void retry(Long sessionId, Game game, DebatePhase phase, int attempt, RuntimeException cause) {
         LocalDateTime next = LocalDateTime.now(clock).plus(backoff(attempt));
-        if (!next.isBefore(phase.endAt(game.getStartedAt()))) {
+        if (!next.isBefore(game.timeline().endAt(phase))) {
             log.error("[봇] {} 을 작성 구간 안에 쓰지 못했습니다. 시도 {}번, sessionId={}", phase, attempt, sessionId, cause);
             return;
         }
@@ -232,7 +292,7 @@ public class BotService {
             return;
         }
         log.error("[봇] {} 을 끝내 쓰지 못해 게임을 무효로 끝냅니다. sessionId={}", phase, sessionId);
-        gameTimers.schedule(sessionId, phase.revealAt(game.getStartedAt()).plus(properties.failureEndDelay()), () -> {
+        gameTimers.schedule(sessionId, game.timeline().revealAt(phase).plus(properties.failureEndDelay()), () -> {
             synchronized (game) {
                 // 공개 스케줄러보다 먼저 왔어도 실패 글은 보이고 끝나게 합니다.
                 gameMessageService.broadcastAll(sessionId, game.revealArguments(LocalDateTime.now(clock)));
@@ -248,6 +308,8 @@ public class BotService {
      * 공개가 끝난 뒤 들어가지 않게 합니다. AI 를 기다리는 사이 게임이 끝났으면(나가기 · 몰수 · 무효) 바로 그만둡니다.
      * 끝난 게임은 {@link Game#saveBotMemo} 가 어차피 거부하지만, 거부 경고 로그와 제출 상태 되돌리기를 하지 않게 먼저 확인합니다.
      *
+     * <p>진짜 글로 사람까지 다 냈으면 같은 락 안에서 구간을 넘기고 남은 일정을 앞당긴 시간표로 다시 겁니다.
+     *
      * @return 글을 게임에 넣었으면 true
      */
     private boolean submit(Long sessionId, Game game, DebatePhase phase, Function<BotProgress, Submission> decide) {
@@ -257,7 +319,7 @@ public class BotService {
             }
             LocalDateTime now = LocalDateTime.now(clock);
             gameMessageService.broadcastAll(sessionId, game.revealArguments(now));
-            if (DebatePhase.memoPhaseAt(game.getStartedAt(), now) != phase) {
+            if (game.memoPhase(now) != phase) {
                 log.warn("[봇] {} 이 작성 구간을 넘겨 내지 않습니다. sessionId={}", phase, sessionId);
                 return false;
             }
@@ -266,9 +328,14 @@ public class BotService {
                 return false;
             }
             try {
-                GameMemo memo = game.saveBotMemo(submission.text(), now);
+                GameMemo memo = game.saveBotMemo(submission.text(), submission.provisional(), now);
                 if (submission.announce()) {
                     gameMessageService.broadcastSubmitted(sessionId, game.getAiParticipantId(), memo.phase());
+                }
+                PhaseAdvance advance = game.advanceIfAllSubmitted(memo.phase(), now);
+                if (advance != null) {
+                    phaseScheduler.advanced(sessionId, game, advance);
+                    schedule(sessionId, game);
                 }
                 return true;
             } catch (BusinessException e) {

@@ -70,6 +70,7 @@ services:
       AI_MODE: ${AI_MODE:-stub}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:?AWS_S3_BUCKET must be set}
+      PHILOSOPHER_IMAGE_BASE_URL: ${PHILOSOPHER_IMAGE_BASE_URL:-https://api.yachapan.cloud/api/v1/philosopher-images}
       # Google AdSense Management API
       ADSENSE_ENABLED: ${ADSENSE_ENABLED:-false}
       ADSENSE_CLIENT_ID: ${ADSENSE_CLIENT_ID:-}

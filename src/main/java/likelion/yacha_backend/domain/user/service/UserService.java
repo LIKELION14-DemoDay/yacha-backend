@@ -24,11 +24,23 @@ public class UserService {
     private final UserRepository userRepository;
     private final BattleRecordService battleRecordService;
     private final Clock clock;
-
+    private final PhilosopherImageUrlService philosopherImageUrlService;
     /** 게스트도 호출 가능 (게스트는 email이 null로 내려감) */
+
     public MyInfoResponse getMyInfo(Long userId) {
-        return MyInfoResponse.from(findById(userId), stats(userId));
+        User user = findById(userId);
+
+        String imageUrl = philosopherImageUrlService.readUrl(
+                user.getPhilosopherType()
+        );
+
+        return MyInfoResponse.from(
+                user,
+                stats(userId),
+                imageUrl
+        );
     }
+
 
     @Transactional
     public MyInfoResponse changeNickname(Long userId, NicknameUpdateRequest request) {
@@ -37,7 +49,11 @@ public class UserService {
         // 변경 감지: 트랜잭션이 끝날 때 Hibernate가 UPDATE를 만듦
         user.changeNickname(request.nickname());
 
-        return MyInfoResponse.from(user, stats(userId));
+        return MyInfoResponse.from(
+                user,
+                stats(userId),
+                philosopherImageUrlService.readUrl(user.getPhilosopherType())
+        );
     }
 
     /** 전적은 세션 도메인의 승패 기록입니다. 다른 도메인의 데이터는 repository 가 아니라 service 로 가져오는 것이 팀 규칙입니다. */

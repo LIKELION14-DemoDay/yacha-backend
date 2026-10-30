@@ -67,6 +67,7 @@ public class SecurityConfig {
             "/api/v1/auth/email/availability",
             "/api/v1/balance-game/questions",
             "/api/v1/balance-game/philosophers/**",
+            "/api/v1/philosopher-images/*",
     };
 
     /**

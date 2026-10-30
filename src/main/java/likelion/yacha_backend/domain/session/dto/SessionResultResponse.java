@@ -49,13 +49,14 @@ public record SessionResultResponse(
     }
 
     /**
-     * @param nickname        닉네임. AI 참가자와 계정이 정리된 참가자는 null
+     * @param nickname        닉네임. 봇은 "야차봇", 계정이 정리된 사람 참가자는 null
      * @param philosopherType 철학자 유형 (밸런스 게임 결과). 안 했거나 건너뛰었으면 null("일반인"), 봇은 항상 null (프론트가 봇 이미지를 씀)
      * @param isMe            조회한 사용자 본인인지
      * @param result          승패. 보관 시간이 지난 뒤 게스트는 DB 에 기록이 없어 null
      * @param scores          기준별 점수 (0 ~ 25). 보관 시간이 지났거나 몰수패면 null
      * @param total           총점 (0 ~ 100). {@code scores} 와 같이 null 일 수 있음
      */
+
     public record ParticipantResultResponse(
             Long participantId,
             String nickname,
@@ -64,7 +65,9 @@ public record SessionResultResponse(
             boolean isMe,
             DebateResult result,
             Map<JudgeCriterion, Integer> scores,
-            Integer total
+            Integer total,
+            String imageUrl
     ) {
     }
+
 }

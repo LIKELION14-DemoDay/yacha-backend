@@ -26,6 +26,15 @@ public interface DebateParticipantRepository extends JpaRepository<DebatePartici
 
     List<DebateParticipant> findAllBySession_Id(Long sessionId);
 
+    /** 토론방 상태 — 참가자와 계정(닉네임 · 철학자 유형)을 함께 읽습니다. AI · 계정이 정리된 참가자도 빠지지 않습니다. */
+    @Query("""
+            select p from DebateParticipant p
+              left join fetch p.user
+             where p.session.id = :sessionId
+             order by p.id asc
+            """)
+    List<DebateParticipant> findAllWithUserBySessionId(@Param("sessionId") Long sessionId);
+
     /**
      * 전투 기록 — 이 사용자의 승리 · 패배 수를 한 번에 셉니다. 기록이 없어도 0 / 0 으로 한 줄이 옵니다.
      * 호출할 때 {@code WIN}, {@code LOSE} 를 넘깁니다 ({@link #countWinsAndLosses(Long)}).

@@ -184,7 +184,7 @@ class JudgeTest extends TimerTestSupport {
     }
 
     @Test
-    @DisplayName("봇전은 사용자와 AI 승패를 모두 기록하고, 봇은 닉네임이 없다")
+    @DisplayName("봇전은 사용자와 AI 승패를 모두 기록하고, 봇 닉네임은 \"야차봇\", 유형은 null")
     void botMatchRecordsAi() throws Exception {
         Room room = finished(fixture.memberBot(IN_CHAT));
         DebateParticipant ai = participantRepository.findAllBySession_Id(room.sessionId()).stream()
@@ -198,7 +198,8 @@ class JudgeTest extends TimerTestSupport {
         assertThat(recorded(room.hostParticipantId())).isEqualTo(DebateResult.LOSE);
         result(room.hostUserId(), room)
                 .andExpect(jsonPath("$.data.winnerParticipantId").value(ai.getId()))
-                .andExpect(jsonPath("$.data.participants[1].nickname").doesNotExist());
+                .andExpect(jsonPath("$.data.participants[1].nickname").value("야차봇"))
+                .andExpect(jsonPath("$.data.participants[1].philosopherType").doesNotExist());
     }
 
     @Test

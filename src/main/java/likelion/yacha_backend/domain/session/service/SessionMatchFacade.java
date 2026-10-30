@@ -102,7 +102,7 @@ public class SessionMatchFacade {
         try {
             gameRegistry.create(matched.sessionId(), matched.startedAt(), matched.participantIdByUserId(),
                     matched.aiParticipantId());
-            phaseScheduler.register(matched.sessionId(), matched.startedAt());
+            phaseScheduler.register(matched.sessionId());
         } catch (RuntimeException e) {
             log.error("[게임 생성] 게임 · 시간표를 만들지 못했습니다. sessionId={}", matched.sessionId(), e);
             return;
