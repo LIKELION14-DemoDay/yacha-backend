@@ -20,7 +20,7 @@ import likelion.yacha_backend.domain.user.entity.PhilosopherType;
  * @param finishReason        종료 사유. {@code PENDING} 이면 null
  * @param winnerParticipantId 이긴 참가자. 무승부거나 결과가 없으면 null
  * @param criteria            기준 4개의 한 줄 요약 (논리 · 근거 · 반박 · 일관성 순서)
- * @param participants        두 참가자
+ * @param participants        두 참가자. 방장 → 상대 순 (봇전이면 사람 → 봇), {@code /state} 와 같음
  */
 public record SessionResultResponse(
         JudgeStatus status,

@@ -26,7 +26,11 @@ public interface DebateParticipantRepository extends JpaRepository<DebatePartici
 
     List<DebateParticipant> findAllBySession_Id(Long sessionId);
 
-    /** 토론방 상태 — 참가자와 계정(닉네임 · 철학자 유형)을 함께 읽습니다. AI · 계정이 정리된 참가자도 빠지지 않습니다. */
+    /**
+     * 토론방 상태 · 결과 — 참가자와 계정(닉네임 · 철학자 유형)을 함께 읽습니다. AI · 계정이 정리된 참가자도 빠지지 않습니다.
+     * id 오름차순이라 방장 → 상대(봇전이면 사람 → 봇) 순입니다. 상대 · AI 참가자는 항상 방장보다 늦게 만들어집니다.
+     * 정렬이 없으면 MySQL 이 고른 인덱스 순서로 나와 봇(user_id NULL)이 먼저 올 수 있습니다.
+     */
     @Query("""
             select p from DebateParticipant p
               left join fetch p.user

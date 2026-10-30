@@ -62,7 +62,7 @@ class SessionResultServiceTest {
 
         DebateParticipant participant = mock(DebateParticipant.class);
         when(participant.isUser(USER_ID)).thenReturn(true);
-        when(participantRepository.findAllBySession_Id(SESSION_ID))
+        when(participantRepository.findAllWithUserBySessionId(SESSION_ID))
                 .thenReturn(List.of(participant));
 
         when(gameRegistry.find(SESSION_ID)).thenReturn(Optional.of(game));

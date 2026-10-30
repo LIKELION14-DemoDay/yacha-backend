@@ -198,6 +198,8 @@ class JudgeTest extends TimerTestSupport {
         assertThat(recorded(room.hostParticipantId())).isEqualTo(DebateResult.LOSE);
         result(room.hostUserId(), room)
                 .andExpect(jsonPath("$.data.winnerParticipantId").value(ai.getId()))
+                .andExpect(jsonPath("$.data.participants[0].participantId").value(room.hostParticipantId()))
+                .andExpect(jsonPath("$.data.participants[1].participantId").value(ai.getId()))
                 .andExpect(jsonPath("$.data.participants[1].nickname").value("야차봇"))
                 .andExpect(jsonPath("$.data.participants[1].philosopherType").doesNotExist());
     }
