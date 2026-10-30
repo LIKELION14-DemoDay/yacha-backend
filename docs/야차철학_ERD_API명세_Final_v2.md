@@ -782,6 +782,7 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
   ] }
 ```
 
+- 🟢 `participants` 는 **방장 → 상대 순**(봇전이면 사람 → 봇)이다. `/state` 의 참가자 순서와 같다 (10/30, #134).
 - 무승부면 `winnerParticipantId` 가 null 이고 두 사람 모두 `DRAW` 다. 막대 · 요약은 승리 화면과 같다.
 - 🟢 **몰수패**(`finishReason: FORFEIT`)는 남은 사람이 **무조건 승리**다. 판정을 하지 않으므로 `criteria` · `scores` · `total` 이 null 이다.
 - 봇은 `philosopherType` 이 null 이고, 프론트가 봇 전용 이미지를 쓴다. 🟢 봇 `nickname` 은 모든 사용자에게 **"야차봇"** 이다 (#123). 계정이 정리된 사람 참가자(게스트 정리 · 가입 뒤 끝난 게임)는 `nickname` · `philosopherType` 이 null 이다.

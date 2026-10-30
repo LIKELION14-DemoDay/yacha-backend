@@ -48,7 +48,7 @@ public class SessionResultService {
 
     public SessionResultResponse getResult(Long sessionId, Long userId) {
         DebateSession session = sessionAccessService.getSession(sessionId);
-        List<DebateParticipant> participants = participantRepository.findAllBySession_Id(sessionId);
+        List<DebateParticipant> participants = participantRepository.findAllWithUserBySessionId(sessionId);
         if (participants.stream().noneMatch(p -> p.isUser(userId))) {
             throw new BusinessException(SessionErrorCode.NOT_PARTICIPANT);
         }

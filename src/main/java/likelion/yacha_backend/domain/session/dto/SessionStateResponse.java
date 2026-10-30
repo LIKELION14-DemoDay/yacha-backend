@@ -28,7 +28,7 @@ import likelion.yacha_backend.domain.user.entity.User;
  * @param endsAt        현재 구간이 끝나는 시각. {@code JUDGING} 이거나 진행 중이 아니면 null
  * @param serverNow     서버 시각. 프론트는 이 값과의 차이로 남은 시간을 계산합니다
  * @param myParticipantId 내 참가자 id. 관전자면 null
- * @param participants  참가자 목록. 채팅 이벤트의 {@code senderId} 가 어느 쪽인지 여기서 찾습니다
+ * @param participants  참가자 목록. 방장 → 상대 순. 채팅 이벤트의 {@code senderId} 가 어느 쪽인지 여기서 찾습니다
  */
 public record SessionStateResponse(
         Long sessionId,
