@@ -38,40 +38,16 @@ class TopicRepositoryTest {
     }
 
     @Test
-    @DisplayName("활성 주제가 있는 하위 카테고리만 중복 없이 준다 (다른 카테고리 · 비활성 제외)")
-    void activeSubcategories() {
-        save(Subcategory.AI);
-        save(Subcategory.AI);
-        save(Subcategory.ROBOT);
+    @DisplayName("카테고리의 활성 주제를 id 오름차순으로 준다 (다른 카테고리 · 비활성 제외)")
+    void activeTopicsInCategory() {
+        Topic ai = save(Subcategory.AI);
+        Topic robot = save(Subcategory.ROBOT);
         save(Subcategory.CLONING).deactivate();
         save(Subcategory.LOVE);
+        Topic ai2 = save(Subcategory.AI);
 
-        assertThat(topicRepository.findActiveSubcategories(Category.TECH_AND_FUTURE, null))
-                .containsExactlyInAnyOrder(Subcategory.AI, Subcategory.ROBOT);
-    }
-
-    @Test
-    @DisplayName("빼는 주제가 하위 카테고리의 유일한 주제면 그 하위 카테고리도 빠진다")
-    void excludeRemovesLastTopic() {
-        save(Subcategory.AI);
-        Topic onlyRobot = save(Subcategory.ROBOT);
-
-        assertThat(topicRepository.findActiveSubcategories(Category.TECH_AND_FUTURE, onlyRobot.getId()))
-                .containsExactly(Subcategory.AI);
-    }
-
-    @Test
-    @DisplayName("하위 카테고리 안의 활성 주제를 id 오름차순으로 주고, 빼는 주제는 뺀다")
-    void activeTopics() {
-        Topic first = save(Subcategory.AI);
-        Topic second = save(Subcategory.AI);
-        Topic third = save(Subcategory.AI);
-        third.deactivate();
-        save(Subcategory.ROBOT);
-
-        assertThat(topicRepository.findActiveTopics(Subcategory.AI, null)).extracting(Topic::getId)
-                .containsExactly(first.getId(), second.getId());
-        assertThat(topicRepository.findActiveTopics(Subcategory.AI, first.getId())).extracting(Topic::getId)
-                .containsExactly(second.getId());
+        assertThat(topicRepository.findAllByCategoryAndActiveTrueOrderByIdAsc(Category.TECH_AND_FUTURE))
+                .extracting(Topic::getId)
+                .containsExactly(ai.getId(), robot.getId(), ai2.getId());
     }
 }

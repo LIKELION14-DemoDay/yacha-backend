@@ -29,16 +29,20 @@ public class TopicController {
                     고른 카테고리 안에서 주제 1개를 랜덤으로 줌
                     하위 카테고리를 먼저 랜덤으로 고른 뒤 그 안에서 고르므로, 하위 카테고리가 고르게 나옴
 
-                    "다음 주제로 넘어가기"는 방금 본 주제 id 를 `exclude` 로 넘기면 됨
+                    "다음 주제로 넘어가기"는 그 화면에서 본 주제 id 를 **모두** `exclude` 로 넘기면 됨 → 본 주제는 다시 안 나옴
+                    - `exclude=1,2,3` 또는 `exclude=1&exclude=2` 둘 다 됨. 다른 카테고리 · 없는 id 는 무시
+                    - 화면을 나갔다 다시 들어오면 목록을 비우고 처음부터
+
+                    다 봤으면 `ALL_TOPICS_SEEN` (404) → "모든 주제를 봤어요" 를 띄우고 `exclude` 없이 다시 요청하면 처음부터
 
                     로그인 필요 (게스트 가능)
-                    뽑을 주제가 없으면 `TOPIC_NOT_FOUND` (404), 카테고리 값이 잘못되면 `BINDING_ERROR` (400)
+                    카테고리에 주제가 아예 없으면 `TOPIC_NOT_FOUND` (404), 카테고리 값이 잘못되면 `BINDING_ERROR` (400)
                     """)
     @GetMapping("/topics/random")
     public ApiResponse<TopicResponse> pickRandom(
             @RequestParam Category category,
-            @RequestParam(required = false) Long exclude) {
-        return ApiResponse.success(topicService.pickRandom(category, exclude));
+            @RequestParam(required = false) List<Long> exclude) {
+        return ApiResponse.success(topicService.pickRandom(category, exclude == null ? List.of() : exclude));
     }
 
     @Operation(
