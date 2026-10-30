@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.auth.service;
 
 import java.util.Locale;
 import likelion.yacha_backend.domain.auth.repository.EmailCheckProperties;
+import likelion.yacha_backend.domain.auth.repository.IpRateLimit;
 import likelion.yacha_backend.domain.auth.repository.IpRateLimiter;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import likelion.yacha_backend.global.exception.BusinessException;
@@ -37,7 +38,8 @@ public class EmailAvailabilityService {
     @Transactional(readOnly = true)
     public boolean isAvailable(String email, String clientIp) {
         // 제한을 먼저 확인해서, 막힌 요청은 DB까지 가지 않음
-        if (!ipRateLimiter.tryAcquire(RATE_LIMIT_PURPOSE, clientIp, properties.maxRequests(), properties.window())) {
+        IpRateLimit limit = properties.ipLimit();
+        if (!ipRateLimiter.tryAcquire(RATE_LIMIT_PURPOSE, clientIp, limit.maxRequests(), limit.window())) {
             log.warn("이메일 중복 확인 호출 제한 초과: ip={}", clientIp);
             throw new BusinessException(GlobalErrorCode.TOO_MANY_REQUESTS);
         }

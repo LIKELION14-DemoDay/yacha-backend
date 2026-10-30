@@ -19,30 +19,30 @@ class EmailCheckPropertiesTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withUserConfiguration(Config.class);
 
-    private static final String MAX_REQUESTS = "auth.email-check.max-requests=30";
+    private static final String MAX_REQUESTS = "auth.email-check.ip-limit.max-requests=30";
 
     @Test
     @DisplayName("값이 모두 있으면 기동한다")
     void valid() {
-        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.window=1m")
+        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.ip-limit.window=1m")
                 .run(context -> assertThat(context).hasNotFailed());
     }
 
     @Test
     @DisplayName("구간이 0 이나 음수면 기동이 실패한다 (Redis 가 키를 바로 지워 제한이 꺼지므로)")
     void nonPositiveWindow() {
-        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.window=0s")
+        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.ip-limit.window=0s")
                 .run(context -> assertThat(context).hasFailed());
-        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.window=-1m")
+        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.ip-limit.window=-1m")
                 .run(context -> assertThat(context).hasFailed());
     }
 
     @Test
     @DisplayName("밀리초로 바꾸면 0이 되는 구간(1us)도 기동이 실패하고, 1ms는 기동한다")
     void subMillisecondWindow() {
-        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.window=1us")
+        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.ip-limit.window=1us")
                 .run(context -> assertThat(context).hasFailed());
-        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.window=1ms")
+        runner.withPropertyValues(MAX_REQUESTS, "auth.email-check.ip-limit.window=1ms")
                 .run(context -> assertThat(context).hasNotFailed());
     }
 
@@ -54,11 +54,17 @@ class EmailCheckPropertiesTest {
     }
 
     @Test
+    @DisplayName("ip-limit 이 통째로 빠지면 기동이 실패한다")
+    void missingIpLimit() {
+        runner.run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
     @DisplayName("허용 횟수가 빠지거나(0 으로 바인딩) 0 이하면 기동이 실패한다")
     void invalidMaxRequests() {
-        runner.withPropertyValues("auth.email-check.window=1m")
+        runner.withPropertyValues("auth.email-check.ip-limit.window=1m")
                 .run(context -> assertThat(context).hasFailed());
-        runner.withPropertyValues("auth.email-check.max-requests=0", "auth.email-check.window=1m")
+        runner.withPropertyValues("auth.email-check.ip-limit.max-requests=0", "auth.email-check.ip-limit.window=1m")
                 .run(context -> assertThat(context).hasFailed());
     }
 }
