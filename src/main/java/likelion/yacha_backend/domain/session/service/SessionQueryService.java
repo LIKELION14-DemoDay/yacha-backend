@@ -26,7 +26,7 @@ import likelion.yacha_backend.global.util.DateTimes;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import likelion.yacha_backend.domain.user.service.PhilosopherImageUrlService;
 /**
  * 토론방 조회 — 놓친 메시지 · 현재 상태. 볼 수 있는 사람은 구독과 같습니다 ({@link SessionAccessService}).
  */
@@ -42,6 +42,7 @@ public class SessionQueryService {
     private final DebateParticipantRepository participantRepository;
     private final GameRegistry gameRegistry;
     private final Clock clock;
+    private final PhilosopherImageUrlService philosopherImageUrlService;
 
     /**
      * {@code seqNo > afterSeq} 인 메시지. 재접속 보충과 늦게 들어온 관전자용입니다.
@@ -108,10 +109,31 @@ public class SessionQueryService {
                 DateTimes.withOffset(endsAt, zone),
                 DateTimes.withOffset(now, zone),
                 myParticipantId(participants, userId),
+
                 participants.stream()
-                        .map(p -> ParticipantResponse.of(p,
-                                submittedIds == null ? null : submittedIds.contains(p.getId())))
+                        .map(p -> {
+                            String imageUrl;
+
+                            if (p.isAi()) {
+                                imageUrl = philosopherImageUrlService.botUrl();
+                            } else if (p.getUser() != null) {
+                                imageUrl = philosopherImageUrlService.readUrl(
+                                        p.getUser().getPhilosopherType()
+                                );
+                            } else {
+                                imageUrl = null;
+                            }
+
+                            return ParticipantResponse.of(
+                                    p,
+                                    submittedIds == null
+                                            ? null
+                                            : submittedIds.contains(p.getId()),
+                                    imageUrl
+                            );
+                        })
                         .toList());
+
     }
 
     private Long myParticipantId(List<DebateParticipant> participants, Long userId) {

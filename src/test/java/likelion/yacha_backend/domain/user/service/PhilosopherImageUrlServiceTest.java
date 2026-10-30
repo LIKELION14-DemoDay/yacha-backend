@@ -18,7 +18,7 @@ class PhilosopherImageUrlServiceTest {
     void mapsAllPhilosophers() {
         for (PhilosopherType type : PhilosopherType.values()) {
             String filename =
-                    type.name().toLowerCase(Locale.ROOT) + ".png";
+                    type.name().toLowerCase(Locale.ROOT) + ".svg";
 
             assertThat(service.readUrl(type))
                     .endsWith("/" + filename);
@@ -28,9 +28,9 @@ class PhilosopherImageUrlServiceTest {
     @Test
     void mapsDefaultAndBot() {
         assertThat(service.readUrl(null))
-                .endsWith("/default.png");
+                .endsWith("/default.svg");
 
         assertThat(service.botUrl())
-                .endsWith("/bot.png");
+                .endsWith("/bot.svg");
     }
 }
