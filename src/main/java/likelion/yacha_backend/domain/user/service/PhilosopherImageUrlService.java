@@ -3,23 +3,35 @@ package likelion.yacha_backend.domain.user.service;
 
 import java.util.Locale;
 import likelion.yacha_backend.domain.user.entity.PhilosopherType;
-import likelion.yacha_backend.global.storage.S3StorageService;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 public class PhilosopherImageUrlService {
 
-    private final S3StorageService s3StorageService;
+    private final String baseUrl;
+
+    public PhilosopherImageUrlService(
+            @Value("${philosopher.image.base-url}")
+            String baseUrl
+    ) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalArgumentException(
+                    "philosopher.image.base-url must not be blank"
+            );
+        }
+        this.baseUrl = baseUrl.replaceAll("/+$", "");
+    }
 
     public String readUrl(PhilosopherType type) {
         String filename = type == null
                 ? "default.png"
                 : type.name().toLowerCase(Locale.ROOT) + ".png";
 
-        String key = "philosophers/" + filename;
+        return baseUrl + "/" + filename;
+    }
 
-        return s3StorageService.createReadUrl(key);
+    public String botUrl() {
+        return baseUrl + "/bot.png";
     }
 }
