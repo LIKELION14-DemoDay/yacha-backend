@@ -56,11 +56,31 @@ class TopicApiTest {
     }
 
     @Test
-    @DisplayName("방금 본 주제를 빼면 남는 게 없을 때 TOPIC_NOT_FOUND (404)")
+    @DisplayName("본 주제를 여러 개 빼면 남은 주제만 나온다 (쉼표 · 반복 둘 다)")
+    void excludesSeenTopics() throws Exception {
+        Topic first = topicRepository.save(Topic.create(Subcategory.REALITY, "첫째", "찬성", "반대"));
+        Topic second = topicRepository.save(Topic.create(Subcategory.RELIGION, "둘째", "찬성", "반대"));
+        Topic left = topicRepository.save(Topic.create(Subcategory.REALITY, "남은 주제", "찬성", "반대"));
+
+        getAs(Role.USER, "/api/v1/topics/random?category=TRUTH_AND_BELIEF&exclude=%d,%d"
+                .formatted(first.getId(), second.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(left.getId()));
+        getAs(Role.USER, "/api/v1/topics/random?category=TRUTH_AND_BELIEF&exclude=%d&exclude=%d"
+                .formatted(first.getId(), second.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(left.getId()));
+    }
+
+    @Test
+    @DisplayName("본 주제를 빼면 남는 게 없을 때 ALL_TOPICS_SEEN, 카테고리에 주제가 없으면 TOPIC_NOT_FOUND (둘 다 404)")
     void excludeLeavesNothing() throws Exception {
         Topic topic = topicRepository.save(Topic.create(Subcategory.REALITY, "질문", "찬성", "반대"));
 
         getAs(Role.USER, "/api/v1/topics/random?category=TRUTH_AND_BELIEF&exclude=" + topic.getId())
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("ALL_TOPICS_SEEN"));
+        getAs(Role.USER, "/api/v1/topics/random?category=HUMAN")
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("TOPIC_NOT_FOUND"));
     }

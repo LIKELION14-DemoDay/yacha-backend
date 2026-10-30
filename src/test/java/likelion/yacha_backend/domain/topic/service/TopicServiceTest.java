@@ -2,9 +2,6 @@ package likelion.yacha_backend.domain.topic.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -58,11 +55,11 @@ class TopicServiceTest {
         return topicRepository.save(Topic.create(subcategory, statement, "찬성", "반대"));
     }
 
-    private void assertNotFound(Runnable action) {
+    private void assertError(Runnable action, TopicErrorCode errorCode) {
         assertThatThrownBy(action::run)
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
-                .isEqualTo(TopicErrorCode.TOPIC_NOT_FOUND);
+                .isEqualTo(errorCode);
     }
 
     @Test
@@ -75,7 +72,7 @@ class TopicServiceTest {
         // 하위 카테고리 후보는 [AI, ROBOT] (이름순). 1번 → ROBOT, 그 안에서 0번
         FixedRandom random = new FixedRandom(1, 0);
 
-        TopicResponse picked = new TopicService(topicRepository, random).pickRandom(Category.TECH_AND_FUTURE, null);
+        TopicResponse picked = new TopicService(topicRepository, random).pickRandom(Category.TECH_AND_FUTURE, List.of());
 
         assertThat(random.bounds).containsExactly(2, 1);
         assertThat(picked.id()).isEqualTo(robot.getId());
@@ -90,7 +87,7 @@ class TopicServiceTest {
                 "AI가 그린 그림도 예술이라고 할 수 있는가?", "AI 그림도 예술이다!", "AI 그림은 예술이 아니다!"));
 
         TopicResponse picked = new TopicService(topicRepository, new FixedRandom(0, 1))
-                .pickRandom(Category.TECH_AND_FUTURE, null);
+                .pickRandom(Category.TECH_AND_FUTURE, List.of());
 
         assertThat(picked.id()).isEqualTo(second.getId());
         assertThat(picked.category()).isEqualTo(Category.TECH_AND_FUTURE);
@@ -100,15 +97,46 @@ class TopicServiceTest {
     }
 
     @Test
-    @DisplayName("다음 주제로 넘어가기 — 방금 본 주제는 나오지 않는다")
-    void excludesCurrentTopic() {
-        Topic current = save(Subcategory.AI, "지금 주제");
-        Topic other = save(Subcategory.AI, "다른 주제");
+    @DisplayName("다음 주제로 넘어가기 — 본 주제를 모두 빼면 남은 주제만 나온다")
+    void excludesSeenTopics() {
+        Topic first = save(Subcategory.AI, "첫 주제");
+        Topic second = save(Subcategory.ROBOT, "두 번째 주제");
+        Topic left = save(Subcategory.AI, "남은 주제");
         TopicService service = new TopicService(topicRepository, RandomGenerator.getDefault());
 
         for (int i = 0; i < 20; i++) {
-            assertThat(service.pickRandom(Category.TECH_AND_FUTURE, current.getId()).id()).isEqualTo(other.getId());
+            assertThat(service.pickRandom(Category.TECH_AND_FUTURE, List.of(first.getId(), second.getId())).id())
+                    .isEqualTo(left.getId());
         }
+    }
+
+    @Test
+    @DisplayName("본 주제를 쌓아 가며 넘기면 다 볼 때까지 같은 주제가 다시 나오지 않고, 다 보면 ALL_TOPICS_SEEN")
+    void seesEveryTopicOnce() {
+        for (int i = 0; i < 5; i++) {
+            save(Subcategory.AI, "AI " + i);
+            save(Subcategory.ROBOT, "로봇 " + i);
+        }
+        TopicService service = new TopicService(topicRepository, RandomGenerator.getDefault());
+        List<Long> seen = new ArrayList<>();
+
+        for (int i = 0; i < 10; i++) {
+            seen.add(service.pickRandom(Category.TECH_AND_FUTURE, seen).id());
+        }
+
+        assertThat(seen).doesNotHaveDuplicates().hasSize(10);
+        assertError(() -> service.pickRandom(Category.TECH_AND_FUTURE, seen), TopicErrorCode.ALL_TOPICS_SEEN);
+    }
+
+    @Test
+    @DisplayName("다른 카테고리 · 없는 주제 id 는 무시한다")
+    void ignoresUnrelatedExcludes() {
+        Topic love = save(Subcategory.LOVE, "관계 주제");
+        Topic only = save(Subcategory.AI, "하나뿐인 주제");
+        TopicService service = new TopicService(topicRepository, RandomGenerator.getDefault());
+
+        assertThat(service.pickRandom(Category.TECH_AND_FUTURE, List.of(love.getId(), 999_999L)).id())
+                .isEqualTo(only.getId());
     }
 
     @Test
@@ -120,7 +148,7 @@ class TopicServiceTest {
         TopicService service = new TopicService(topicRepository, RandomGenerator.getDefault());
 
         for (int i = 0; i < 20; i++) {
-            assertThat(service.pickRandom(Category.TECH_AND_FUTURE, null).id()).isEqualTo(active.getId());
+            assertThat(service.pickRandom(Category.TECH_AND_FUTURE, List.of()).id()).isEqualTo(active.getId());
         }
     }
 
@@ -130,26 +158,16 @@ class TopicServiceTest {
         save(Subcategory.LOVE, "관계 주제");
         TopicService service = new TopicService(topicRepository, RandomGenerator.getDefault());
 
-        assertNotFound(() -> service.pickRandom(Category.TECH_AND_FUTURE, null));
+        assertError(() -> service.pickRandom(Category.TECH_AND_FUTURE, List.of()), TopicErrorCode.TOPIC_NOT_FOUND);
     }
 
     @Test
-    @DisplayName("하위 카테고리를 고른 뒤 그 안의 주제가 비어 있으면 500 이 아니라 TOPIC_NOT_FOUND (동시에 비활성화된 경우)")
-    void topicsGoneAfterSubcategoryPicked() {
-        TopicRepository repository = mock(TopicRepository.class);
-        when(repository.findActiveSubcategories(any(), any())).thenReturn(List.of(Subcategory.AI));
-        when(repository.findActiveTopics(any(), any())).thenReturn(List.of());
-        TopicService service = new TopicService(repository, RandomGenerator.getDefault());
-
-        assertNotFound(() -> service.pickRandom(Category.TECH_AND_FUTURE, null));
-    }
-
-    @Test
-    @DisplayName("주제가 하나뿐인데 그 주제를 빼면 TOPIC_NOT_FOUND")
+    @DisplayName("주제가 하나뿐인데 그 주제를 빼면 ALL_TOPICS_SEEN (주제가 없는 것과 구분)")
     void onlyTopicExcluded() {
         Topic only = save(Subcategory.AI, "하나뿐인 주제");
         TopicService service = new TopicService(topicRepository, RandomGenerator.getDefault());
 
-        assertNotFound(() -> service.pickRandom(Category.TECH_AND_FUTURE, only.getId()));
+        assertError(() -> service.pickRandom(Category.TECH_AND_FUTURE, List.of(only.getId())),
+                TopicErrorCode.ALL_TOPICS_SEEN);
     }
 }

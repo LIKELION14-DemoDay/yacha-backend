@@ -145,7 +145,7 @@ erDiagram
 | 돈과 성공 `MONEY_AND_SUCCESS` | 부 `WEALTH` · 노동 `LABOR` · 성공 `SUCCESS` · 능력주의 `MERITOCRACY` · 행복과 돈 `HAPPINESS_AND_MONEY` |
 | 진실과 믿음 `TRUTH_AND_BELIEF` | 진실 `TRUTH` · 거짓 `FALSEHOOD` · 종교 `RELIGION` · 지식 `KNOWLEDGE` · 현실 `REALITY` · 믿음 `BELIEF` |
 
-> 🟢 **주제 뽑기**: 고른 카테고리 안에서 **활성 주제가 있는 하위 카테고리를 랜덤으로 고르고**, 그 안에서 주제를 랜덤으로 뽑는다. 하위 카테고리마다 주제 수가 달라도 고르게 나온다. 다시 뽑기의 `exclude` 주제는 **하위 카테고리를 고르기 전에** 뺀다. 그 주제가 하위 카테고리의 유일한 주제면 그 하위 카테고리는 후보에서 빠지고, 카테고리 전체에 뽑을 주제가 없을 때만 `TOPIC_NOT_FOUND` 다.
+> 🟢 **주제 뽑기**: 고른 카테고리 안에서 **활성 주제가 있는 하위 카테고리를 랜덤으로 고르고**, 그 안에서 주제를 랜덤으로 뽑는다. 하위 카테고리마다 주제 수가 달라도 고르게 나온다. 다시 뽑기의 `exclude` 주제(🟢 10/30 부터 그 화면에서 본 주제 **전부**)는 **하위 카테고리를 고르기 전에** 뺀다. 남은 주제가 없는 하위 카테고리는 후보에서 빠진다. 카테고리에 주제가 아예 없으면 `TOPIC_NOT_FOUND`, 있지만 모두 뺐으면 `ALL_TOPICS_SEEN` 이다.
 
 ### debate_session — 토론 세션
 
@@ -435,7 +435,7 @@ erDiagram
 
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
-| GET | `/topics/random?category=&exclude=` | 🔷 카테고리 안에서 랜덤 주제 1개. **다시 뽑기**(🟢 "다음 주제로 넘어가기")는 방금 본 주제 id 를 `exclude` 로 넘긴다. 🟢 `exclude` 를 뺀 뒤 주제가 남은 하위 카테고리를 먼저 랜덤으로 고른다 (1-2). 카테고리 전체에 뽑을 주제가 없을 때만 `TOPIC_NOT_FOUND`(404), 카테고리 값이 잘못되면 `BINDING_ERROR`(400) | ✅ (게스트 가능) |
+| GET | `/topics/random?category=&exclude=` | 🔷 카테고리 안에서 랜덤 주제 1개. **다시 뽑기**(🟢 "다음 주제로 넘어가기")는 🟢 그 화면에서 본 주제 id 를 **모두** `exclude` 로 넘긴다 (`exclude=1,2,3` 또는 반복, 화면을 나가면 비움). 🟢 `exclude` 를 뺀 뒤 주제가 남은 하위 카테고리를 먼저 랜덤으로 고른다 (1-2). 다 봤으면 `ALL_TOPICS_SEEN`(404) — 프론트는 "모든 주제를 봤어요" 를 띄우고 `exclude` 없이 다시 요청. 카테고리에 주제가 아예 없으면 `TOPIC_NOT_FOUND`(404), 카테고리 값이 잘못되면 `BINDING_ERROR`(400) | ✅ (게스트 가능) |
 | GET | `/topics/today` | 오늘의 야차판 — 🔷 **유지 여부 결정 필요** (PART 5) | — |
 | GET | `/topics` | 주제 목록 (카테고리 · 페이징) — 🟢 **미구현** (필요해지면 만든다) | — |
 | GET | `/topics/{id}` | 주제 상세 — 🟢 **미구현** (필요해지면 만든다) | — |
@@ -853,7 +853,8 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 
 | 코드 | HTTP | 상황 |
 | --- | --- | --- |
-| `TOPIC_NOT_FOUND` | 404 | 🔷 주제 없음 (카테고리에 뽑을 주제가 없는 경우 포함) |
+| `TOPIC_NOT_FOUND` | 404 | 🔷 주제 없음 (카테고리에 활성 주제가 하나도 없는 경우 포함) |
+| `ALL_TOPICS_SEEN` | 404 | 🟢 랜덤 주제 넘기기에서 카테고리의 주제를 모두 봄 (`exclude` 가 전부 덮음) |
 | `SESSION_NOT_FOUND` | 404 |  |
 | `NOT_PARTICIPANT` | 403 | 내 세션이 아님 |
 | `INVALID_PHASE` | 409 | 🔶 (구 `INVALID_TURN`) 현재 구간에서 허용되지 않는 동작 |

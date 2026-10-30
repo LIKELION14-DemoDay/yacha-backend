@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.session.service;
 
+import java.util.List;
 import java.util.Optional;
 import likelion.yacha_backend.domain.session.dto.ProposalResponse;
 import likelion.yacha_backend.domain.session.dto.WaitingRoomsResponse;
@@ -94,7 +95,7 @@ public class SessionProposalService {
         }
         // 한 바퀴를 다 돌았습니다. 다음 /proposal 은 처음부터 돕니다.
         cursorStore.delete(userId);
-        return ProposalResponse.newTopic(topicService.pickRandom(cursor.start(), null));
+        return ProposalResponse.newTopic(topicService.pickRandom(cursor.start(), List.of()));
     }
 
     private Optional<DebateParticipant> oldestHost(Category category, Long userId) {
