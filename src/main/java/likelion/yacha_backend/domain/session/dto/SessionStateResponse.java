@@ -65,7 +65,8 @@ public record SessionStateResponse(
             Boolean submitted,
             String nickname,
             PhilosopherType philosopherType,
-            String stanceText
+            String stanceText,
+            String imageUrl
     ) {
 
         /** 봇의 찬성 문구. 철학자 말투와 구분되는 기계 말투입니다. */
@@ -75,14 +76,26 @@ public record SessionStateResponse(
         public static final String BOT_DISAGREE_TEXT = "계산 결과, 반대입니다";
 
         /** 계정({@link DebateParticipant#getUser()})을 함께 읽은 참가자로 만듭니다. */
-        public static ParticipantResponse of(DebateParticipant participant, Boolean submitted) {
+        public static ParticipantResponse of(
+                DebateParticipant participant,
+                Boolean submitted,
+                String imageUrl
+        ) {
             User user = participant.getUser();
-            PhilosopherType philosopherType = user == null ? null : user.getPhilosopherType();
-            return new ParticipantResponse(participant.getId(), participant.getParticipantType(), participant.getRole(),
-                    participant.getStance(), submitted,
+            PhilosopherType philosopherType =
+                    user == null ? null : user.getPhilosopherType();
+
+            return new ParticipantResponse(
+                    participant.getId(),
+                    participant.getParticipantType(),
+                    participant.getRole(),
+                    participant.getStance(),
+                    submitted,
                     participant.displayNickname(),
                     philosopherType,
-                    stanceText(participant, philosopherType));
+                    stanceText(participant, philosopherType),
+                    imageUrl
+            );
         }
 
         private static String stanceText(DebateParticipant participant, PhilosopherType philosopherType) {

@@ -142,7 +142,7 @@ public class SessionResultService {
                                 p.getUser().getPhilosopherType()
                         );
                     } else {
-                        imageUrl = null;
+                        imageUrl = philosopherImageUrlService.readUrl(null);
                     }
 
                     return new ParticipantResultResponse(
