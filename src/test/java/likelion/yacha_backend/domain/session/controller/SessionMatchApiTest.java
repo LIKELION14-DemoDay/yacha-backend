@@ -45,7 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 @Import(SessionFixture.class)
-@DisplayName("방 생성 · 입장 · 취소 · 봇전 · 참여 중인 세션 API")
+@DisplayName("방 생성 · 입장 · 취소 · AI 전환 · 참여 중인 세션 API")
 class SessionMatchApiTest {
 
     @Autowired
@@ -98,22 +98,6 @@ class SessionMatchApiTest {
     private ResultActions cancelAs(Long userId, Long sessionId) throws Exception {
         return mockMvc.perform(delete("/api/v1/sessions/" + sessionId)
                 .header(HttpHeaders.AUTHORIZATION, bearer(userId, Role.USER)));
-    }
-
-    private ResultActions startBotAs(Long userId, Role role, String body) throws Exception {
-        ResultActions result = mockMvc.perform(post("/api/v1/sessions/bot")
-                .header(HttpHeaders.AUTHORIZATION, bearer(userId, role))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body));
-        String response = result.andReturn().getResponse().getContentAsString();
-        if (response.contains("\"sessionId\"")) {
-            joinedSessionIds.add(((Number) JsonPath.read(response, "$.data.sessionId")).longValue());
-        }
-        return result;
-    }
-
-    private ResultActions startBotAs(Long userId, Long topicId) throws Exception {
-        return startBotAs(userId, Role.USER, "{\"topicId\":%d,\"stance\":\"AGREE\"}".formatted(topicId));
     }
 
     private ResultActions convertAs(Long userId, Long sessionId) throws Exception {
@@ -283,7 +267,7 @@ class SessionMatchApiTest {
         @DisplayName("이미 시작한 방 · 봇전 · 취소된 방이면 SESSION_NOT_WAITING")
         void notWaiting() throws Exception {
             Room started = track(fixture.randomHuman(10));
-            Room bot = track(fixture.autoBot(10));
+            Room bot = track(fixture.convertedBot(10));
             Room cancelled = fixture.waitingRandom();
             cancelAs(cancelled.hostUserId(), cancelled.sessionId()).andExpect(status().isOk());
 
@@ -426,90 +410,16 @@ class SessionMatchApiTest {
     }
 
     @Nested
-    @DisplayName("POST /sessions/bot — 바로 봇전")
-    class StartBot {
-
-        @Test
-        @DisplayName("봇전이 바로 IN_PROGRESS 로 만들어지고, 봇은 반대 입장이며 게임에 AI 참가자가 들어간다")
-        void startsBotMatch() throws Exception {
-            Long userId = fixture.newUser();
-            Topic topic = fixture.topic();
-
-            String body = startBotAs(userId, topic.getId())
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.sessionId").isNumber())
-                    .andReturn().getResponse().getContentAsString();
-
-            Long sessionId = ((Number) JsonPath.read(body, "$.data.sessionId")).longValue();
-            DebateSession session = session(sessionId);
-            assertThat(session.getStatus()).isEqualTo(SessionStatus.IN_PROGRESS);
-            assertThat(session.getMode()).isEqualTo(SessionMode.AI);
-            assertThat(session.getCategory()).isEqualTo(Category.ETHICS);
-            assertThat(session.getTopic().getId()).isEqualTo(topic.getId());
-            DebateParticipant me = participantRepository.findBySession_IdAndUser_Id(sessionId, userId).orElseThrow();
-            assertThat(me.getRole()).isEqualTo(ParticipantRole.INITIATOR);
-            assertThat(me.getStance()).isEqualTo(Stance.AGREE);
-            DebateParticipant ai = aiOf(sessionId);
-            assertThat(ai.getRole()).isEqualTo(ParticipantRole.OPPONENT);
-            assertThat(ai.getStance()).isEqualTo(Stance.DISAGREE);
-            Game game = gameRegistry.find(sessionId).orElseThrow();
-            assertThat(game.getStartedAt()).isEqualTo(session.getStartedAt());
-            assertThat(game.participantIdOf(userId)).isEqualTo(me.getId());
-            assertThat(game.getAiParticipantId()).isEqualTo(ai.getId());
-        }
-
-        @Test
-        @DisplayName("게스트도 시작할 수 있고, /current 로 봇전을 되찾는다")
-        void guestAndCurrent() throws Exception {
-            Long userId = fixture.newUser();
-            String body = startBotAs(userId, Role.GUEST,
-                    "{\"topicId\":%d,\"stance\":\"DISAGREE\"}".formatted(fixture.topic().getId()))
-                    .andExpect(status().isOk())
-                    .andReturn().getResponse().getContentAsString();
-            Long sessionId = ((Number) JsonPath.read(body, "$.data.sessionId")).longValue();
-
-            currentAs(userId, Role.GUEST)
-                    .andExpect(jsonPath("$.data.sessionId").value(sessionId))
-                    .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
-        }
-
-        @Test
-        @DisplayName("이미 대기 · 진행 중인 세션이 있으면 ALREADY_IN_SESSION")
-        void alreadyInSession() throws Exception {
-            Room waiting = fixture.waitingRandom();
-            Room playing = track(fixture.randomHuman(10));
-
-            for (Long userId : List.of(waiting.hostUserId(), playing.opponentUserId())) {
-                startBotAs(userId, fixture.topic().getId())
-                        .andExpect(status().isConflict())
-                        .andExpect(jsonPath("$.error.code").value("ALREADY_IN_SESSION"));
-            }
-        }
-
-        @Test
-        @DisplayName("없거나 내린 주제면 TOPIC_NOT_FOUND, 빠진 값은 VALIDATION_FAILED")
-        void invalidRequest() throws Exception {
-            Long userId = fixture.newUser();
-            Topic inactive = fixture.topic();
-            inactive.deactivate();
-
-            startBotAs(userId, inactive.getId())
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.error.code").value("TOPIC_NOT_FOUND"));
-            startBotAs(userId, Role.USER, "{\"topicId\":1}")
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
-        }
-    }
-
-    @Nested
     @DisplayName("POST /sessions/{id}/ai — 대기 중 AI 전환")
     class ConvertToAi {
+
+        /** 봇전 버튼이 뜨는 시각 (첫 {@code WAIT_PROMPT}). 이만큼 기다린 방만 전환됩니다. */
+        private static final long BOT_AVAILABLE_SECONDS = 30;
 
         @Test
         @DisplayName("방장이 전환하면 AI 모드로 바로 시작하고, 봇은 방장의 반대 입장이다")
         void hostConverts() throws Exception {
-            Room room = fixture.waitingRandom();
+            Room room = fixture.waitingRandom(BOT_AVAILABLE_SECONDS);
 
             convertAs(room.hostUserId(), room.sessionId())
                     .andExpect(status().isOk())
@@ -529,7 +439,7 @@ class SessionMatchApiTest {
         @Test
         @DisplayName("전환된 방에는 들어갈 수 없고 취소 · 다시 전환도 안 된다 (SESSION_NOT_WAITING)")
         void afterConversion() throws Exception {
-            Room room = fixture.waitingRandom();
+            Room room = fixture.waitingRandom(BOT_AVAILABLE_SECONDS);
             convertAs(room.hostUserId(), room.sessionId()).andExpect(status().isOk());
 
             mockMvc.perform(post("/api/v1/sessions/" + room.sessionId() + "/join")
@@ -543,9 +453,26 @@ class SessionMatchApiTest {
         }
 
         @Test
+        @DisplayName("방을 만든 지 30초가 안 됐으면 BOT_NOT_AVAILABLE_YET, 방은 그대로 대기 중")
+        void beforeBotAvailable() throws Exception {
+            Room fresh = fixture.waitingRandom();
+            Room almost = fixture.waitingRandom(BOT_AVAILABLE_SECONDS - 5);
+
+            for (Room room : List.of(fresh, almost)) {
+                convertAs(room.hostUserId(), room.sessionId())
+                        .andExpect(status().isConflict())
+                        .andExpect(jsonPath("$.error.code").value("BOT_NOT_AVAILABLE_YET"));
+                assertThat(session(room.sessionId()).getStatus()).isEqualTo(SessionStatus.WAITING);
+                assertThat(participantRepository.findAllBySession_Id(room.sessionId()))
+                        .noneMatch(p -> p.getParticipantType() == ParticipantType.AI);
+                assertThat(gameRegistry.find(room.sessionId())).isEmpty();
+            }
+        }
+
+        @Test
         @DisplayName("방장이 아니면 NOT_ROOM_OWNER")
         void notOwner() throws Exception {
-            Room room = fixture.waitingRandom();
+            Room room = fixture.waitingRandom(BOT_AVAILABLE_SECONDS);
 
             convertAs(fixture.newUser(), room.sessionId())
                     .andExpect(status().isForbidden())
@@ -554,7 +481,7 @@ class SessionMatchApiTest {
         }
 
         @Test
-        @DisplayName("이미 상대가 들어왔거나 취소된 방이면 SESSION_NOT_WAITING")
+        @DisplayName("이미 상대가 들어왔거나 취소된 방이면 30초 전이어도 SESSION_NOT_WAITING")
         void notWaiting() throws Exception {
             Room matched = fixture.waitingRandom();
             joinAs(fixture.newUser(), matched.sessionId()).andExpect(status().isOk());

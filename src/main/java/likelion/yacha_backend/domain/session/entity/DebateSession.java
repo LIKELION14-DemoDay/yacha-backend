@@ -117,19 +117,6 @@ public class DebateSession extends BaseTimeEntity {
         return session;
     }
 
-    /**
-     * 바로 봇전 ({@code POST /sessions/bot}). 사용자가 주제 · 입장을 고르면 대기 없이 시작합니다.
-     * 대기열에 올라가지 않는 방이라 조건부 UPDATE 없이 여기서 시작 상태로 만듭니다.
-     */
-    public static DebateSession createAiMatch(Topic topic, LocalDateTime now) {
-        DebateSession session = waiting(Objects.requireNonNull(topic, "topic").getCategory(), RoomType.RANDOM);
-        session.topic = topic;
-        session.mode = SessionMode.AI;
-        session.status = SessionStatus.IN_PROGRESS;
-        session.startedAt = Objects.requireNonNull(now, "now");
-        return session;
-    }
-
     private static DebateSession waiting(Category category, RoomType roomType) {
         DebateSession session = new DebateSession();
         session.category = Objects.requireNonNull(category, "category");

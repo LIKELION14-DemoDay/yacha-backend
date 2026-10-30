@@ -1,6 +1,5 @@
 package likelion.yacha_backend.domain.session.service;
 
-import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.service.SessionCommandService.Created;
@@ -10,7 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * 방 생성 · 입장 · 취소 · 봇전 시작의 진입점. DB 작업은 {@link SessionCommandService} 의 트랜잭션에서 하고,
+ * 방 생성 · 입장 · 취소 · AI 전환의 진입점. DB 작업은 {@link SessionCommandService} 의 트랜잭션에서 하고,
  * <b>커밋이 끝난 뒤에</b> 대기 타이머 등록 · 정리, 게임 생성 · 구간 타이머 등록, 힌트 생성 시작, 봇 일정 등록, 방장 알림을 합니다.
  *
  * <p>트랜잭션 안에서 하면 두 가지 문제가 생깁니다.
@@ -68,14 +67,10 @@ public class SessionMatchFacade {
         return matched.sessionId();
     }
 
-    /** 바로 봇전 → (커밋) → 게임 생성. 사람이 한 명뿐이라 {@code MATCHED} 는 보내지 않고 응답으로 시작을 알립니다. */
-    public Long startBot(Long userId, BotMatchRequest request) {
-        Matched matched = sessionCommandService.startBot(userId, request);
-        createGame(matched);
-        return matched.sessionId();
-    }
-
-    /** 대기 중 AI 전환 → (커밋) → 대기 타이머 정리 → 게임 생성. 전환을 요청한 방장이 응답으로 시작을 압니다. */
+    /**
+     * 대기 중 AI 전환 → (커밋) → 대기 타이머 정리 → 게임 생성. 전환을 요청한 방장이 응답으로 시작을 압니다.
+     * 사람이 한 명뿐이라 {@code MATCHED} 는 보내지 않습니다.
+     */
     public Long convertToAi(Long userId, Long sessionId) {
         Matched matched = sessionCommandService.convertToAi(userId, sessionId);
         waitTimerService.cancel(sessionId);

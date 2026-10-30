@@ -15,7 +15,7 @@ public record MatchNotice(Type type, Long sessionId, Long waitedSeconds) {
     public enum Type {
         /** 상대가 들어와 게임이 시작됨. 방장은 승낙 없이 자동 수락됩니다 */
         MATCHED,
-        /** 30초마다 — 프론트가 "봇전으로 시작하시겠습니까?" 를 띄움 */
+        /** 30초마다 — 첫 알림에 프론트가 "봇전으로 시작하기" 버튼을 띄우고 대기가 끝날 때까지 유지 */
         WAIT_PROMPT,
         /** 대기 상한(5분) 도달 — 방은 이미 취소됨 */
         WAIT_EXPIRED,

@@ -5,7 +5,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import likelion.yacha_backend.domain.session.dto.HintResponse;
-import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
 import likelion.yacha_backend.domain.session.dto.CurrentSessionResponse;
 import likelion.yacha_backend.domain.session.dto.GameMessageResponse;
 import likelion.yacha_backend.domain.session.dto.MemoResponse;
@@ -146,39 +145,17 @@ public class SessionController {
     }
 
     @Operation(
-            summary = "바로 봇전 (NEW_TOPIC 화면 전용)",
-            description = """
-                    방을 만들지 않고 봇과 바로 토론을 시작함 (`IN_PROGRESS`)
-
-                    언제 부르나: 자동 제안 · 제안 거절에서 `NEW_TOPIC` 을 받은 뒤(한 바퀴를 다 돌았거나 대기 방이 없음), 새 주제 화면에서 "봇전으로 시작" 을 누를 때만
-                    - 카테고리 화면에서 바로 봇전을 시작하는 길은 없음
-                    - 내 방에서 기다리다 봇전으로 바꾸는 것은 이 API 가 아니라 `POST /sessions/{id}/ai`
-
-                    요청
-                    - `topicId`: 새 주제 화면에 떠 있는 주제의 id (`NEW_TOPIC` 응답의 `topic.id`, 다음 주제로 넘겼으면 지금 화면의 주제)
-                    - `stance`: 사용자가 고른 입장. 봇은 반대 입장
-
-                    응답을 받은 뒤
-                    - 응답의 `data` 는 `{ sessionId }`. 상대가 봇이라 `MATCHED` 알림은 오지 않음
-                    - 바로 토론방 `/topic/sessions/{sessionId}` 를 구독하고 `GET /sessions/{sessionId}/state` 로 구간 · 남은 시간을 맞춤
-
-                    로그인 필요 (게스트 가능)
-                    이미 대기 · 진행 중인 토론이 있으면 `ALREADY_IN_SESSION`, 없거나 내린 주제면 `TOPIC_NOT_FOUND`
-                    """)
-    @PostMapping("/bot")
-    public ApiResponse<SessionIdResponse> startBot(
-            @AuthenticationPrincipal AuthUser authUser,
-            @Valid @RequestBody BotMatchRequest request) {
-        return ApiResponse.success(new SessionIdResponse(sessionMatchFacade.startBot(authUser.getUserId(), request)));
-    }
-
-    @Operation(
             summary = "AI 대결로 전환",
             description = """
-                    기다리던 내 방을 봇전으로 바꿔 바로 시작 (`IN_PROGRESS`). 대기 팝업(`WAIT_PROMPT`)에서 "봇전" 을 고르면 부름
+                    기다리던 내 방을 봇전으로 바꿔 바로 시작 (`IN_PROGRESS`). 봇전은 이 경로뿐 (방장이 대기 중일 때만)
                     내 입장은 그대로, 봇은 반대. 즉시 대기열에서 빠짐. 응답을 받으면 토론방을 구독하고 `/state` 로 구간을 맞춤
 
+                    언제 부르나: 방을 만들고 30초가 되면 첫 `WAIT_PROMPT` 가 옴 → "봇전으로 시작하기" 버튼을 띄우고 5분 대기가 끝날 때까지 유지, 누르면 부름
+                    - `WAIT_PROMPT` 는 30초마다 계속 옴. 새로고침 · 재접속 뒤 버튼을 다시 띄우는 데 씀
+                    - 상대가 봇이라 `MATCHED` 알림은 오지 않음
+
                     방장만 (`NOT_ROOM_OWNER`), 그 사이 상대가 들어왔거나 취소된 방이면 `SESSION_NOT_WAITING`
+                    방을 만든 지 30초가 안 됐으면 `BOT_NOT_AVAILABLE_YET`
                     """)
     @PostMapping("/{sessionId}/ai")
     public ApiResponse<SessionIdResponse> convertToAi(

@@ -1,5 +1,6 @@
 package likelion.yacha_backend.domain.session;
 
+import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -20,6 +21,7 @@ import likelion.yacha_backend.domain.topic.repository.TopicRepository;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
 import org.springframework.boot.test.context.TestComponent;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -38,18 +40,22 @@ public class SessionFixture {
     private final DebateParticipantRepository participantRepository;
     private final GameRegistry gameRegistry;
     private final TransactionTemplate transactionTemplate;
+    private final JdbcTemplate jdbcTemplate;
+    private final EntityManager entityManager;
     private final Clock clock;
 
     public SessionFixture(UserRepository userRepository, TopicRepository topicRepository,
                           DebateSessionRepository sessionRepository,
                           DebateParticipantRepository participantRepository, GameRegistry gameRegistry,
-                          PlatformTransactionManager transactionManager, Clock clock) {
+                          PlatformTransactionManager transactionManager, JdbcTemplate jdbcTemplate, EntityManager entityManager, Clock clock) {
         this.userRepository = userRepository;
         this.topicRepository = topicRepository;
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
         this.gameRegistry = gameRegistry;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.jdbcTemplate = jdbcTemplate;
+        this.entityManager = entityManager;
         this.clock = clock;
     }
 
@@ -131,39 +137,23 @@ public class SessionFixture {
 
     /** 대기 중에 "AI와 대결" 로 바뀐 봇전. {@code room_type} 은 RANDOM 그대로라 {@code mode} 로만 구분됩니다. */
     public Room convertedBot(long elapsedSeconds) {
+        return convertedBot(elapsedSeconds, this::user);
+    }
+
+    /** 회원이 하는 봇전. 사용자 · AI 승패가 모두 기록됩니다. */
+    public Room memberBot(long elapsedSeconds) {
+        return convertedBot(elapsedSeconds, this::member);
+    }
+
+    private Room convertedBot(long elapsedSeconds, Supplier<User> users) {
         LocalDateTime startedAt = startedAt(elapsedSeconds);
         Room room = inTransaction(() -> {
             DebateSession session = sessionRepository.save(DebateSession.createRandom(topic()));
-            User host = user();
-            Long hostParticipant = participantRepository.save(
-                    DebateParticipant.initiator(session, host, Stance.AGREE, startedAt)).getId();
-            participantRepository.save(DebateParticipant.ai(session, Stance.DISAGREE, startedAt));
-            sessionRepository.convertToAiIfWaiting(session.getId(), startedAt);
-            return new Room(session.getId(), host.getId(), hostParticipant, null, null);
-        });
-        createGame(room, startedAt);
-        return room;
-    }
-
-    /** 바로 봇전 ({@code POST /sessions/bot}). 이것도 {@code room_type} 이 RANDOM 입니다. */
-    public Room autoBot(long elapsedSeconds) {
-        return autoBot(elapsedSeconds, this::user);
-    }
-
-    /** 회원이 하는 바로 봇전. 사용자 · AI 승패가 모두 기록됩니다. */
-    public Room memberBot(long elapsedSeconds) {
-        return autoBot(elapsedSeconds, this::member);
-    }
-
-    private Room autoBot(long elapsedSeconds, Supplier<User> users) {
-        LocalDateTime startedAt = startedAt(elapsedSeconds);
-        Room room = inTransaction(() -> {
-            DebateSession session = sessionRepository.save(
-                    DebateSession.createAiMatch(topic(), startedAt));
             User host = users.get();
             Long hostParticipant = participantRepository.save(
                     DebateParticipant.initiator(session, host, Stance.AGREE, startedAt)).getId();
             participantRepository.save(DebateParticipant.ai(session, Stance.DISAGREE, startedAt));
+            sessionRepository.convertToAiIfWaiting(session.getId(), startedAt);
             return new Room(session.getId(), host.getId(), hostParticipant, null, null);
         });
         createGame(room, startedAt);
@@ -178,6 +168,30 @@ public class SessionFixture {
             Long hostParticipant = participantRepository.save(
                     DebateParticipant.initiator(session, host, Stance.AGREE, LocalDateTime.now(clock))).getId();
             return new Room(session.getId(), host.getId(), hostParticipant, null, null);
+        });
+    }
+
+    /**
+     * {@code waitedSeconds} 초 전에 만든 대기 방. AI 전환은 방을 만들고 30초가 지나야 받으므로 그 테스트에서 씁니다.
+     * 생성 시각은 Auditing 이 넣어서 SQL 로 과거로 돌립니다.
+     */
+    public Room waitingRandom(long waitedSeconds) {
+        Room room = waitingRandom();
+        backdate(room.sessionId(), waitedSeconds);
+        return room;
+    }
+
+    /**
+     * 방의 생성 시각을 {@code seconds} 초 전으로 돌립니다. 테스트 트랜잭션 안이면 영속성 컨텍스트에 예전 시각이 남아 있으므로
+     * SQL 전에 쓰기를 내보내고, 뒤에 그 방을 다시 읽어 맞춥니다.
+     */
+    public void backdate(Long sessionId, long seconds) {
+        inTransaction(() -> {
+            entityManager.flush();
+            jdbcTemplate.update("update debate_session set created_at = ? where id = ?",
+                    LocalDateTime.now(clock).minusSeconds(seconds), sessionId);
+            entityManager.refresh(entityManager.find(DebateSession.class, sessionId));
+            return null;
         });
     }
 

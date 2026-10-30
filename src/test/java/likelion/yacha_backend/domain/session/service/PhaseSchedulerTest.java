@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
-import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
 import likelion.yacha_backend.domain.session.dto.FinalNoticeEvent;
 import likelion.yacha_backend.domain.session.dto.PhaseChangedEvent;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
@@ -234,21 +233,16 @@ class PhaseSchedulerTest extends TimerTestSupport {
     }
 
     @Test
-    @DisplayName("입장 · 바로 봇전 · AI 전환으로 게임이 만들어지면 시간표를 등록한다")
+    @DisplayName("입장 · AI 전환으로 게임이 만들어지면 시간표를 등록한다")
     void registersOnMatch() {
         Long hostId = fixture.newUser();
         Long joined = sessionMatchFacade.create(hostId,
                 new SessionCreateRequest(RoomType.RANDOM, fixture.topic().getId(), Stance.AGREE));
         sessionMatchFacade.join(fixture.newUser(), joined);
-        Long bot = sessionMatchFacade.startBot(fixture.newUser(),
-                new BotMatchRequest(fixture.topic().getId(), Stance.DISAGREE));
-        Long converterId = fixture.newUser();
-        Long converted = sessionMatchFacade.create(converterId,
-                new SessionCreateRequest(RoomType.RANDOM, fixture.topic().getId(), Stance.AGREE));
-        sessionMatchFacade.convertToAi(converterId, converted);
-        sessionIds.addAll(List.of(joined, bot, converted));
+        Long converted = startBot(sessionMatchFacade, fixture, fixture.newUser(), Stance.AGREE);
+        sessionIds.addAll(List.of(joined, converted));
 
-        for (Long sessionId : List.of(joined, bot, converted)) {
+        for (Long sessionId : List.of(joined, converted)) {
             verify(phaseScheduler).register(sessionId);
         }
     }

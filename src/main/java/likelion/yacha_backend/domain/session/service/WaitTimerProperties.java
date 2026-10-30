@@ -11,7 +11,7 @@ import org.springframework.validation.annotation.Validated;
  *
  * <p>값이 빠지면 대기 방이 정리되지 않으므로 {@code @NotNull} 로 기동 단계에서 실패시킵니다.
  *
- * @param promptInterval {@code WAIT_PROMPT} 간격 (30초)
+ * @param promptInterval {@code WAIT_PROMPT} 간격 (30초). 방을 만들고 이만큼 지나야 AI 전환을 받습니다
  * @param limit          대기 상한. 지나면 방을 취소하고 {@code WAIT_EXPIRED} (5분)
  * @param sweepInterval  주기 정리 간격 (1분). 상한보다 이만큼 더 지났는데도 대기 중인 방을 취소합니다
  */

@@ -270,15 +270,6 @@ class GameStompTest {
         }
 
         @Test
-        @DisplayName("자동 봇전은 RANDOM 방이어도 관전자가 FORBIDDEN")
-        void autoBot() throws Exception {
-            Room room = track(fixture.autoBot(IN_CHAT));
-
-            connect(room.hostUserId()).subscribeTopic(room.sessionId());
-            assertSubscribeForbidden(fixture.newUser(), room.sessionId());
-        }
-
-        @Test
         @DisplayName("대기 중인 방은 관전자가 FORBIDDEN")
         void waitingRoom() throws Exception {
             Room room = track(fixture.waitingRandom());

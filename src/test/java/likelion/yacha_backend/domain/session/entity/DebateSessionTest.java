@@ -43,16 +43,6 @@ class DebateSessionTest {
     }
 
     @Test
-    @DisplayName("자동 봇전은 대기 없이 바로 시작한다")
-    void aiMatchStartsImmediately() {
-        DebateSession session = DebateSession.createAiMatch(TOPIC, NOW);
-
-        assertThat(session.getMode()).isEqualTo(SessionMode.AI);
-        assertThat(session.isInProgress()).isTrue();
-        assertThat(session.getStartedAt()).isEqualTo(NOW);
-    }
-
-    @Test
     @DisplayName("입장은 서로 반대다")
     void stanceOpposite() {
         assertThat(Stance.AGREE.opposite()).isEqualTo(Stance.DISAGREE);
@@ -100,7 +90,7 @@ class DebateSessionTest {
     @Test
     @DisplayName("AI 참가자는 사용자가 없고 상대 역할이다")
     void aiParticipant() {
-        DebateParticipant ai = DebateParticipant.ai(DebateSession.createAiMatch(TOPIC, NOW), Stance.AGREE, NOW);
+        DebateParticipant ai = DebateParticipant.ai(DebateSession.createRandom(TOPIC), Stance.AGREE, NOW);
 
         assertThat(ai.isAi()).isTrue();
         assertThat(ai.getUser()).isNull();

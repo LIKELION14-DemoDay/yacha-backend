@@ -133,7 +133,7 @@ class DebateSessionRepositoryTest {
         @Test
         @DisplayName("진행 중인 게임은 FINISHED 로 바뀌고 사유와 종료 시각이 기록된다")
         void finishesInProgress() {
-            Long id = sessionRepository.save(DebateSession.createAiMatch(newTopic(), NOW)).getId();
+            Long id = inProgress(NOW);
 
             int updated = sessionRepository.finishIfInProgress(id, FinishReason.COMPLETED, NOW.plusMinutes(9));
 
@@ -147,7 +147,7 @@ class DebateSessionRepositoryTest {
         @Test
         @DisplayName("이미 끝난 게임은 다시 끝나지 않고 처음 사유가 남는다 (시간 종료 · 이탈 동시 발생)")
         void finishesOnlyOnce() {
-            Long id = sessionRepository.save(DebateSession.createAiMatch(newTopic(), NOW)).getId();
+            Long id = inProgress(NOW);
 
             int first = sessionRepository.finishIfInProgress(id, FinishReason.COMPLETED, NOW.plusMinutes(9));
             int second = sessionRepository.finishIfInProgress(id, FinishReason.FORFEIT, NOW.plusMinutes(10));
@@ -195,14 +195,13 @@ class DebateSessionRepositoryTest {
     @DisplayName("기준 시각보다 먼저 시작된 진행 중 세션만 찾는다 (재시작 정리용)")
     void findsInProgressStartedBefore() {
         DebateSession waiting = sessionRepository.save(DebateSession.createRandom(newTopic()));
-        DebateSession before = sessionRepository.save(
-                DebateSession.createAiMatch(newTopic(), NOW.minusSeconds(1)));
-        DebateSession atBoot = sessionRepository.save(DebateSession.createAiMatch(newTopic(), NOW));
+        Long before = inProgress(NOW.minusSeconds(1));
+        Long atBoot = inProgress(NOW);
 
         assertThat(sessionRepository.findAllByStatusAndStartedAtBefore(SessionStatus.IN_PROGRESS, NOW))
                 .extracting(DebateSession::getId)
-                .containsExactly(before.getId())
-                .doesNotContain(waiting.getId(), atBoot.getId());
+                .containsExactly(before)
+                .doesNotContain(waiting.getId(), atBoot);
     }
 
     @Test
@@ -220,5 +219,12 @@ class DebateSessionRepositoryTest {
 
     private Topic newTopic() {
         return topicRepository.save(Topic.create(Subcategory.GOOD_AND_EVIL, "질문", "찬성", "반대"));
+    }
+
+    /** 진행 중인 세션. 대기 방을 만들고 시작 UPDATE 로 {@code startedAt} 에 시작시킵니다. */
+    private Long inProgress(LocalDateTime startedAt) {
+        Long id = sessionRepository.save(DebateSession.createRandom(newTopic())).getId();
+        sessionRepository.startIfWaiting(id, startedAt);
+        return id;
     }
 }

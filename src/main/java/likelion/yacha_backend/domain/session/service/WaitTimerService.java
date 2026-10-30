@@ -14,7 +14,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 랜덤 방의 대기 타이머 (명세 2-3-2). {@code created_at} 기준으로
  * <ul>
- *   <li>30초마다 방장에게 {@code WAIT_PROMPT} — "봇전으로 시작하시겠습니까?"</li>
+ *   <li>30초마다 방장에게 {@code WAIT_PROMPT} — 첫 알림부터 "봇전으로 시작하기" 버튼이 뜸 (그 전 AI 전환은 거부)</li>
  *   <li>5분이 되면 방을 취소({@code CANCELLED})하고 {@code WAIT_EXPIRED}</li>
  * </ul>
  * 방장이 떠난 방도 5분 뒤에는 정리되므로, 대기열에 버려진 방이 남지 않습니다.

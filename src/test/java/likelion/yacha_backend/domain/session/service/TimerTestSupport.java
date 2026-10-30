@@ -4,6 +4,9 @@ import likelion.yacha_backend.domain.ai.BotWriter;
 import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.ai.Judge;
 import likelion.yacha_backend.domain.session.SessionFixture;
+import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
+import likelion.yacha_backend.domain.session.entity.RoomType;
+import likelion.yacha_backend.domain.session.entity.Stance;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
@@ -50,4 +53,14 @@ abstract class TimerTestSupport {
 
     @MockitoSpyBean
     protected WaitTimerService waitTimerService;
+
+    /**
+     * 봇전을 시작합니다. 봇전은 대기 중 AI 전환뿐이라 방을 만들고, 전환을 받는 시각(첫 대기 알림, 1초)만큼 생성 시각을
+     * 돌린 뒤 전환합니다. 봇은 {@code stance} 의 반대 입장입니다.
+     */
+    protected static Long startBot(SessionMatchFacade facade, SessionFixture fixture, Long userId, Stance stance) {
+        Long sessionId = facade.create(userId, new SessionCreateRequest(RoomType.RANDOM, fixture.topic().getId(), stance));
+        fixture.backdate(sessionId, 1);
+        return facade.convertToAi(userId, sessionId);
+    }
 }

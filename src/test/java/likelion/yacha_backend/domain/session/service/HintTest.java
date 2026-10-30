@@ -21,7 +21,6 @@ import likelion.yacha_backend.domain.ai.AiException;
 import likelion.yacha_backend.domain.ai.HintGenerator;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
-import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
 import likelion.yacha_backend.domain.session.entity.RoomType;
 import likelion.yacha_backend.domain.session.entity.Stance;
@@ -116,7 +115,7 @@ class HintTest extends TimerTestSupport {
     void botMatchOnlyHuman() {
         Long userId = fixture.newUser();
 
-        Long sessionId = sessionMatchFacade.startBot(userId, new BotMatchRequest(fixture.topic().getId(), Stance.AGREE));
+        Long sessionId = startBot(sessionMatchFacade, fixture, userId, Stance.AGREE);
         sessionIds.add(sessionId);
 
         waitForStatus(userId, sessionId, HintStatus.READY);
@@ -136,7 +135,7 @@ class HintTest extends TimerTestSupport {
         }).when(hintGenerator).generate(any(), any());
         Long userId = fixture.newUser();
 
-        Long sessionId = sessionMatchFacade.startBot(userId, new BotMatchRequest(fixture.topic().getId(), Stance.AGREE));
+        Long sessionId = startBot(sessionMatchFacade, fixture, userId, Stance.AGREE);
         sessionIds.add(sessionId);
 
         try {
@@ -156,7 +155,7 @@ class HintTest extends TimerTestSupport {
         doThrow(new AiException("LINER_HTTP_ERROR_503", true)).doReturn(HINTS).when(hintGenerator).generate(any(), any());
         Long userId = fixture.newUser();
 
-        Long sessionId = sessionMatchFacade.startBot(userId, new BotMatchRequest(fixture.topic().getId(), Stance.AGREE));
+        Long sessionId = startBot(sessionMatchFacade, fixture, userId, Stance.AGREE);
         sessionIds.add(sessionId);
 
         waitForStatus(userId, sessionId, HintStatus.READY);
@@ -169,7 +168,7 @@ class HintTest extends TimerTestSupport {
         doThrow(new IllegalStateException("AI 응답 없음")).when(hintGenerator).generate(any(), any());
         Long userId = fixture.newUser();
 
-        Long sessionId = sessionMatchFacade.startBot(userId, new BotMatchRequest(fixture.topic().getId(), Stance.AGREE));
+        Long sessionId = startBot(sessionMatchFacade, fixture, userId, Stance.AGREE);
         sessionIds.add(sessionId);
 
         waitForStatus(userId, sessionId, HintStatus.FAILED);
@@ -184,7 +183,7 @@ class HintTest extends TimerTestSupport {
         doThrow(new AiException("LINER_HTTP_ERROR_401", false)).when(hintGenerator).generate(any(), any());
         Long userId = fixture.newUser();
 
-        Long sessionId = sessionMatchFacade.startBot(userId, new BotMatchRequest(fixture.topic().getId(), Stance.AGREE));
+        Long sessionId = startBot(sessionMatchFacade, fixture, userId, Stance.AGREE);
         sessionIds.add(sessionId);
 
         waitForStatus(userId, sessionId, HintStatus.FAILED);
@@ -198,7 +197,7 @@ class HintTest extends TimerTestSupport {
                 .when(hintGenerator).generate(any(), any());
         Long userId = fixture.newUser();
 
-        Long sessionId = sessionMatchFacade.startBot(userId, new BotMatchRequest(fixture.topic().getId(), Stance.AGREE));
+        Long sessionId = startBot(sessionMatchFacade, fixture, userId, Stance.AGREE);
         sessionIds.add(sessionId);
 
         waitForStatus(userId, sessionId, HintStatus.FAILED);

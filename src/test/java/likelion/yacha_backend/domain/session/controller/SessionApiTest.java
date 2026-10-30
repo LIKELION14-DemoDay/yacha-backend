@@ -173,7 +173,7 @@ class SessionApiTest {
         @Test
         @DisplayName("자동 봇전은 관전자가 조회할 수 없다 (RANDOM 방이어도)")
         void spectatorOfAutoBot() throws Exception {
-            room = fixture.autoBot(IN_CHAT);
+            room = fixture.convertedBot(IN_CHAT);
 
             getAs(fixture.newUser(), room.sessionId() + "/state")
                     .andExpect(status().isForbidden())
@@ -203,7 +203,7 @@ class SessionApiTest {
         @Test
         @DisplayName("봇은 닉네임 \"야차봇\" · 유형 null 이고 기계 말투 문구를 받는다")
         void botProfile() throws Exception {
-            room = fixture.autoBot(IN_PREP);
+            room = fixture.convertedBot(IN_PREP);
 
             getAs(room.hostUserId(), room.sessionId() + "/state")
                     .andExpect(status().isOk())
@@ -233,7 +233,7 @@ class SessionApiTest {
         @Test
         @DisplayName("봇전 참가자는 자기 방을 조회하고 참가자 목록에 AI 가 있다")
         void participantOfBot() throws Exception {
-            room = fixture.autoBot(IN_CHAT);
+            room = fixture.convertedBot(IN_CHAT);
 
             getAs(room.hostUserId(), room.sessionId() + "/state")
                     .andExpect(status().isOk())

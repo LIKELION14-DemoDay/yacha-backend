@@ -29,7 +29,6 @@ import likelion.yacha_backend.domain.ai.AiException;
 import likelion.yacha_backend.domain.ai.PreparedReplies;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
-import likelion.yacha_backend.domain.session.dto.BotMatchRequest;
 import likelion.yacha_backend.domain.session.dto.PhaseChangedEvent;
 import likelion.yacha_backend.domain.session.dto.SessionFinishedEvent;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
@@ -132,11 +131,11 @@ class BotTest extends TimerTestSupport {
     // ---- 주장 · 반론 ----
 
     @Test
-    @DisplayName("봇전이 시작되면 봇 주장을 쓰기 시작한다 (바로 봇전 경로)")
+    @DisplayName("봇전이 시작되면 봇 주장을 쓰기 시작한다 (AI 전환 경로)")
     void startsArgumentOnBotMatch() {
         Long userId = fixture.newUser();
 
-        Long sessionId = sessionMatchFacade.startBot(userId, new BotMatchRequest(fixture.topic().getId(), Stance.AGREE));
+        Long sessionId = startBot(sessionMatchFacade, fixture, userId, Stance.AGREE);
         sessionIds.add(sessionId);
 
         verify(botWriter, timeout(WAIT_MILLIS)).writeArgument(any(), eq(Stance.DISAGREE));

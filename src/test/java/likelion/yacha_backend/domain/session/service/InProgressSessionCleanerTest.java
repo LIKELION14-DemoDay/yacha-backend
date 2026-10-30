@@ -83,7 +83,7 @@ class InProgressSessionCleanerTest extends TimerTestSupport {
     @DisplayName("진행 중인 사람전 · 봇전을 FINISHED + ABORTED 로 끝내고 승패는 NULL 로 둔다")
     void abortsInProgress() {
         Room human = track(fixture.randomHuman(IN_CHAT_1));
-        Room bot = track(fixture.autoBot(IN_CHAT_1));
+        Room bot = track(fixture.convertedBot(IN_CHAT_1));
 
         int aborted = abortAll();
 

@@ -15,7 +15,7 @@
 > - 주장 · 반론은 제출하고 기다리며, 시간이 끝나면 자동 제출된다. 공개는 3초 유예 뒤 (2-4). 🟢 양쪽 다 내면 바로 다음 구간으로 넘어간다 (2-11).
 > - 근거 검색 · 상대 요약을 없애고 **AI 힌트 3개(100자 이내)** 로 바꿨다 (2-5).
 > - 판정은 **4기준 × 25점**, 총점이 높은 쪽이 승리, 같으면 무승부. 철학자 판독 대신 **기준별 한 줄 요약** (2-6).
-> - 자동 제안은 **상위 카테고리 8개를 한 바퀴** 돌고, 끝나면 새 주제로 내 방을 만든다. **자동 봇전은 없애고** 바로 봇전 시작을 추가했다 (2-3). 🟢 봇전은 **한 바퀴가 끝난 새 주제 화면(`NEW_TOPIC`)** 과 **대기 30초 팝업(`WAIT_PROMPT`)** 에서만 고를 수 있다.
+> - 자동 제안은 **상위 카테고리 8개를 한 바퀴** 돌고, 끝나면 새 주제로 내 방을 만든다. **자동 봇전은 없앴다** (2-3). 🟢 봇전은 **방장이 대기 중일 때, 방을 만들고 30초가 지난 뒤부터**만 고를 수 있다 (10/30, 바로 봇전 `POST /sessions/bot` 삭제).
 > - `topic` 에 하위 카테고리 · 찬성 / 반대 문구, `users` 에 철학자 유형을 추가했다 (1-2). 친구와 야차는 **구현 보류**.
 > - **관전은 사용하지 않는다.** 관전 코드는 지우지 않고 설정(`spectate.enabled=false`)으로 꺼 둔다. 토론방 구독 · 상태 · 메시지 · 결과는 **참가자만** 본다 (2-4).
 > - 이번에 바뀐 부분은 🟢 로 표시했다.
@@ -156,7 +156,7 @@ erDiagram
 | category | VARCHAR(20) | NN | 🔷 방을 만들 때 고른 카테고리. 자동 제안 · 방 찾기 · 봇전 주제 추첨의 기준 |
 | room_type | VARCHAR(20) | NN | 🔷 `RANDOM`(랜덤 야차) / `FRIEND`(친구와 야차 — 🟢 구현 보류) |
 | invite_code | VARCHAR(32) | UNIQUE, NULL | 🔷 친구 방 초대 코드. `RANDOM` 은 NULL. 만료는 `created_at + 10분` |
-| mode | VARCHAR(20) | NN | `AI` / `HUMAN` — 🔷 **둘 다 MVP**. 대기 중 AI 전환이면 `AI` 로 바뀌고, 🟢 바로 봇전은 처음부터 `AI` 다 |
+| mode | VARCHAR(20) | NN | `AI` / `HUMAN` — 🔷 **둘 다 MVP**. 대기 중 AI 전환이면 `AI` 로 바뀐다 |
 | evidence_mode | VARCHAR(20) | NN | `NONE`(키배 ONLY) / `ENABLED`(근거 무기) — 🔶 **유지 여부 결정 필요** (PART 5) |
 | status | VARCHAR(20) | NN | `WAITING`(대기) / `IN_PROGRESS` / `FINISHED` / 🔷 `CANCELLED`(대기 취소 · 🟢 5분 상한 도달 · 초대 만료) |
 | started_at | DATETIME | NULL | 🔶 **매칭 성사 시각.** 현재 구간은 `now - started_at` 으로 계산 |
@@ -186,7 +186,6 @@ erDiagram
 > | 랜덤 야차 | 방을 만들 때 **직접 선택** | 방장의 **반대** (자동 제안 · 방 찾기 모두) |
 > | 친구와 야차 (🟢 보류) | 친구 입장 시 **서버가 무작위** | 방장의 반대 |
 > | 대기 중 AI 전환 | 이미 선택한 값 유지 | AI 참가자가 반대 |
-> | 🟢 바로 봇전 | 새 주제 화면(`NEW_TOPIC`)에서 **직접 선택** | AI 참가자가 반대 |
 >
 > 친구 방은 친구가 들어올 때까지 방장의 `stance` 가 NULL 이다. 🟢 자동 봇전은 없앴다.
 
@@ -476,9 +475,8 @@ erDiagram
 | POST | `/sessions/{id}/reject` | 🔷 **제안 거절** — 🟢 다음 카테고리의 제안 또는 새 주제 | ✅ |
 | GET | `/sessions/waiting?category=&page=` | 🔷 **방 찾기** — "야차 상대 찾기" 대기 방 목록 (오래된 순) | ✅ |
 | POST | `/sessions` | 🔷 **방 생성** — 랜덤 방 (친구 방은 🟢 보류) | ✅ |
-| POST | `/sessions/bot` | 🟢 **바로 봇전** — 대기 방 없이 봇전을 만들고 바로 시작 | ✅ |
 | POST | `/sessions/invite/{code}/join` | 🔷 **초대 코드로 입장** (친구 방, 🟢 보류) | ✅ |
-| POST | `/sessions/{id}/ai` | 🔷 **AI 대결로 전환** — 방장만, `WAITING` 일 때만 | ✅ |
+| POST | `/sessions/{id}/ai` | 🔷 **AI 대결로 전환** — 방장만, `WAITING` 일 때만, 🟢 방을 만들고 30초 뒤부터 | ✅ |
 | DELETE | `/sessions/{id}` | 대기 취소 — 방장만, `WAITING` 일 때만 | ✅ |
 | POST | `/sessions/{id}/leave` | 🟢 **게임 중 나가기** — 참가자만, `IN_PROGRESS` 일 때. 바로 몰수패 (2-11) | ✅ |
 | GET | `/sessions/{id}/state` | 🔶 현재 구간 · 남은 시간 · `serverNow` (재접속 · 새로고침용). 세션 상세(방 정보 · 참가자 · 🟢 주제 찬성 / 반대 문구 · 참가자 `nickname` · `philosopherType` · `stanceText`(로딩 화면의 유형 말투 입장 문구, #119). 봇 `nickname` 은 "야차봇", 계정이 정리된 사람 참가자는 `nickname` · `philosopherType` null)와 🟢 지금 작성 구간의 제출 여부(`participants[].submitted` — 작성 구간이 아니면 `null`)도 여기서 준다. 승패 · 사용자 id 는 넣지 않는다 | ✅ |
@@ -493,12 +491,6 @@ erDiagram
 ```json
 { "roomType": "RANDOM", "topicId": 12, "stance": "AGREE" }
 { "roomType": "FRIEND", "category": "ETHICS" }
-```
-
-🟢 **바로 봇전 요청** (`POST /sessions/bot`) — 자동 제안이 한 바퀴 끝난 새 주제 화면(`NEW_TOPIC`)에서 부른다. 응답은 `{ "sessionId": 40 }` 이고 바로 `IN_PROGRESS` 다.
-
-```json
-{ "topicId": 12, "stance": "AGREE" }
 ```
 
 친구 방 응답에는 초대 코드와 만료 시각이 들어간다.
@@ -516,7 +508,7 @@ erDiagram
 
 - `PROPOSAL` — 이 방을 보여준다. `myStance` 는 방장의 반대다.
 - 🟢 `topic` 은 주제 응답(2-2)과 같은 모양이다 (`category` · `subcategory` 포함). 없는 값(`NEW_TOPIC` 의 `sessionId` · `myStance`)은 보내지 않는다.
-- 🟢 `NEW_TOPIC` — 카테고리 8개를 한 바퀴 돌았다 (또는 대기 방이 하나도 없다). **고른 카테고리**에서 뽑은 새 주제다. 프론트는 주제 화면(예 / 아니오, 다음 주제로 넘어가기)으로 넘어가 내 방을 만들거나 바로 봇전을 시작한다.
+- 🟢 `NEW_TOPIC` — 카테고리 8개를 한 바퀴 돌았다 (또는 대기 방이 하나도 없다). **고른 카테고리**에서 뽑은 새 주제다. 프론트는 주제 화면(예 / 아니오, 다음 주제로 넘어가기)으로 넘어가 내 방을 만든다.
 - 🟢 `EMPTY` · `BOT_MATCHED` 는 없앴다.
 
 🟢 **방 찾기 응답** — 카드(방장 프로필 · 방 주제 · 찾는 입장)를 오래된 순으로 **한 페이지 20개**. `page` 는 0 부터, 음수면 `VALIDATION_FAILED`
@@ -540,10 +532,8 @@ flowchart TD
     A -- 야차 상대 찾기 --> W[GET /sessions/waiting] --> J
     B -- NEW_TOPIC --> T["주제 화면<br/>다음 주제: GET /topics/random"]
     T -- 예 / 아니오 --> E["POST /sessions<br/>내 방 생성 WAITING"]
-    T -- 봇전으로 시작 --> L[POST /sessions/bot]
-    E -- "30초마다 WAIT_PROMPT" --> F{봇전으로 시작?}
-    F -- 예 --> G[POST /sessions/id/ai]
-    F -- 더 기다리기 --> E
+    E -- "30초 WAIT_PROMPT" --> F["봇전으로 시작하기 버튼<br/>5분까지 유지"]
+    F -- 누름 --> G[POST /sessions/id/ai]
     E -- 5분 --> X[WAIT_EXPIRED 방 취소]
     E -- 상대 입장 --> H[MATCHED → 토론 시작]
     B -- PROPOSAL --> I[주제 + 내 입장 표시]
@@ -553,25 +543,25 @@ flowchart TD
     I -- 거절 --> K[POST /sessions/id/reject]
     K -- PROPOSAL --> I
     K -- NEW_TOPIC --> T
-    L --> H
     G --> H
 ```
 
-🟢 **봇전을 고를 수 있는 곳은 두 군데뿐이다** (10/26). 카테고리 화면에서 바로 봇전을 고르는 길은 없앴다. 대기 상한 5분이 되면 지금처럼 방을 취소하고(`WAIT_EXPIRED`), 봇전으로 바꾸지 않는다.
+🟢 **봇전은 방장이 대기 중일 때만 고를 수 있다** (10/30). 방을 찾는 쪽의 바로 봇전(`POST /sessions/bot`)은 없앴다. 대기 상한 5분이 되면 지금처럼 방을 취소하고(`WAIT_EXPIRED`), 봇전으로 바꾸지 않는다.
 
 | 언제 | 봇전을 고르면 | API |
 | --- | --- | --- |
-| 자동 제안이 한 바퀴 끝났을 때 (`NEW_TOPIC`) | 새 주제 화면에서 내 방 대신 바로 봇전 | `POST /sessions/bot` |
-| 내 방에서 기다릴 때 (`WAIT_PROMPT`, 30초마다 팝업) | "봇전으로 시작하시겠습니까?" 에서 [봇전] → 기다리던 방을 봇전으로 전환 | `POST /sessions/{id}/ai` |
+| 내 방에서 기다린 지 30초가 됐을 때부터 5분까지 | "봇전으로 시작하기" 버튼 → 기다리던 방을 봇전으로 전환 | `POST /sessions/{id}/ai` |
+
+30초 전에 부르면 `BOT_NOT_AVAILABLE_YET` (409) 이다.
 
 **방장 (대기 방이 없어서 방을 만든 사람)**
 
 - 주제는 고른 카테고리 안에서 랜덤으로 받는다. **다시 뽑기**를 할 수 있다. 다시 뽑기는 방 생성 전 단계라 서버 상태가 없다.
 - 방을 만들면 `WAITING` 이 되고 자동 제안 · 방 찾기에 노출된다.
-- 서버가 `created_at` 기준 **30초마다** `WAIT_PROMPT` 를 보낸다. 프론트는 🟢 "봇전으로 시작하시겠습니까?" [봇전] / [더 기다리기] 팝업을 띄운다.
-  - 더 기다리기 — 서버 호출 없음. 방은 그대로 노출된다.
+- 서버가 `created_at` 기준 **30초마다** `WAIT_PROMPT` 를 보낸다. 🟢 프론트는 첫 알림(30초)에 "봇전으로 시작하기" 버튼을 띄우고 5분 대기가 끝날 때까지 유지한다. 이후 알림은 새로고침 · 재접속 뒤 버튼을 다시 띄우는 데 쓴다.
+  - 버튼을 누르지 않으면 서버 호출 없음. 방은 그대로 노출된다.
   - 대기 화면에는 광고를 넣는다. 광고 방식(Google Ad Manager 등) · 화면 크기는 프론트가 정하고, 백엔드 작업은 없는 것으로 본다.
-  - 봇전 — `POST /sessions/{id}/ai`. 즉시 대기열에서 빠지고 다른 사람은 입장할 수 없다.
+  - 봇전 — `POST /sessions/{id}/ai`. 즉시 대기열에서 빠지고 다른 사람은 입장할 수 없다. 🟢 방을 만들고 30초 전이면 `BOT_NOT_AVAILABLE_YET`.
 - **대기 상한 5분.** 🟢 5분이 되면 **방을 취소**(`CANCELLED`)하고 `WAIT_EXPIRED` 를 보낸다.
 - 상대가 들어오면 **방장은 승낙 절차 없이 자동 수락**된다.
 - 30초 타이머는 **방장에게만** 있다. 제안을 받는 사람의 종료 조건은 아래 순환 규칙이다.
@@ -611,7 +601,7 @@ flowchart TD
 - 5분 취소가 실패해도(DB 순간 장애 · 타이머 등록 실패) 방이 남지 않게, **1분마다** 상한보다 1분 더 지났는데도 `WAITING` 인 랜덤 방을 취소한다. 남으면 방장이 `ALREADY_IN_SESSION` 으로 막히기 때문이다.
 - 자기 방에는 입장할 수 없다 (`CANNOT_JOIN_OWN_ROOM`).
 - 이미 대기 중이거나 진행 중인 세션이 있는 사용자는 방을 만들거나 입장할 수 없다 (`ALREADY_IN_SESSION`).
-- 봇전은 사용자 참가자와 AI 참가자를 **한 트랜잭션에서 함께 만든다**. AI 의 `stance` 는 사용자의 반대다. 🟢 바로 봇전(`POST /sessions/bot`)도 `ALREADY_IN_SESSION` 검사를 똑같이 한다.
+- 봇전은 사용자 참가자와 AI 참가자를 **한 트랜잭션에서 함께 만든다**. AI 의 `stance` 는 사용자의 반대다.
 - 🟣 매칭이 성사되면 DB 상태 변경과 함께 **메모리에 게임 상태 객체**를 만든다 (1-5).
 
 ---
@@ -718,7 +708,7 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 { "type": "INVITE_EXPIRED", "sessionId": 31 }
 ```
 
-- `WAIT_PROMPT` — 랜덤 방만. `created_at` 기준 30초마다. 5분 상한은 사용자에게 보여 주지 않는다. 🟢 프론트는 "봇전으로 시작하시겠습니까?" 를 띄운다
+- `WAIT_PROMPT` — 랜덤 방만. `created_at` 기준 30초마다. 5분 상한은 사용자에게 보여 주지 않는다. 🟢 첫 알림부터 "봇전으로 시작하기" 버튼을 띄우고 대기가 끝날 때까지 유지한다
 - `WAIT_EXPIRED` — 랜덤 방 5분 상한 도달. 🟢 방은 취소됐다
 - `INVITE_EXPIRED` — 친구 방 10분 만료 (🟢 보류)
 
@@ -861,6 +851,7 @@ CONNECT · SUBSCRIBE 가 거부되거나 SEND 목적지가 `/app/**` 가 아니�
 | `ALREADY_IN_SESSION` | 409 | 🔶 이미 대기 중이거나 진행 중인 세션이 있음 |
 | `SESSION_NOT_WAITING` | 409 | 🔷 대기 중이 아닌 방에 입장 · 거절 · AI 전환 · 취소하려 함 (이미 매칭됨 포함) |
 | `NOT_ROOM_OWNER` | 403 | 🔷 방장만 할 수 있는 동작 (AI 전환 · 취소) |
+| `BOT_NOT_AVAILABLE_YET` | 409 | 🟢 방을 만들고 30초가 지나기 전에 AI 전환하려 함 |
 | `CANNOT_JOIN_OWN_ROOM` | 409 | 🔷 자기 방에 입장하려 함 |
 | `INVITE_NOT_FOUND` | 404 | 🔷 없는 초대 코드 |
 | `INVITE_EXPIRED` | 410 | 🔷 만료된 초대 링크 (10분 경과 · 방 취소) |
@@ -904,16 +895,9 @@ POST /sessions/{id}/reject                (거절 → PROPOSAL | NEW_TOPIC)
 GET  /topics/random?category=&exclude=    (다음 주제로 넘어가기)
 POST /sessions                            { roomType: "RANDOM", topicId, stance }
      ← WAIT_PROMPT (30초마다)
-POST /sessions/{id}/ai                    (봇전을 고르면)
+POST /sessions/{id}/ai                    (30초 뒤 봇전 버튼을 누르면)
      ← MATCHED                            (상대가 들어오면)
      ← WAIT_EXPIRED                       (5분 — 방 취소)
-```
-
-**🟢 바로 봇전 (NEW_TOPIC 화면에서)**
-
-```
-GET  /topics/random?category=&exclude=
-POST /sessions/bot                        { topicId, stance }
 ```
 
 **방 찾기**
@@ -1234,8 +1218,8 @@ GET  /sessions/{id}/messages?afterSeq=N   (재접속 시)
 - [x] **판정 기준** — 🟢 **4기준(논리 · 근거 · 반박 · 일관성) × 25점**, 총점이 높은 쪽 승리, 같으면 무승부. 기준별 한 줄 요약 (2-6). *이전의 5항목 유지를 대체한다.*
 - [x] 🔷 **인증 방식** — JWT 통일 (2-1).
 - [x] 🔷 **매칭 방식** — 방 기반. 랜덤 야차(자동 제안 · 방 찾기)와 친구와 야차(초대 링크) (2-3). *이전의 "두 명이 모이면 서버가 주제를 준다" 를 대체한다.*
-- [x] 🔷 **주제 선정 규칙** — 고른 카테고리 안에서 랜덤 (🟢 하위 카테고리 먼저). 랜덤 방 · 바로 봇전은 사용자가 받고, 친구 방은 서버가 뽑는다.
-- [x] 🔷 **진영 배정** — 동의 / 비동의. 랜덤 방 · 바로 봇전은 사용자 선택 · 상대 반대, 친구 방은 서버 무작위 (1-2 `stance` 배정 규칙).
+- [x] 🔷 **주제 선정 규칙** — 고른 카테고리 안에서 랜덤 (🟢 하위 카테고리 먼저). 랜덤 방은 사용자가 받고, 친구 방은 서버가 뽑는다.
+- [x] 🔷 **진영 배정** — 동의 / 비동의. 랜덤 방은 사용자 선택 · 상대 반대, 친구 방은 서버 무작위 (1-2 `stance` 배정 규칙).
 - [x] 🔷 **매칭 대기 정책** — 30초마다 봇전 전환 팝업, 🟢 대기 상한 5분이면 방 취소. 🟢 제안은 카테고리 8개 1순환 뒤 새 주제, **자동 봇전 없음**.
 - [x] 🟢 **진행 구조** — 주장 작성 60초 → 공개 20초 → 반론 작성 60초 → 채팅 120초. 고정 시간, 자동 제출, 3초 유예, 최종변론 없음 (2-11).
 - [x] 🟢 **친구와 야차** — 구현 보류.
