@@ -40,6 +40,16 @@ class BalanceGameScorerTest {
     }
 
     @Test
+    @DisplayName("선택지는 화면에서 잘리지 않게 공백 포함 14자 이하")
+    void optionTextFitsScreen() {
+        for (BalanceQuestion q : BalanceQuestions.ALL) {
+            assertThat(List.of(q.a().text(), q.b().text()))
+                    .as("%d번 선택지", q.number())
+                    .allSatisfy(text -> assertThat(text).hasSizeLessThanOrEqualTo(14));
+        }
+    }
+
+    @Test
     @DisplayName("총점이 가장 높은 철학자")
     void highestTotal() {
         // 니체 9 · 사르트르 7 · 밀 6 …
