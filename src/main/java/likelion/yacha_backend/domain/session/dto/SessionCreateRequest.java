@@ -1,23 +1,53 @@
+
 package likelion.yacha_backend.domain.session.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import likelion.yacha_backend.domain.session.entity.RoomType;
 import likelion.yacha_backend.domain.session.entity.Stance;
+import likelion.yacha_backend.domain.topic.entity.Category;
 
-/**
- * 방 생성 ({@code POST /sessions}). 지금은 랜덤 방만 받습니다 — 친구 방은 구현 보류 (명세 2-3-3).
- *
- * @param topicId 주제 화면에서 받은 주제. 방의 카테고리는 이 주제의 카테고리입니다
- * @param stance  방장의 입장. 들어오는 사람은 반대 입장이 됩니다
- */
 public record SessionCreateRequest(
+
         @NotNull(message = "방 종류는 필수입니다.")
         RoomType roomType,
 
-        @NotNull(message = "주제는 필수입니다.")
         Long topicId,
 
-        @NotNull(message = "입장은 필수입니다.")
-        Stance stance
+        Stance stance,
+
+        Category category
 ) {
+
+    // 기존 코드 및 테스트의 3개 인자 생성자 호환
+    public SessionCreateRequest(
+            RoomType roomType,
+            Long topicId,
+            Stance stance
+    ) {
+        this(roomType, topicId, stance, null);
+    }
+
+    @JsonIgnore
+    @AssertTrue(message = "방 종류에 맞는 필수 정보를 입력해야 합니다.")
+    public boolean isValidCombination() {
+        if (roomType == null) {
+            return true; // @NotNull에서 검증
+        }
+
+        if (roomType == RoomType.RANDOM) {
+            return topicId != null
+                    && stance != null
+                    && category == null;
+        }
+
+        if (roomType == RoomType.FRIEND) {
+            return category != null
+                    && topicId == null
+                    && stance == null;
+        }
+
+        return false;
+    }
 }
