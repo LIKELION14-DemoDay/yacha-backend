@@ -11,6 +11,9 @@ public interface TopicRepository extends JpaRepository<Topic, Long> {
     /** 카테고리의 활성 주제 (id 오름차순). 랜덤 주제는 이 안에서 하위 카테고리 → 주제 순으로 고릅니다. */
     List<Topic> findAllByCategoryAndActiveTrueOrderByIdAsc(Category category);
 
+    /** 친구 방 생성 시 카테고리에 활성 주제가 있는지 확인합니다. */
+    boolean existsByCategoryAndActiveTrue(Category category);
+
     /** 주제 파일에서 넣은 주제 (주제 키가 있는 것). */
     List<Topic> findAllByCodeIsNotNull();
 

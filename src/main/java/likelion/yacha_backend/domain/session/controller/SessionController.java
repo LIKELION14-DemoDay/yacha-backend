@@ -36,9 +36,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import java.time.ZoneId;
 import likelion.yacha_backend.domain.session.entity.RoomType;
-import likelion.yacha_backend.global.util.DateTimes;
 
 @Tag(name = "토론 세션", description = "방 생성 · 자동 제안 · 방 찾기 · 입장 · 취소 · 봇전, 토론방 조회 — 현재 상태 · 놓친 메시지 · 내 주장 작성 · 결과")
 @RestController
@@ -57,7 +55,7 @@ public class SessionController {
     @Operation(
             summary = "방 생성",
             description = """
-                    랜덤 방을 만들고 상대를 기다림 (`WAITING`). 친구 방(`FRIEND`)은 구현 보류라 400
+                    랜덤 방(`RANDOM`)은 topicId·stance, 친구 방(`FRIEND`)은 category로 생성하고 초대 코드를 발급합니다.
                     `topicId` 는 주제 화면에서 받은 주제, `stance` 는 방장의 입장 (들어오는 사람은 반대)
                     방의 카테고리는 주제의 카테고리
 
@@ -85,10 +83,7 @@ public class SessionController {
                     new SessionIdResponse(
                             created.sessionId(),
                             created.inviteCode(),
-                            DateTimes.withOffset(
-                                    created.createdAt().plusMinutes(10),
-                                    ZoneId.of("Asia/Seoul")
-                            )
+                            created.expiresAt()
                     )
             );
         }

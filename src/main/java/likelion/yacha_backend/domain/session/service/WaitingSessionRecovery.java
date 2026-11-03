@@ -12,6 +12,24 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+/**
+ * 서버 시작 시 대기 중인 랜덤·친구 방의 타이머를 복구하고, 놓친 만료 처리를 주기적으로 정리합니다.
+ *
+ * <p>타이머는 메모리에 있기 때문에 재시작 시 사라집니다. 이를 복구하지 않으면
+ * 이전 서버에서 생성한 대기 방이 계속 WAITING으로 남고 방장이 ALREADY_IN_SESSION으로 막힙니다.
+ *
+ * <p>랜덤 방: 30초마다 WAIT_PROMPT, 5분 뒤 WAIT_EXPIRED.
+ * 친구 방: 공통 FRIEND_LIMIT 뒤 INVITE_EXPIRED 및 CANCELLED.
+ *
+ * <p>ApplicationReadyEvent는 요청 수신이 시작된 뒤 발생합니다.
+ * 중복 등록하지 않도록 서버 부팅 전에 생성된 방만 복구하고, 이미 만료된 방은 즉시 취소합니다.
+ *
+ * <p>타이머 실행 시 DB가 잠시 중단됐거나 등록 자체가 실패한 경우를 대비해
+ * 일정 간격으로 지난 WAITING 방을 다시 조회합니다. 취소는 상태 조건부 UPDATE라
+ * 동시 입장과 겹쳐도 한쪽만 성공하고 알림도 중복되지 않습니다.
+ *
+ * <p>방마다 실패를 별도로 처리하며 서버 1대 전제로 동작합니다.
+ */
 @Slf4j
 @Service
 public class WaitingSessionRecovery {
@@ -100,7 +118,7 @@ public class WaitingSessionRecovery {
 
         // 친구 초대 방 10분 만료 정리
         LocalDateTime friendCreatedBefore = now
-                .minusMinutes(10)
+                .minus(WaitTimerProperties.FRIEND_LIMIT)
                 .minus(properties.sweepInterval());
 
         try {

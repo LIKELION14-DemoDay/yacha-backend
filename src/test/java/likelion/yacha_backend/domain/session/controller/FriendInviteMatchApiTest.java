@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.session.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -8,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
@@ -19,6 +21,8 @@ import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import likelion.yacha_backend.domain.session.service.WaitTimerService;
 import likelion.yacha_backend.domain.session.service.WaitingSessionRecovery;
 import likelion.yacha_backend.domain.topic.entity.Category;
+import likelion.yacha_backend.domain.topic.entity.Topic;
+import likelion.yacha_backend.domain.topic.repository.TopicRepository;
 import likelion.yacha_backend.global.security.jwt.JwtTokenProvider;
 import likelion.yacha_backend.global.security.jwt.Role;
 import org.junit.jupiter.api.AfterEach;
@@ -48,6 +52,7 @@ class FriendInviteMatchApiTest {
     @Autowired private GameRegistry gameRegistry;
     @Autowired private WaitTimerService waitTimerService;
     @Autowired private WaitingSessionRecovery waitingSessionRecovery;
+    @Autowired private TopicRepository topicRepository;
 
     // DB는 테스트 종료 때 롤백되지만, 메모리 게임과 타이머는 직접 정리한다.
     private final List<Long> sessionIds = new ArrayList<>();
@@ -65,6 +70,7 @@ class FriendInviteMatchApiTest {
     }
 
     private String createFriend(Long userId) throws Exception {
+        fixture.topic(); // 생성 시 활성 주제 검증을 위해 데이터 준비
         String body = mockMvc.perform(post("/api/v1/sessions")
                         .header(HttpHeaders.AUTHORIZATION, bearer(userId, Role.USER))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -97,6 +103,14 @@ class FriendInviteMatchApiTest {
         DebateParticipant host = participantRepository
                 .findBySession_IdAndUser_Id(sessionId, hostId).orElseThrow();
         assertThat(host.getStance()).isNull();
+
+        String expiresAt = JsonPath.read(body, "$.data.expiresAt");
+        mockMvc.perform(get("/api/v1/sessions/current")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(hostId, Role.USER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sessionId").value(sessionId))
+                .andExpect(jsonPath("$.data.inviteCode").value(inviteCode))
+                .andExpect(jsonPath("$.data.expiresAt").value(expiresAt));
     }
 
     @Test
@@ -109,7 +123,7 @@ class FriendInviteMatchApiTest {
         String inviteCode = JsonPath.read(body, "$.data.inviteCode");
 
         Long friendId = fixture.newUser(); // 초대받은 사람은 게스트여도 가능
-        mockMvc.perform(post("/api/v1/sessions/invite/{code}/join", inviteCode)
+        mockMvc.perform(post("/api/v1/sessions/invite/{code}/join", inviteCode.toLowerCase(Locale.ROOT))
                         .header(HttpHeaders.AUTHORIZATION, bearer(friendId, Role.GUEST)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.sessionId").value(sessionId));
@@ -131,6 +145,21 @@ class FriendInviteMatchApiTest {
                         .header(HttpHeaders.AUTHORIZATION, bearer(thirdUserId, Role.GUEST)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("SESSION_NOT_WAITING"));
+    }
+
+    @Test
+    @DisplayName("활성 주제가 없으면 친구 방을 만들지 않는다")
+    void cannotCreateFriendRoomWithoutTopics() throws Exception {
+        // 전역 초기 주제가 있어도 이 테스트 트랜잭션에서 모두 비활성화합니다.
+        topicRepository.findAllByCategoryAndActiveTrueOrderByIdAsc(Category.ETHICS)
+                .forEach(Topic::deactivate);
+        Long hostId = fixture.newMember();
+        mockMvc.perform(post("/api/v1/sessions")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(hostId, Role.USER))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"roomType\":\"FRIEND\",\"category\":\"ETHICS\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("TOPIC_NOT_FOUND"));
     }
 
     @Test

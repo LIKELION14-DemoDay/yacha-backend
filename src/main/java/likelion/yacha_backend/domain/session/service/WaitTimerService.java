@@ -80,7 +80,7 @@ public class WaitTimerService {
             Long hostUserId,
             LocalDateTime createdAt
     ) {
-        LocalDateTime expiresAt = createdAt.plusMinutes(10);
+        LocalDateTime expiresAt = createdAt.plus(WaitTimerProperties.FRIEND_LIMIT);
 
         gameTimers.schedule(
                 sessionId,

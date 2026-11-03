@@ -23,6 +23,9 @@ public record WaitTimerProperties(
         @NotNull Duration sweepInterval
 ) {
 
+    /** 친구 초대 방 유효 시간. 생성·입장·타이머·복구·응답의 단일 기준. */
+    public static final Duration FRIEND_LIMIT = Duration.ofMinutes(10);
+
     /**
      * 간격만큼 팝업을 미리 등록하므로 0 이하면 등록 반복이 끝나지 않고, 1초보다 짧으면 팝업이 지나치게 많이 잡힙니다.
      * 잘못된 설정으로 방 생성이 멈추지 않게 서버가 뜰 때 막습니다 (null 은 위의 @NotNull 이 검사).

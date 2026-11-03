@@ -15,6 +15,7 @@ import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.PhaseState;
+import likelion.yacha_backend.domain.session.entity.RoomType;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.session.exception.SessionErrorCode;
 import likelion.yacha_backend.domain.session.game.Game;
@@ -71,7 +72,20 @@ public class SessionQueryService {
     public CurrentSessionResponse getCurrent(Long userId) {
         return participantRepository.findFirstByUser_IdAndSession_StatusInOrderByIdDesc(userId, ACTIVE_STATUSES)
                 .map(DebateParticipant::getSession)
-                .map(session -> new CurrentSessionResponse(session.getId(), session.getStatus()))
+                .map(session -> {
+                    if (session.getRoomType() == RoomType.FRIEND && session.isWaiting()) {
+                        return new CurrentSessionResponse(
+                                session.getId(),
+                                session.getStatus(),
+                                session.getInviteCode(),
+                                DateTimes.withOffset(
+                                        session.getCreatedAt().plus(WaitTimerProperties.FRIEND_LIMIT),
+                                        clock.getZone()
+                                )
+                        );
+                    }
+                    return new CurrentSessionResponse(session.getId(), session.getStatus());
+                })
                 .orElse(null);
     }
 

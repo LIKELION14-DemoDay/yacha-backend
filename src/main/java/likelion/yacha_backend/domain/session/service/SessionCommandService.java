@@ -29,6 +29,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
+import java.time.OffsetDateTime;
+import java.util.Locale;
+import likelion.yacha_backend.global.util.DateTimes;
 import likelion.yacha_backend.domain.topic.entity.Category;
 import java.util.List;
 import likelion.yacha_backend.domain.topic.service.TopicService;
@@ -74,7 +77,8 @@ public class SessionCommandService {
     public record FriendCreated(
             Long sessionId,
             String inviteCode,
-            LocalDateTime createdAt
+            LocalDateTime createdAt,
+            OffsetDateTime expiresAt
     ) {
     }
 
@@ -95,7 +99,7 @@ public class SessionCommandService {
     /** 랜덤 방을 만들고 방장으로 들어갑니다. 상대를 기다리는 {@code WAITING} 이 됩니다. */
     public Created create(Long userId, SessionCreateRequest request) {
         if (request.roomType() != RoomType.RANDOM) {
-            // 친구 방은 구현 보류 (명세 2-3-3)
+            // 친구 방은 createFriend 메서드에서 별도로 처리합니다.
             throw new BusinessException(GlobalErrorCode.VALIDATION_FAILED);
         }
         User user = lockUser(userId);
@@ -127,6 +131,11 @@ public class SessionCommandService {
         // 3. 이미 대기 중이거나 진행 중인 토론이 있는지 확인
         checkNotInSession(userId);
 
+        // 선택한 카테고리에 활성 주제가 없으면 방장에게 즉시 알립니다.
+        if (!topicRepository.existsByCategoryAndActiveTrue(category)) {
+            throw new BusinessException(TopicErrorCode.TOPIC_NOT_FOUND);
+        }
+
         // 4. 중복되지 않는 초대 코드 생성
         String inviteCode = generateUniqueInviteCode();
 
@@ -150,7 +159,11 @@ public class SessionCommandService {
         return new FriendCreated(
                 session.getId(),
                 inviteCode,
-                session.getCreatedAt()
+                session.getCreatedAt(),
+                DateTimes.withOffset(
+                        session.getCreatedAt().plus(WaitTimerProperties.FRIEND_LIMIT),
+                        clock.getZone()
+                )
         );
     }
 
@@ -229,8 +242,9 @@ public class SessionCommandService {
         User user = lockUser(userId);
 
         // 2. 초대 코드로 친구 방 조회
+        String normalizedCode = inviteCode.trim().toUpperCase(Locale.ROOT);
         DebateSession session = sessionRepository
-                .findByInviteCode(inviteCode)
+                .findByInviteCode(normalizedCode)
                 .orElseThrow(() -> new BusinessException(
                         SessionErrorCode.INVALID_INVITE_CODE
                 ));
@@ -250,7 +264,7 @@ public class SessionCommandService {
         // 4. 만료 여부 확인
         LocalDateTime now = startTime();
 
-        if (!now.isBefore(session.getCreatedAt().plusMinutes(10))) {
+        if (!now.isBefore(session.getCreatedAt().plus(WaitTimerProperties.FRIEND_LIMIT))) {
             throw new BusinessException(
                     SessionErrorCode.INVITE_EXPIRED
             );
