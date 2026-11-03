@@ -19,6 +19,7 @@ public record MatchNotice(Type type, Long sessionId, Long waitedSeconds) {
         WAIT_PROMPT,
         /** 대기 상한(5분) 도달 — 방은 이미 취소됨 */
         WAIT_EXPIRED,
+        INVITE_EXPIRED
     }
 
     public static MatchNotice matched(Long sessionId) {
@@ -32,4 +33,9 @@ public record MatchNotice(Type type, Long sessionId, Long waitedSeconds) {
     public static MatchNotice waitExpired(Long sessionId) {
         return new MatchNotice(Type.WAIT_EXPIRED, sessionId, null);
     }
+
+    public static MatchNotice inviteExpired(Long sessionId) {
+        return new MatchNotice(Type.INVITE_EXPIRED, sessionId, null);
+    }
+
 }

@@ -64,9 +64,49 @@ public interface DebateSessionRepository extends JpaRepository<DebateSession, Lo
     int startFriendIfWaiting(@Param("id") Long id, @Param("topic") Topic topic, @Param("now") LocalDateTime now,
                              @Param("waiting") SessionStatus waiting, @Param("inProgress") SessionStatus inProgress);
 
-    default int startFriendIfWaiting(Long id, Topic topic, LocalDateTime now) {
-        return startFriendIfWaiting(id, topic, now, SessionStatus.WAITING, SessionStatus.IN_PROGRESS);
+
+    /**
+     * 친구가 입장하면 토론을 시작한다.
+     * 대기 중이고, 만료되지 않은 친구 방만 시작 가능하다.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update DebateSession s
+               set s.status = :inProgress,
+                   s.topic = :topic,
+                   s.startedAt = :now,
+                   s.updatedAt = :now
+             where s.id = :id
+               and s.roomType = :friend
+               and s.status = :waiting
+               and s.createdAt > :createdAfter
+            """)
+    int startFriendIfWaiting(
+            @Param("id") Long id,
+            @Param("topic") Topic topic,
+            @Param("now") LocalDateTime now,
+            @Param("createdAfter") LocalDateTime createdAfter,
+            @Param("friend") RoomType friend,
+            @Param("waiting") SessionStatus waiting,
+            @Param("inProgress") SessionStatus inProgress
+    );
+
+    default int startFriendIfWaiting(
+            Long id,
+            Topic topic,
+            LocalDateTime now
+    ) {
+        return startFriendIfWaiting(
+                id,
+                topic,
+                now,
+                now.minusMinutes(10),
+                RoomType.FRIEND,
+                SessionStatus.WAITING,
+                SessionStatus.IN_PROGRESS
+        );
     }
+
 
     /** 방장이 대기 중에 "AI와 대결" 을 골랐습니다. 대기열에서 바로 빠지고 봇전으로 시작합니다. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
@@ -156,4 +196,39 @@ public interface DebateSessionRepository extends JpaRepository<DebateSession, Lo
         return findWaitingRandomRoomsCreatedBefore(before, SessionStatus.WAITING, RoomType.RANDOM,
                 ParticipantRole.INITIATOR);
     }
+
+    /**
+     * 서버 재시작 복구 및 만료 정리를 위해
+     * 대기 중인 친구 방과 방장을 조회한다.
+     */
+    @Query("""
+            select new likelion.yacha_backend.domain.session.repository.WaitingRoom(
+                s.id, u.id, s.createdAt
+            )
+              from DebateParticipant p
+              join p.session s
+              left join p.user u
+             where s.status = :waiting
+               and s.roomType = :friend
+               and p.role = :initiator
+               and s.createdAt < :before
+            """)
+    List<WaitingRoom> findWaitingFriendRoomsCreatedBefore(
+            @Param("before") LocalDateTime before,
+            @Param("waiting") SessionStatus waiting,
+            @Param("friend") RoomType friend,
+            @Param("initiator") ParticipantRole initiator
+    );
+
+    default List<WaitingRoom> findWaitingFriendRoomsCreatedBefore(
+            LocalDateTime before
+    ) {
+        return findWaitingFriendRoomsCreatedBefore(
+                before,
+                SessionStatus.WAITING,
+                RoomType.FRIEND,
+                ParticipantRole.INITIATOR
+        );
+    }
+
 }

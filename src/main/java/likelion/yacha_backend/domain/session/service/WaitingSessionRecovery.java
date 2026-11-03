@@ -1,3 +1,4 @@
+
 package likelion.yacha_backend.domain.session.service;
 
 import java.time.Clock;
@@ -11,21 +12,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-/**
- * 서버가 뜰 때 대기 중인 랜덤 방의 대기 타이머를 다시 등록합니다 (명세 2-3-4 · 2-11).
- *
- * <p>타이머는 메모리에 있어 재시작하면 사라집니다. 다시 등록하지 않으면 재시작 전에 만든 대기 방은
- * 팝업도 5분 취소도 없이 대기열에 영원히 남습니다. 상한이 이미 지난 방은 등록하자마자 취소됩니다.
- *
- * <p>{@link ApplicationReadyEvent} 는 요청을 받기 시작한 뒤에 옵니다. 그 사이 만든 방은 생성할 때 이미 등록했으므로
- * <b>이 서버가 뜨기 전에 만든 방만</b> 등록합니다 ({@link InProgressSessionCleaner} 와 같은 기준).
- *
- * <p>실패해도 기동은 막지 않고 로그만 남깁니다. 서버 1대 전제입니다.
- *
- * <p>주기 정리({@link #sweepExpired})도 합니다. 5분 취소는 한 번만 도는 타이머라, 그때 DB 가 잠깐
- * 끊기거나 생성 직후 등록이 실패하면 방이 {@code WAITING} 으로 남아 방장이 {@code ALREADY_IN_SESSION} 으로 막힙니다.
- * 정리는 타이머를 다시 등록하지 않고 만료 처리를 바로 부릅니다. 실패한 방은 다음 주기에 다시 시도됩니다.
- */
 @Slf4j
 @Service
 public class WaitingSessionRecovery {
@@ -34,11 +20,16 @@ public class WaitingSessionRecovery {
     private final WaitTimerService waitTimerService;
     private final WaitTimerProperties properties;
     private final Clock clock;
-    /** 이 서버가 뜬 시각. 이보다 먼저 만든 방만 이전 서버의 방입니다. */
+
+    /** 서버가 시작된 시각 */
     private final LocalDateTime bootTime;
 
-    public WaitingSessionRecovery(DebateSessionRepository sessionRepository, WaitTimerService waitTimerService,
-                                  WaitTimerProperties properties, Clock clock) {
+    public WaitingSessionRecovery(
+            DebateSessionRepository sessionRepository,
+            WaitTimerService waitTimerService,
+            WaitTimerProperties properties,
+            Clock clock
+    ) {
         this.sessionRepository = sessionRepository;
         this.waitTimerService = waitTimerService;
         this.properties = properties;
@@ -46,66 +37,215 @@ public class WaitingSessionRecovery {
         this.bootTime = LocalDateTime.now(clock);
     }
 
+    /**
+     * 서버가 재시작되면 기존 대기 방의 타이머를 복구한다.
+     */
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
+
+        // 기존 랜덤 방 복구
         try {
             int restored = restore(bootTime);
+
             if (restored > 0) {
-                log.info("[재시작 복구] 대기 방 {}건의 대기 타이머를 다시 등록했습니다.", restored);
+                log.info(
+                        "[재시작 복구] 랜덤 방 {}건 타이머 복구",
+                        restored
+                );
             }
         } catch (RuntimeException e) {
-            log.error("[재시작 복구] 대기 방을 조회하지 못했습니다.", e);
+            log.error("[재시작 복구] 랜덤 방 복구 실패", e);
+        }
+
+        // 친구 초대 방 복구
+        try {
+            int restored = restoreFriends(bootTime);
+
+            if (restored > 0) {
+                log.info(
+                        "[재시작 복구] 친구 방 {}건 타이머 복구",
+                        restored
+                );
+            }
+        } catch (RuntimeException e) {
+            log.error("[재시작 복구] 친구 방 복구 실패", e);
         }
     }
 
     /**
-     * 주기 정리. 상한보다 정리 간격만큼 더 지났는데도 대기 중인 방을 바로 취소합니다.
-     * 타이머를 등록하지 않으므로 반복돼도 타이머가 쌓이지 않고, 만료 타이머와 겹쳐도 취소는 조건부 UPDATE 라 한 번만 됩니다.
-     * 스케줄링은 SchedulingConfig 가 켭니다 (테스트에서는 꺼져 있어 직접 부릅니다).
+     * 주기적으로 만료된 대기 방을 정리한다.
      */
     @Scheduled(fixedDelayString = "${game.wait.sweep-interval}")
     public void sweepExpired() {
-        LocalDateTime createdBefore = LocalDateTime.now(clock)
+
+        LocalDateTime now = LocalDateTime.now(clock);
+
+        // 기존 랜덤 방 5분 만료 정리
+        LocalDateTime randomCreatedBefore = now
                 .minus(properties.limit())
                 .minus(properties.sweepInterval());
+
         try {
-            int swept = expireAll(createdBefore);
+            int swept = expireAll(randomCreatedBefore);
+
             if (swept > 0) {
-                log.warn("[대기 정리] 상한이 지났는데 대기 중인 방 {}건을 취소했습니다.", swept);
+                log.warn(
+                        "[대기 정리] 랜덤 방 {}건 만료 처리",
+                        swept
+                );
             }
         } catch (RuntimeException e) {
-            log.error("[대기 정리] 대기 방을 조회하지 못했습니다.", e);
+            log.error("[대기 정리] 랜덤 방 정리 실패", e);
+        }
+
+        // 친구 초대 방 10분 만료 정리
+        LocalDateTime friendCreatedBefore = now
+                .minusMinutes(10)
+                .minus(properties.sweepInterval());
+
+        try {
+            int swept = expireFriends(friendCreatedBefore);
+
+            if (swept > 0) {
+                log.warn(
+                        "[대기 정리] 친구 방 {}건 만료 처리",
+                        swept
+                );
+            }
+        } catch (RuntimeException e) {
+            log.error("[대기 정리] 친구 방 정리 실패", e);
         }
     }
 
-    /** {@code createdBefore} 보다 먼저 만든 대기 방의 타이머를 등록하고, 등록한 방 수를 돌려줍니다. */
+    /**
+     * 기존 랜덤 방 타이머 복구
+     */
     public int restore(LocalDateTime createdBefore) {
-        List<WaitingRoom> rooms = sessionRepository.findWaitingRandomRoomsCreatedBefore(createdBefore);
+
+        List<WaitingRoom> rooms =
+                sessionRepository.findWaitingRandomRoomsCreatedBefore(
+                        createdBefore
+                );
+
         int restored = 0;
+
         for (WaitingRoom room : rooms) {
             try {
-                waitTimerService.register(room.sessionId(), room.hostUserId(), room.createdAt());
+                waitTimerService.register(
+                        room.sessionId(),
+                        room.hostUserId(),
+                        room.createdAt()
+                );
                 restored++;
+
             } catch (RuntimeException e) {
-                log.error("[대기 타이머] 등록하지 못했습니다. sessionId={}", room.sessionId(), e);
+                log.error(
+                        "[대기 타이머] 랜덤 방 복구 실패. sessionId={}",
+                        room.sessionId(),
+                        e
+                );
             }
         }
+
         return restored;
     }
 
-    /** {@code createdBefore} 보다 먼저 만든 대기 방을 취소하고, 취소한 방 수를 돌려줍니다. 한 방이 실패해도 나머지는 계속합니다. */
+    /**
+     * 기존 랜덤 방 만료 정리
+     */
     int expireAll(LocalDateTime createdBefore) {
-        List<WaitingRoom> rooms = sessionRepository.findWaitingRandomRoomsCreatedBefore(createdBefore);
+
+        List<WaitingRoom> rooms =
+                sessionRepository.findWaitingRandomRoomsCreatedBefore(
+                        createdBefore
+                );
+
         int expired = 0;
+
         for (WaitingRoom room : rooms) {
             try {
-                if (waitTimerService.expire(room.sessionId(), room.hostUserId())) {
+                if (waitTimerService.expire(
+                        room.sessionId(),
+                        room.hostUserId()
+                )) {
                     expired++;
                 }
+
             } catch (RuntimeException e) {
-                log.error("[대기 정리] 취소하지 못했습니다. 다음 주기에 다시 시도합니다. sessionId={}", room.sessionId(), e);
+                log.error(
+                        "[대기 정리] 랜덤 방 정리 실패. sessionId={}",
+                        room.sessionId(),
+                        e
+                );
             }
         }
+
+        return expired;
+    }
+
+    /**
+     * 친구 방 타이머 복구
+     */
+    public int restoreFriends(LocalDateTime createdBefore) {
+
+        List<WaitingRoom> rooms =
+                sessionRepository.findWaitingFriendRoomsCreatedBefore(
+                        createdBefore
+                );
+
+        int restored = 0;
+
+        for (WaitingRoom room : rooms) {
+            try {
+                waitTimerService.registerFriend(
+                        room.sessionId(),
+                        room.hostUserId(),
+                        room.createdAt()
+                );
+                restored++;
+
+            } catch (RuntimeException e) {
+                log.error(
+                        "[친구 초대] 타이머 복구 실패. sessionId={}",
+                        room.sessionId(),
+                        e
+                );
+            }
+        }
+
+        return restored;
+    }
+
+    /**
+     * 10분이 지난 친구 방을 CANCELLED 처리
+     */
+    int expireFriends(LocalDateTime createdBefore) {
+
+        List<WaitingRoom> rooms =
+                sessionRepository.findWaitingFriendRoomsCreatedBefore(
+                        createdBefore
+                );
+
+        int expired = 0;
+
+        for (WaitingRoom room : rooms) {
+            try {
+                if (waitTimerService.expireFriend(
+                        room.sessionId(),
+                        room.hostUserId()
+                )) {
+                    expired++;
+                }
+
+            } catch (RuntimeException e) {
+                log.error(
+                        "[친구 초대] 만료 정리 실패. sessionId={}",
+                        room.sessionId(),
+                        e
+                );
+            }
+        }
+
         return expired;
     }
 }

@@ -36,6 +36,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import java.time.ZoneId;
+import likelion.yacha_backend.domain.session.entity.RoomType;
+import likelion.yacha_backend.global.util.DateTimes;
 
 @Tag(name = "토론 세션", description = "방 생성 · 자동 제안 · 방 찾기 · 입장 · 취소 · 봇전, 토론방 조회 — 현재 상태 · 놓친 메시지 · 내 주장 작성 · 결과")
 @RestController
@@ -62,12 +65,70 @@ public class SessionController {
                     로그인 필요 (게스트 가능)
                     이미 대기 · 진행 중인 토론이 있으면 `ALREADY_IN_SESSION`, 없거나 내린 주제면 `TOPIC_NOT_FOUND`
                     """)
+
     @PostMapping
     public ApiResponse<SessionIdResponse> create(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody SessionCreateRequest request) {
-        return ApiResponse.success(new SessionIdResponse(sessionMatchFacade.create(authUser.getUserId(), request)));
+
+        Long userId = authUser.getUserId();
+
+        // 친구 초대 방 생성
+        if (request.roomType() == RoomType.FRIEND) {
+
+            var created = sessionMatchFacade.createFriend(
+                    userId,
+                    request.category()
+            );
+
+            return ApiResponse.success(
+                    new SessionIdResponse(
+                            created.sessionId(),
+                            created.inviteCode(),
+                            DateTimes.withOffset(
+                                    created.createdAt().plusMinutes(10),
+                                    ZoneId.of("Asia/Seoul")
+                            )
+                    )
+            );
+        }
+
+        // 기존 랜덤 야차 방 생성
+        Long sessionId = sessionMatchFacade.create(
+                userId,
+                request
+        );
+
+        return ApiResponse.success(
+                new SessionIdResponse(sessionId)
+        );
     }
+
+
+    @Operation(
+            summary = "친구 초대 코드로 입장",
+            description = """
+                    친구 초대 코드로 대기 중인 친구 방에 입장합니다.
+                    생성 후 10분 이내의 코드만 유효하며,
+                    서버가 주제와 양측 찬반 입장을 배정합니다.
+                    입장 성공 시 토론이 시작되고
+                    방장에게 MATCHED 알림이 전송됩니다.
+                    회원과 게스트 모두 입장할 수 있습니다.
+                    """)
+    @PostMapping("/invite/{code}/join")
+    public ApiResponse<SessionIdResponse> joinFriend(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable String code) {
+
+        Long sessionId = sessionMatchFacade.joinFriend(
+                authUser.getUserId(), code
+        );
+
+        return ApiResponse.success(
+                new SessionIdResponse(sessionId)
+        );
+    }
+
 
     @Operation(
             summary = "자동 제안",

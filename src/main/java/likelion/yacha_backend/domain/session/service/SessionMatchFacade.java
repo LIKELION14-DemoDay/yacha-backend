@@ -7,7 +7,8 @@ import likelion.yacha_backend.domain.session.service.SessionCommandService.Match
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
+import likelion.yacha_backend.domain.session.service.SessionCommandService.FriendCreated;
+import likelion.yacha_backend.domain.topic.entity.Category;
 /**
  * 방 생성 · 입장 · 취소 · AI 전환의 진입점. DB 작업은 {@link SessionCommandService} 의 트랜잭션에서 하고,
  * <b>커밋이 끝난 뒤에</b> 대기 타이머 등록 · 정리, 게임 생성 · 구간 타이머 등록, 힌트 생성 시작, 봇 일정 등록, 방장 알림을 합니다.
@@ -66,6 +67,76 @@ public class SessionMatchFacade {
         }
         return matched.sessionId();
     }
+
+
+    /**
+     * 친구 초대 코드로 입장한 뒤
+     * 기존 1:1 토론 게임을 시작한다.
+     */
+    public Long joinFriend(Long userId, String inviteCode) {
+
+        // 1. DB 매칭 처리
+        Matched matched = sessionCommandService.joinFriend(
+                userId,
+                inviteCode
+        );
+
+        // 2. 대기 타이머 정리
+        waitTimerService.cancel(matched.sessionId());
+
+        // 3. 기존 게임 생성 및 토론 타이머 시작
+        createGame(matched);
+
+        // 4. 방장에게 매칭 완료 알림
+        matchNotifier.matched(
+                matched.hostUserId(),
+                matched.sessionId()
+        );
+
+        // 5. 사용자 자동 제안 상태 정리
+        try {
+            sessionProposalService.forget(userId);
+        } catch (RuntimeException e) {
+            log.error(
+                    "[친구 매칭] 자동 제안 상태 정리 실패. userId={}",
+                    userId,
+                    e
+            );
+        }
+
+        return matched.sessionId();
+    }
+
+
+    /**
+     * 친구 방 생성 후 10분 만료 타이머 등록
+     */
+    public FriendCreated createFriend(Long userId, Category category) {
+
+        // 1. 친구 방 생성 및 DB 저장
+        FriendCreated created = sessionCommandService.createFriend(
+                userId,
+                category
+        );
+
+        // 2. DB 커밋 후 친구 초대 만료 타이머 등록
+        try {
+            waitTimerService.registerFriend(
+                    created.sessionId(),
+                    userId,
+                    created.createdAt()
+            );
+        } catch (RuntimeException e) {
+            log.error(
+                    "[친구 초대] 만료 타이머 등록 실패. sessionId={}",
+                    created.sessionId(),
+                    e
+            );
+        }
+
+        return created;
+    }
+
 
     /**
      * 대기 중 AI 전환 → (커밋) → 대기 타이머 정리 → 게임 생성. 전환을 요청한 방장이 응답으로 시작을 압니다.

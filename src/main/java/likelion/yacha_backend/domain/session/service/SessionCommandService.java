@@ -28,6 +28,10 @@ import likelion.yacha_backend.global.exception.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.security.SecureRandom;
+import likelion.yacha_backend.domain.topic.entity.Category;
+import java.util.List;
+import likelion.yacha_backend.domain.topic.service.TopicService;
 
 /**
  * 랜덤 방 생성 · 입장 · 대기 취소 · AI 전환의 DB 작업 (명세 2-3-4). 게임 생성 · 알림처럼 커밋 뒤에 할 일은
@@ -52,10 +56,27 @@ public class SessionCommandService {
 
     private final UserRepository userRepository;
     private final TopicRepository topicRepository;
+    private final TopicService topicService;
     private final DebateSessionRepository sessionRepository;
     private final DebateParticipantRepository participantRepository;
     private final WaitTimerProperties waitTimerProperties;
     private final Clock clock;
+    // 초대 코드 생성에 사용할 문자
+    private static final String INVITE_CODE_CHARS =
+            "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    private static final int INVITE_CODE_LENGTH = 10;
+
+    // 예측하기 어려운 코드를 생성하기 위한 난수 생성기
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+    /** 친구 방 생성 결과 */
+    public record FriendCreated(
+            Long sessionId,
+            String inviteCode,
+            LocalDateTime createdAt
+    ) {
+    }
 
     /** 만든 대기 방. 커밋 뒤 대기 타이머를 등록하는 데 씁니다 ({@code createdAt} 이 타이머 기준). */
     public record Created(Long sessionId, LocalDateTime createdAt) {
@@ -85,6 +106,84 @@ public class SessionCommandService {
         participantRepository.save(DebateParticipant.initiator(session, user, request.stance(), LocalDateTime.now(clock)));
         return new Created(session.getId(), session.getCreatedAt());
     }
+
+
+    /**
+     * 친구 초대 방 생성
+     * 회원만 생성할 수 있으며 초대 코드를 발급한다.
+     */
+    public FriendCreated createFriend(Long userId, Category category) {
+
+        // 1. 사용자 잠금 및 조회
+        User user = lockUser(userId);
+
+        // 2. 게스트는 친구 초대 방을 생성할 수 없음
+        if (user.isGuest()) {
+            throw new BusinessException(
+                    GlobalErrorCode.GUEST_NOT_ALLOWED
+            );
+        }
+
+        // 3. 이미 대기 중이거나 진행 중인 토론이 있는지 확인
+        checkNotInSession(userId);
+
+        // 4. 중복되지 않는 초대 코드 생성
+        String inviteCode = generateUniqueInviteCode();
+
+        // 5. 친구 방 생성 및 DB 저장
+        DebateSession session = sessionRepository.save(
+                DebateSession.createFriend(category, inviteCode)
+        );
+
+        // 6. 방장 참가자 등록
+        // 친구가 들어온 뒤 찬반을 정하므로 현재는 null
+        participantRepository.save(
+                DebateParticipant.initiator(
+                        session,
+                        user,
+                        null,
+                        LocalDateTime.now(clock)
+                )
+        );
+
+        // 7. 생성된 방 정보 반환
+        return new FriendCreated(
+                session.getId(),
+                inviteCode,
+                session.getCreatedAt()
+        );
+    }
+
+    /**
+     * 고유 초대 코드 생성
+     */
+    private String generateUniqueInviteCode() {
+
+        for (int attempt = 0; attempt < 5; attempt++) {
+
+            StringBuilder code = new StringBuilder();
+
+            for (int i = 0; i < INVITE_CODE_LENGTH; i++) {
+                int index = SECURE_RANDOM.nextInt(
+                        INVITE_CODE_CHARS.length()
+                );
+
+                code.append(INVITE_CODE_CHARS.charAt(index));
+            }
+
+            String inviteCode = code.toString();
+
+            // 기존 DB에 없는 코드인지 확인
+            if (sessionRepository.findByInviteCode(inviteCode).isEmpty()) {
+                return inviteCode;
+            }
+        }
+
+        throw new BusinessException(
+                GlobalErrorCode.INTERNAL_SERVER_ERROR
+        );
+    }
+
 
     /**
      * 대기 중인 랜덤 방에 방장의 반대 입장으로 들어가 바로 시작합니다.
@@ -118,6 +217,112 @@ public class SessionCommandService {
 
         return new Matched(sessionId, now, hostUserId,
                 Map.of(hostUserId, hostParticipantId, userId, opponent.getId()), null);
+    }
+
+
+    /**
+     * 초대 코드를 이용한 친구 방 입장
+     */
+    public Matched joinFriend(Long userId, String inviteCode) {
+
+        // 1. 사용자 잠금
+        User user = lockUser(userId);
+
+        // 2. 초대 코드로 친구 방 조회
+        DebateSession session = sessionRepository
+                .findByInviteCode(inviteCode)
+                .orElseThrow(() -> new BusinessException(
+                        SessionErrorCode.INVALID_INVITE_CODE
+                ));
+
+        Long sessionId = session.getId();
+
+        // 3. 방장 정보 조회
+        DebateParticipant host = hostOf(sessionId);
+
+        // 본인이 만든 방에는 입장할 수 없음
+        if (host.isUser(userId)) {
+            throw new BusinessException(
+                    SessionErrorCode.CANNOT_JOIN_OWN_ROOM
+            );
+        }
+
+        // 4. 만료 여부 확인
+        LocalDateTime now = startTime();
+
+        if (!now.isBefore(session.getCreatedAt().plusMinutes(10))) {
+            throw new BusinessException(
+                    SessionErrorCode.INVITE_EXPIRED
+            );
+        }
+
+        // 5. 친구 방이며 대기 중인지 확인
+        if (session.getRoomType() != RoomType.FRIEND
+                || !session.isWaiting()
+                || session.getMode() != SessionMode.HUMAN
+                || host.getUser() == null) {
+
+            throw new BusinessException(
+                    SessionErrorCode.SESSION_NOT_WAITING
+            );
+        }
+
+        // 6. 이미 다른 토론에 참여 중인지 확인
+        checkNotInSession(userId);
+
+        // 7. 기존 주제 서비스로 랜덤 주제 선정
+        Long topicId = topicService
+                .pickRandom(session.getCategory(), List.of())
+                .id();
+
+        Topic topic = activeTopic(topicId);
+
+        // 8. 방장 입장을 랜덤 배정
+        Stance hostStance = SECURE_RANDOM.nextBoolean()
+                ? Stance.AGREE
+                : Stance.DISAGREE;
+
+        Stance opponentStance = hostStance.opposite();
+
+        // 9. 필요한 참가자 정보 보관
+        Long hostUserId = host.getUser().getId();
+        Long hostParticipantId = host.getId();
+
+        // 10. 방장의 찬반 입장 배정
+        host.assignStance(hostStance);
+
+        // 11. WAITING -> IN_PROGRESS
+        // 동시에 입장하더라도 한 요청만 성공
+        if (sessionRepository.startFriendIfWaiting(
+                sessionId, topic, now) == 0) {
+
+            throw new BusinessException(
+                    SessionErrorCode.SESSION_NOT_WAITING
+            );
+        }
+
+        // 12. 친구를 상대 참가자로 등록
+        DebateParticipant opponent =
+                participantRepository.save(
+                        DebateParticipant.opponent(
+                                sessionRepository.getReferenceById(sessionId),
+                                user,
+                                opponentStance,
+                                now
+                        )
+                );
+
+        // 13. 기존 게임 생성에 필요한 정보 반환
+        return new Matched(
+                sessionId,
+                now,
+                hostUserId,
+                Map.of(
+                        hostUserId, hostParticipantId,
+                        userId, opponent.getId()
+                ),
+                null
+        );
     }
 
     /**

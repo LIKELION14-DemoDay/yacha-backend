@@ -71,6 +71,55 @@ public class WaitTimerService {
         gameTimers.schedule(sessionId, expiresAt, () -> expire(sessionId, hostUserId));
     }
 
+
+    /**
+     * 친구 방 생성 시 10분 만료 타이머 등록
+     */
+    public void registerFriend(
+            Long sessionId,
+            Long hostUserId,
+            LocalDateTime createdAt
+    ) {
+        LocalDateTime expiresAt = createdAt.plusMinutes(10);
+
+        gameTimers.schedule(
+                sessionId,
+                expiresAt,
+                () -> expireFriend(sessionId, hostUserId)
+        );
+    }
+
+    /**
+     * 친구 초대 코드 만료 처리
+     *
+     * WAITING 상태인 방만 CANCELLED로 변경한다.
+     * 이미 게임이 시작된 경우에는 아무것도 하지 않는다.
+     */
+    boolean expireFriend(Long sessionId, Long hostUserId) {
+
+        Integer cancelled = transactionTemplate.execute(
+                status -> sessionRepository.cancelIfWaiting(
+                        sessionId,
+                        LocalDateTime.now(clock)
+                )
+        );
+
+        if (cancelled == null || cancelled == 0) {
+            return false;
+        }
+
+        // 대기 타이머 정리
+        gameTimers.cancelAll(sessionId);
+
+        // 방장에게 만료 알림
+        if (hostUserId != null) {
+            matchNotifier.inviteExpired(hostUserId, sessionId);
+        }
+
+        return true;
+    }
+
+
     /** 입장 · 취소 · AI 전환으로 대기가 끝났습니다. 남은 대기 타이머를 지웁니다. */
     public void cancel(Long sessionId) {
         gameTimers.cancelAll(sessionId);

@@ -1,5 +1,17 @@
+
 package likelion.yacha_backend.domain.session.dto;
 
-/** 방 생성 · 입장 · 취소 응답. 생성 · 입장이면 프론트는 이 id 로 토론방을 구독합니다. */
-public record SessionIdResponse(Long sessionId) {
+import com.fasterxml.jackson.annotation.JsonInclude;
+import java.time.OffsetDateTime;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record SessionIdResponse(
+        Long sessionId,
+        String inviteCode,
+        OffsetDateTime expiresAt
+) {
+    // 기존 랜덤 방, 입장, 취소 응답과 호환
+    public SessionIdResponse(Long sessionId) {
+        this(sessionId, null, null);
+    }
 }
