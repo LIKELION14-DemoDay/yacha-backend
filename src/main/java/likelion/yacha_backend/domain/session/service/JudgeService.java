@@ -10,12 +10,14 @@ import likelion.yacha_backend.domain.ai.AiTopic;
 import likelion.yacha_backend.domain.ai.Judge;
 import likelion.yacha_backend.domain.ai.JudgeRequest;
 import likelion.yacha_backend.domain.ai.JudgeResult;
+import likelion.yacha_backend.domain.heart.service.HeartService;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebateResult;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.game.GameTimers;
+import likelion.yacha_backend.domain.session.game.JudgeStatus;
 import likelion.yacha_backend.domain.session.game.Verdict;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
@@ -49,6 +51,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 알 수 없으므로 다시 시도합니다. 시도당 시간은 AI 구현의 HTTP 타임아웃이 정합니다.
  * 429 · 5xx 는 보통 몇 초 이어지므로 시도 사이에 {@code game.judge.retry-backoff} 부터 두 배씩 기다립니다.
  *
+ * <p><b>하트</b> — 판정이 끝내 실패하면 그 판에 쓴 하트를 돌려줍니다. 끝내 실패한 때는 두 가지입니다.
+ * <ul>
+ *   <li>재판정 횟수를 다 쓴 판정이 실패했을 때 — 바로 돌려줍니다.</li>
+ *   <li>재판정이 남았는데 아무도 결과를 다시 조회하지 않아, 보관 시간이 끝날 때까지 {@code FAILED} 일 때 — 지울 때 돌려줍니다.</li>
+ * </ul>
+ * 돌려주기는 사용 기록마다 한 번뿐이라 두 경우가 겹쳐도 한 번만 돌려줍니다.
+ *
  * <p>대화 내용은 로그에 남기지 않습니다 (명세 1-5).
  */
 @Slf4j
@@ -64,13 +73,14 @@ public class JudgeService {
     private final TransactionTemplate transactionTemplate;
     private final Executor judgeExecutor;
     private final JudgeProperties properties;
+    private final HeartService heartService;
     private final Clock clock;
 
     public JudgeService(GameRegistry gameRegistry, GameTimers gameTimers, Judge judge,
                         DebateSessionRepository sessionRepository, DebateParticipantRepository participantRepository,
                         PlatformTransactionManager transactionManager,
                         @Qualifier(GameSchedulerConfig.JUDGE_EXECUTOR) Executor judgeExecutor,
-                        JudgeProperties properties, Clock clock) {
+                        JudgeProperties properties, HeartService heartService, Clock clock) {
         this.gameRegistry = gameRegistry;
         this.gameTimers = gameTimers;
         this.judge = judge;
@@ -79,6 +89,7 @@ public class JudgeService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.judgeExecutor = judgeExecutor;
         this.properties = properties;
+        this.heartService = heartService;
         this.clock = clock;
     }
 
@@ -89,7 +100,7 @@ public class JudgeService {
      */
     public boolean start(Long sessionId) {
         Game game = gameRegistry.find(sessionId).orElse(null);
-        if (game == null || !game.startJudging(1 + properties.maxRejudges())) {
+        if (game == null || !game.startJudging(maxRuns())) {
             return false;
         }
         // 재판정이면 앞선 판정이 걸어 둔 삭제 타이머가 있습니다. 판정 도중에 게임이 지워지지 않게 먼저 지우고,
@@ -117,6 +128,9 @@ public class JudgeService {
         } catch (RuntimeException e) {
             log.error("[판정] 판정에 실패했습니다. sessionId={}", sessionId, e);
             game.failJudging();
+            if (!game.hasJudgeRunsLeft(maxRuns())) {
+                refundHearts(sessionId);
+            }
         } finally {
             scheduleRemoval(sessionId);
         }
@@ -187,12 +201,33 @@ public class JudgeService {
 
     /**
      * 결과 화면 보관 시간 뒤에 게임을 메모리에서 지웁니다. 다시 판정하면 그때부터 다시 셉니다.
-     * 지우고 나면 {@code /result} 는 DB 의 승패만 줍니다.
+     * 지우고 나면 {@code /result} 는 DB 의 승패만 줍니다. 지울 때까지 판정 실패면 쓴 하트를 돌려줍니다.
      */
     private void scheduleRemoval(Long sessionId) {
         gameTimers.cancelAll(sessionId);
-        gameTimers.schedule(sessionId, LocalDateTime.now(clock).plus(properties.resultRetention()),
-                () -> gameRegistry.remove(sessionId));
+        gameTimers.schedule(sessionId, LocalDateTime.now(clock).plus(properties.resultRetention()), () -> {
+            boolean failed = gameRegistry.find(sessionId)
+                    .map(game -> game.judgeStatus() == JudgeStatus.FAILED)
+                    .orElse(false);
+            if (failed) {
+                refundHearts(sessionId);
+            }
+            gameRegistry.remove(sessionId);
+        });
+    }
+
+    /** 판정을 시작할 수 있는 최대 횟수 (처음 판정 + 재판정). */
+    private int maxRuns() {
+        return 1 + properties.maxRejudges();
+    }
+
+    /** 판정이 끝내 실패한 판의 하트를 돌려줍니다. 실패해도 게임 정리는 이어갑니다. */
+    private void refundHearts(Long sessionId) {
+        try {
+            heartService.refund(sessionId);
+        } catch (RuntimeException e) {
+            log.error("[판정] 판정 실패로 하트를 돌려주지 못했습니다. sessionId={}", sessionId, e);
+        }
     }
 
     private record Participants(AiTopic topic, List<JudgeRequest.Participant> judged) {

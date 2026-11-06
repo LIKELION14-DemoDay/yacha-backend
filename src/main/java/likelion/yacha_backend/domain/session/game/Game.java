@@ -463,6 +463,11 @@ public class Game {
         this.judgeStatus = JudgeStatus.FAILED;
     }
 
+    /** 판정을 더 시작할 수 있는지. 실패한 판정을 다시 돌릴 횟수가 남았으면 true 입니다. */
+    public synchronized boolean hasJudgeRunsLeft(int maxRuns) {
+        return judgeRuns < maxRuns;
+    }
+
     /** 판정 상태. 판정을 시작하기 전이면 null 입니다. */
     public synchronized JudgeStatus judgeStatus() {
         return judgeStatus;

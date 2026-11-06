@@ -7,6 +7,7 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
 import likelion.yacha_backend.domain.auth.exception.AuthErrorCode;
+import likelion.yacha_backend.domain.heart.service.HeartService;
 import likelion.yacha_backend.domain.session.dto.SessionCreateRequest;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
@@ -48,6 +49,10 @@ import likelion.yacha_backend.domain.topic.service.TopicService;
  *
  * <p><b>다른 사용자끼리 겹칠 때</b> — 같은 방에 두 사람이 들어오거나, 입장과 취소 · AI 전환이 겹치면
  * {@code status = WAITING} 조건부 UPDATE 가 한쪽만 성공시킵니다.
+ *
+ * <p><b>하트</b> — 방을 만들거나 들어갈 때 하트가 0개면 {@code HEART_EXHAUSTED} 입니다. 하트는 게임이 실제로 시작될 때
+ * (입장 · 친구 방 입장 · AI 전환) 같은 트랜잭션에서 깎습니다. 조건부 UPDATE 가 성공한 뒤에 깎으므로, 늦어서 들어가지 못한
+ * 사람은 깎이지 않습니다. 방장은 방을 만들 때 확인했고 기다리는 동안 다른 게임을 할 수 없어 하트가 줄지 않습니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -63,6 +68,7 @@ public class SessionCommandService {
     private final DebateSessionRepository sessionRepository;
     private final DebateParticipantRepository participantRepository;
     private final WaitTimerProperties waitTimerProperties;
+    private final HeartService heartService;
     private final Clock clock;
     // 초대 코드 생성에 사용할 문자
     private static final String INVITE_CODE_CHARS =
@@ -104,6 +110,7 @@ public class SessionCommandService {
         }
         User user = lockUser(userId);
         checkNotInSession(userId);
+        heartService.checkAvailable(userId);
         Topic topic = activeTopic(request.topicId());
 
         DebateSession session = sessionRepository.save(DebateSession.createRandom(topic));
@@ -128,8 +135,9 @@ public class SessionCommandService {
             );
         }
 
-        // 3. 이미 대기 중이거나 진행 중인 토론이 있는지 확인
+        // 3. 이미 대기 중이거나 진행 중인 토론이 있는지, 하트가 남았는지 확인
         checkNotInSession(userId);
+        heartService.checkAvailable(userId);
 
         // 선택한 카테고리에 활성 주제가 없으면 방장에게 즉시 알립니다.
         if (!topicRepository.existsByCategoryAndActiveTrue(category)) {
@@ -217,6 +225,7 @@ public class SessionCommandService {
             throw new BusinessException(SessionErrorCode.SESSION_NOT_WAITING);
         }
         checkNotInSession(userId);
+        heartService.checkAvailable(userId);
 
         // UPDATE 가 영속성 컨텍스트를 비우므로 필요한 값은 미리 꺼내 둡니다 (DebateSessionRepository 주의 참고).
         Long hostUserId = host.getUser().getId();
@@ -227,6 +236,8 @@ public class SessionCommandService {
         }
         DebateParticipant opponent = participantRepository.save(DebateParticipant.opponent(
                 sessionRepository.getReferenceById(sessionId), user, host.getStance().opposite(), now));
+        heartService.consume(sessionId, hostUserId);
+        heartService.consume(sessionId, userId);
 
         return new Matched(sessionId, now, hostUserId,
                 Map.of(hostUserId, hostParticipantId, userId, opponent.getId()), null);
@@ -281,8 +292,9 @@ public class SessionCommandService {
             );
         }
 
-        // 6. 이미 다른 토론에 참여 중인지 확인
+        // 6. 이미 다른 토론에 참여 중인지, 하트가 남았는지 확인
         checkNotInSession(userId);
+        heartService.checkAvailable(userId);
 
         // 7. 기존 주제 서비스로 랜덤 주제 선정
         Long topicId = topicService
@@ -326,7 +338,11 @@ public class SessionCommandService {
                         )
                 );
 
-        // 13. 기존 게임 생성에 필요한 정보 반환
+        // 13. 두 사람 모두 하트 1개씩 사용
+        heartService.consume(sessionId, hostUserId);
+        heartService.consume(sessionId, userId);
+
+        // 14. 기존 게임 생성에 필요한 정보 반환
         return new Matched(
                 sessionId,
                 now,
@@ -369,6 +385,8 @@ public class SessionCommandService {
         }
         DebateParticipant ai = participantRepository.save(
                 DebateParticipant.ai(sessionRepository.getReferenceById(sessionId), aiStance, now));
+        // 봇전은 방장만 하트를 씁니다.
+        heartService.consume(sessionId, userId);
         return new Matched(sessionId, now, userId, Map.of(userId, hostParticipantId), ai.getId());
     }
 
