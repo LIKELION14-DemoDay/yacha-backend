@@ -111,6 +111,8 @@ public class Game {
     private Verdict verdict;
     /** 판정을 시작한 횟수. 처음 판정 + 재판정입니다. */
     private int judgeRuns;
+    /** 결과 보관 시간이 끝나 더는 판정하지 않음. 닫힌 뒤에는 재판정을 시작하지 않습니다. */
+    private boolean judgeClosed;
     /** 봇전의 봇 글 진행 상태. 사람전이면 null 입니다. */
     private final BotProgress botProgress;
     /** 사람 참가자의 userId → 힌트. 만들기 시작하기 전이면 들어 있지 않습니다. */
@@ -446,7 +448,8 @@ public class Game {
         if (!finished) {
             throw new IllegalStateException("끝나지 않은 게임은 판정할 수 없습니다. sessionId=" + sessionId);
         }
-        if (judgeStatus == JudgeStatus.PENDING || judgeStatus == JudgeStatus.READY || judgeRuns >= maxRuns) {
+        if (judgeClosed || judgeStatus == JudgeStatus.PENDING || judgeStatus == JudgeStatus.READY
+                || judgeRuns >= maxRuns) {
             return false;
         }
         judgeStatus = JudgeStatus.PENDING;
@@ -461,6 +464,22 @@ public class Game {
 
     public synchronized void failJudging() {
         this.judgeStatus = JudgeStatus.FAILED;
+    }
+
+    /**
+     * 결과 보관 시간이 끝나 판정을 닫습니다. 닫은 뒤에는 {@link #startJudging} 이 false 라 재판정이 시작되지 않습니다.
+     * 이미 판정 중({@code PENDING})이면 닫지 않고 false 입니다 — 보관 시간이 끝나는 순간 결과 재조회로 재판정이 막 시작된 경우로,
+     * 그 판정이 끝나면 보관 시간을 다시 셉니다.
+     *
+     * <p>{@link #startJudging} 과 같은 잠금이라 둘이 겹쳐도 한쪽만 이깁니다. 삭제 타이머 취소는 이미 실행 중인 작업을 멈추지
+     * 못하므로, 삭제 작업은 이것으로 재판정과 겹치지 않는지 확인합니다.
+     */
+    public synchronized boolean closeJudging() {
+        if (judgeStatus == JudgeStatus.PENDING) {
+            return false;
+        }
+        judgeClosed = true;
+        return true;
     }
 
     /** 판정을 더 시작할 수 있는지. 실패한 판정을 다시 돌릴 횟수가 남았으면 true 입니다. */

@@ -209,19 +209,28 @@ public class JudgeService {
 
     /**
      * 결과 화면 보관 시간 뒤에 게임을 메모리에서 지웁니다. 다시 판정하면 그때부터 다시 셉니다.
-     * 지우고 나면 {@code /result} 는 DB 의 승패만 줍니다. 지울 때까지 판정 실패면 쓴 하트를 돌려줍니다.
+     * 지우고 나면 {@code /result} 는 DB 의 승패만 줍니다.
      */
     private void scheduleRemoval(Long sessionId) {
         gameTimers.cancelAll(sessionId);
-        gameTimers.schedule(sessionId, LocalDateTime.now(clock).plus(properties.resultRetention()), () -> {
-            boolean failed = gameRegistry.find(sessionId)
-                    .map(game -> game.judgeStatus() == JudgeStatus.FAILED)
-                    .orElse(false);
-            if (failed) {
-                refundHearts(sessionId);
-            }
-            gameRegistry.remove(sessionId);
-        });
+        gameTimers.schedule(sessionId, LocalDateTime.now(clock).plus(properties.resultRetention()),
+                () -> removeAfterRetention(sessionId));
+    }
+
+    /**
+     * 보관 시간이 끝난 게임을 지웁니다. 먼저 판정을 닫아({@link Game#closeJudging}) 그 뒤로는 재판정이 시작되지 않게 합니다.
+     * 닫지 못했으면 결과 재조회로 재판정이 막 시작된 것이라 지우지 않습니다 — 그 판정이 끝나면 삭제 타이머를 다시 겁니다.
+     * 닫았을 때 판정 실패면 끝내 실패한 것이라 쓴 하트를 돌려줍니다.
+     */
+    private void removeAfterRetention(Long sessionId) {
+        Game game = gameRegistry.find(sessionId).orElse(null);
+        if (game == null || !game.closeJudging()) {
+            return;
+        }
+        if (game.judgeStatus() == JudgeStatus.FAILED) {
+            refundHearts(sessionId);
+        }
+        gameRegistry.remove(sessionId);
     }
 
     /** 판정을 시작할 수 있는 최대 횟수 (처음 판정 + 재판정). */

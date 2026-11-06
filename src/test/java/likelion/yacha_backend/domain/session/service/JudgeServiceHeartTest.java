@@ -1,5 +1,7 @@
 package likelion.yacha_backend.domain.session.service;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,10 +18,12 @@ import likelion.yacha_backend.domain.heart.service.HeartService;
 import likelion.yacha_backend.domain.session.game.Game;
 import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.game.GameTimers;
+import likelion.yacha_backend.domain.session.game.JudgeStatus;
 import likelion.yacha_backend.domain.session.repository.DebateParticipantRepository;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -73,5 +77,45 @@ class JudgeServiceHeartTest {
 
         verify(game).failJudging();
         verify(heartService, never()).refund(SESSION_ID);
+    }
+
+    /** 판정 실패 뒤 걸린 삭제 타이머 작업. 실행기가 거절해도 삭제 타이머는 겁니다. */
+    private Runnable removalTask() {
+        ArgumentCaptor<Runnable> task = ArgumentCaptor.forClass(Runnable.class);
+        verify(gameTimers).schedule(eq(SESSION_ID), any(), task.capture());
+        return task.getValue();
+    }
+
+    private Runnable failedWithRunsLeft() {
+        when(gameRegistry.find(SESSION_ID)).thenReturn(Optional.of(game));
+        when(game.startJudging(MAX_RUNS)).thenReturn(true);
+        when(game.hasJudgeRunsLeft(MAX_RUNS)).thenReturn(true);
+        judgeService.start(SESSION_ID);
+        return removalTask();
+    }
+
+    @Test
+    @DisplayName("보관 시간이 끝날 때 판정 실패면 판정을 닫고 돌려준 뒤 지운다")
+    void refundsOnRemoval() {
+        Runnable removal = failedWithRunsLeft();
+        when(game.closeJudging()).thenReturn(true);
+        when(game.judgeStatus()).thenReturn(JudgeStatus.FAILED);
+
+        removal.run();
+
+        verify(heartService).refund(SESSION_ID);
+        verify(gameRegistry).remove(SESSION_ID);
+    }
+
+    @Test
+    @DisplayName("보관 시간이 끝나는 순간 재판정이 막 시작됐으면(닫지 못함) 돌려주지도 지우지도 않는다")
+    void skipsRemovalWhenRejudgeStarted() {
+        Runnable removal = failedWithRunsLeft();
+        when(game.closeJudging()).thenReturn(false);
+
+        removal.run();
+
+        verify(heartService, never()).refund(SESSION_ID);
+        verify(gameRegistry, never()).remove(SESSION_ID);
     }
 }
