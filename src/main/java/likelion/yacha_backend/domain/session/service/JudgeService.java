@@ -56,7 +56,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>재판정 횟수를 다 쓴 판정이 실패했을 때 — 바로 돌려줍니다.</li>
  *   <li>재판정이 남았는데 아무도 결과를 다시 조회하지 않아, 보관 시간이 끝날 때까지 {@code FAILED} 일 때 — 지울 때 돌려줍니다.</li>
  * </ul>
- * 돌려주기는 사용 기록마다 한 번뿐이라 두 경우가 겹쳐도 한 번만 돌려줍니다.
+ * 돌려주기는 사용 기록마다 한 번뿐이라 두 경우가 겹쳐도 한 번만 돌려줍니다. 바로 돌려주기가 실패해도 지울 때 다시 시도하고,
+ * 지울 때도 실패하면 게임을 지우지 않고 보관 시간마다 {@value #REFUND_MAX_ATTEMPTS}번까지 다시 시도합니다.
+ * 서버가 재시작되면 메모리의 게임과 함께 사라집니다.
  *
  * <p>대화 내용은 로그에 남기지 않습니다 (명세 1-5).
  */
@@ -64,6 +66,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 @EnableConfigurationProperties(JudgeProperties.class)
 public class JudgeService {
+
+    /** 보관 시간이 끝날 때 하트 돌려주기를 시도하는 최대 횟수. 실패하면 보관 시간마다 다시 시도합니다. */
+    static final int REFUND_MAX_ATTEMPTS = 3;
 
     private final GameRegistry gameRegistry;
     private final GameTimers gameTimers;
@@ -213,22 +218,37 @@ public class JudgeService {
      */
     private void scheduleRemoval(Long sessionId) {
         gameTimers.cancelAll(sessionId);
+        scheduleRemoval(sessionId, 1);
+    }
+
+    private void scheduleRemoval(Long sessionId, int attempt) {
         gameTimers.schedule(sessionId, LocalDateTime.now(clock).plus(properties.resultRetention()),
-                () -> removeAfterRetention(sessionId));
+                () -> removeAfterRetention(sessionId, attempt));
     }
 
     /**
      * 보관 시간이 끝난 게임을 지웁니다. 먼저 판정을 닫아({@link Game#closeJudging}) 그 뒤로는 재판정이 시작되지 않게 합니다.
      * 닫지 못했으면 결과 재조회로 재판정이 막 시작된 것이라 지우지 않습니다 — 그 판정이 끝나면 삭제 타이머를 다시 겁니다.
      * 닫았을 때 판정 실패면 끝내 실패한 것이라 쓴 하트를 돌려줍니다.
+     *
+     * <p>돌려주기가 실패하면(DB 일시 장애 등) 게임을 지우지 않고 보관 시간 뒤에 다시 시도합니다. 지우고 나면 판정 실패였다는
+     * 사실이 사라져 다시 돌려줄 수 없기 때문입니다. {@value #REFUND_MAX_ATTEMPTS}번 모두 실패하면 로그를 남기고 지웁니다.
+     *
+     * @param attempt 이번이 몇 번째 시도인지 (1부터)
      */
-    private void removeAfterRetention(Long sessionId) {
+    private void removeAfterRetention(Long sessionId, int attempt) {
         Game game = gameRegistry.find(sessionId).orElse(null);
         if (game == null || !game.closeJudging()) {
             return;
         }
-        if (game.judgeStatus() == JudgeStatus.FAILED) {
-            refundHearts(sessionId);
+        if (game.judgeStatus() == JudgeStatus.FAILED && !refundHearts(sessionId)) {
+            if (attempt < REFUND_MAX_ATTEMPTS) {
+                log.warn("[판정] 하트를 돌려주지 못해 게임을 남겨 두고 보관 시간 뒤 다시 시도합니다. ({}/{}) sessionId={}",
+                        attempt, REFUND_MAX_ATTEMPTS, sessionId);
+                scheduleRemoval(sessionId, attempt + 1);
+                return;
+            }
+            log.error("[판정] 하트를 끝내 돌려주지 못하고 게임을 지웁니다. sessionId={}", sessionId);
         }
         gameRegistry.remove(sessionId);
     }
@@ -238,12 +258,14 @@ public class JudgeService {
         return 1 + properties.maxRejudges();
     }
 
-    /** 판정이 끝내 실패한 판의 하트를 돌려줍니다. 실패해도 게임 정리는 이어갑니다. */
-    private void refundHearts(Long sessionId) {
+    /** 판정이 끝내 실패한 판의 하트를 돌려주고, 돌려줬으면 true 입니다. 실패해도 예외를 던지지 않습니다. */
+    private boolean refundHearts(Long sessionId) {
         try {
             heartService.refund(sessionId);
+            return true;
         } catch (RuntimeException e) {
             log.error("[판정] 판정 실패로 하트를 돌려주지 못했습니다. sessionId={}", sessionId, e);
+            return false;
         }
     }
 

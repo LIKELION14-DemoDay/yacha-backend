@@ -2,7 +2,9 @@ package likelion.yacha_backend.domain.session.service;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +13,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import likelion.yacha_backend.domain.ai.Judge;
@@ -79,11 +82,16 @@ class JudgeServiceHeartTest {
         verify(heartService, never()).refund(SESSION_ID);
     }
 
-    /** 판정 실패 뒤 걸린 삭제 타이머 작업. 실행기가 거절해도 삭제 타이머는 겁니다. */
+    /** 판정 실패 뒤 건 첫 삭제 타이머 작업. 실행기가 거절해도 삭제 타이머는 겁니다. */
     private Runnable removalTask() {
+        return removalTasks(1).get(0);
+    }
+
+    /** 지금까지 건 삭제 타이머 작업 {@code count} 개를 건 순서대로. */
+    private List<Runnable> removalTasks(int count) {
         ArgumentCaptor<Runnable> task = ArgumentCaptor.forClass(Runnable.class);
-        verify(gameTimers).schedule(eq(SESSION_ID), any(), task.capture());
-        return task.getValue();
+        verify(gameTimers, times(count)).schedule(eq(SESSION_ID), any(), task.capture());
+        return task.getAllValues();
     }
 
     private Runnable failedWithRunsLeft() {
@@ -117,5 +125,44 @@ class JudgeServiceHeartTest {
 
         verify(heartService, never()).refund(SESSION_ID);
         verify(gameRegistry, never()).remove(SESSION_ID);
+    }
+
+    @Test
+    @DisplayName("지울 때 돌려주기가 실패하면 게임을 남겨 두고 보관 시간 뒤 다시 시도한다")
+    void retriesFailedRefund() {
+        Runnable removal = failedWithRunsLeft();
+        when(game.closeJudging()).thenReturn(true);
+        when(game.judgeStatus()).thenReturn(JudgeStatus.FAILED);
+        doThrow(new IllegalStateException("DB 연결 끊김")).doNothing().when(heartService).refund(SESSION_ID);
+
+        removal.run();
+
+        verify(gameRegistry, never()).remove(SESSION_ID);
+        Runnable retry = removalTasks(2).get(1);
+
+        retry.run();
+
+        verify(heartService, times(2)).refund(SESSION_ID);
+        verify(gameRegistry).remove(SESSION_ID);
+    }
+
+    @Test
+    @DisplayName("돌려주기가 최대 횟수만큼 모두 실패하면 로그를 남기고 지운다")
+    void removesAfterMaxRefundAttempts() {
+        Runnable task = failedWithRunsLeft();
+        when(game.closeJudging()).thenReturn(true);
+        when(game.judgeStatus()).thenReturn(JudgeStatus.FAILED);
+        doThrow(new IllegalStateException("DB 연결 끊김")).when(heartService).refund(SESSION_ID);
+
+        for (int attempt = 1; attempt <= JudgeService.REFUND_MAX_ATTEMPTS; attempt++) {
+            task.run();
+            if (attempt < JudgeService.REFUND_MAX_ATTEMPTS) {
+                verify(gameRegistry, never()).remove(SESSION_ID);
+                task = removalTasks(attempt + 1).get(attempt);
+            }
+        }
+
+        verify(heartService, times(JudgeService.REFUND_MAX_ATTEMPTS)).refund(SESSION_ID);
+        verify(gameRegistry).remove(SESSION_ID);
     }
 }
