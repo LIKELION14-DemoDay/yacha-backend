@@ -110,7 +110,7 @@ public class JudgeService {
             judgeExecutor.execute(() -> run(sessionId, game));
         } catch (TaskRejectedException e) {
             log.error("[판정] 판정 대기열이 가득 차 시작하지 못했습니다. sessionId={}", sessionId);
-            game.failJudging();
+            fail(sessionId, game);
             scheduleRemoval(sessionId);
         }
         return true;
@@ -127,12 +127,20 @@ public class JudgeService {
             game.completeJudging(verdict);
         } catch (RuntimeException e) {
             log.error("[판정] 판정에 실패했습니다. sessionId={}", sessionId, e);
-            game.failJudging();
-            if (!game.hasJudgeRunsLeft(maxRuns())) {
-                refundHearts(sessionId);
-            }
+            fail(sessionId, game);
         } finally {
             scheduleRemoval(sessionId);
+        }
+    }
+
+    /**
+     * 판정을 실패로 둡니다. 재판정 횟수를 다 썼으면 끝내 실패한 것이라 하트를 바로 돌려줍니다.
+     * 판정 실행기가 마지막 재판정을 받지 못한 경우(대기열 가득 참)도 같습니다.
+     */
+    private void fail(Long sessionId, Game game) {
+        game.failJudging();
+        if (!game.hasJudgeRunsLeft(maxRuns())) {
+            refundHearts(sessionId);
         }
     }
 
