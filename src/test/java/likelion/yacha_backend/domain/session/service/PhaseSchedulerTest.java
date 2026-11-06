@@ -18,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import likelion.yacha_backend.domain.heart.service.HeartService;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.dto.FinalNoticeEvent;
@@ -65,6 +66,9 @@ class PhaseSchedulerTest extends TimerTestSupport {
 
     @Autowired
     private SessionMatchFacade sessionMatchFacade;
+
+    @Autowired
+    private HeartService heartService;
 
     @Autowired
     private Clock clock;
@@ -248,18 +252,25 @@ class PhaseSchedulerTest extends TimerTestSupport {
     }
 
     @Test
-    @DisplayName("입장 뒤 시간표 등록이 실패해도 입장은 성공하고, 방장은 MATCHED 를 받는다")
+    @DisplayName("입장 뒤 시간표 등록이 실패해도 입장은 성공하고 방장은 MATCHED 를 받으며, 게임은 바로 무효로 끝나 하트를 돌려받는다")
     void joinSucceedsWhenRegisterFails() {
         Long hostId = fixture.newUser();
+        Long joinerId = fixture.newUser();
         Long sessionId = sessionMatchFacade.create(hostId,
                 new SessionCreateRequest(RoomType.RANDOM, fixture.topic().getId(), Stance.AGREE));
         sessionIds.add(sessionId);
         doThrow(new IllegalStateException("등록 실패")).when(phaseScheduler).register(sessionId);
 
-        assertThat(sessionMatchFacade.join(fixture.newUser(), sessionId)).isEqualTo(sessionId);
+        assertThat(sessionMatchFacade.join(joinerId, sessionId)).isEqualTo(sessionId);
 
         verify(matchNotifier).matched(hostId, sessionId);
-        assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.IN_PROGRESS);
+        assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.FINISHED);
+        assertThat(session(sessionId).getFinishReason()).isEqualTo(FinishReason.ABORTED);
+        assertThat(gameRegistry.find(sessionId)).isEmpty();
+        verify(gameMessageService).broadcastEvent(eq(sessionId), argThat(event ->
+                event instanceof SessionFinishedEvent finished && finished.reason() == FinishReason.ABORTED));
+        assertThat(heartService.getMyHearts(hostId).hearts()).isEqualTo(3);
+        assertThat(heartService.getMyHearts(joinerId).hearts()).isEqualTo(3);
     }
 
     /** 조건이 맞을 때까지 잠깐씩 기다립니다. 시간 안에 맞지 않으면 실패합니다. */

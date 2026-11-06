@@ -34,6 +34,7 @@ public class SessionMatchFacade {
     private final HintService hintService;
     private final GameConnectionService gameConnectionService;
     private final SessionProposalService sessionProposalService;
+    private final GameExitService gameExitService;
 
     /**
      * 방 생성 → (커밋) → 대기 타이머 등록 (30초마다 팝업, 5분이면 취소).
@@ -160,9 +161,10 @@ public class SessionMatchFacade {
      * 구독해 둔 참가자 연결도 이때 인정합니다 ({@link GameConnectionService#connectSubscribed}).
      *
      * <p>세션은 이미 {@code IN_PROGRESS} 로 커밋됐으므로 여기서 실패해도 입장 · 봇전 · AI 전환은 성공으로 응답합니다
-     * ({@link #create} 와 같은 이유). 게임이나 타이머 없이 남은 세션은 주기 정리
-     * ({@link InProgressSessionCleaner#sweepOverdue}) 가 시간표가 끝난 뒤에 끝냅니다. 게임 · 시간표를 만들지 못하면
-     * 연결 인정 · 힌트 · 봇도 하지 않습니다 (게임이 없거나, 같은 세션에 게임이 이미 있는 버그 상황).
+     * ({@link #create} 와 같은 이유). 게임 · 시간표를 만들지 못하면 진행할 수 없는 게임이라 바로 무효({@code ABORTED})로 끝내고
+     * 쓴 하트를 돌려줍니다 ({@link GameExitService#abort}). 연결 인정 · 힌트 · 봇도 하지 않습니다 (게임이 없거나, 같은 세션에
+     * 게임이 이미 있는 버그 상황). 무효 처리마저 실패하면(DB 장애 등) 주기 정리({@link InProgressSessionCleaner#sweepOverdue})가
+     * 시간표가 끝난 뒤에 끝내고 하트를 돌려줍니다.
      */
     private void createGame(Matched matched) {
         try {
@@ -170,7 +172,8 @@ public class SessionMatchFacade {
                     matched.aiParticipantId());
             phaseScheduler.register(matched.sessionId());
         } catch (RuntimeException e) {
-            log.error("[게임 생성] 게임 · 시간표를 만들지 못했습니다. sessionId={}", matched.sessionId(), e);
+            log.error("[게임 생성] 게임 · 시간표를 만들지 못해 무효로 끝냅니다. sessionId={}", matched.sessionId(), e);
+            abortUnstarted(matched.sessionId());
             return;
         }
         try {
@@ -189,6 +192,15 @@ public class SessionMatchFacade {
             botService.start(matched.sessionId());
         } catch (RuntimeException e) {
             log.error("[봇] 일정을 등록하지 못했습니다. sessionId={}", matched.sessionId(), e);
+        }
+    }
+
+    /** 게임 · 시간표를 만들지 못한 세션을 무효로 끝내고 하트를 돌려줍니다. 실패하면 주기 정리에 맡깁니다. */
+    private void abortUnstarted(Long sessionId) {
+        try {
+            gameExitService.abort(sessionId);
+        } catch (RuntimeException e) {
+            log.error("[게임 생성] 무효로 끝내지 못했습니다. 주기 정리가 끝냅니다. sessionId={}", sessionId, e);
         }
     }
 }
