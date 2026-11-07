@@ -2,6 +2,7 @@ package likelion.yacha_backend.domain.session.service;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import likelion.yacha_backend.domain.heart.service.HeartService;
 import likelion.yacha_backend.domain.session.dto.SessionFinishedEvent;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebateResult;
@@ -32,6 +33,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>끝나면 남은 타이머를 취소하고 게임을 바로 메모리에서 지운 뒤 {@code SESSION_FINISHED} 를 보냅니다.
  * 몰수패 · 무효는 판정이 없어 대화를 남길 이유가 없습니다 (명세 1-5). 정리를 전송보다 먼저 해서 전송이 실패해도
  * 게임이 메모리에 남지 않습니다.
+ *
+ * <p><b>하트</b> — 무효면 종료와 같은 트랜잭션에서 쓴 하트를 돌려줍니다. 몰수패는 두 사람 모두 돌려주지 않습니다.
  */
 @Service
 public class GameExitService {
@@ -41,17 +44,19 @@ public class GameExitService {
     private final GameRegistry gameRegistry;
     private final GameTimers gameTimers;
     private final GameMessageService gameMessageService;
+    private final HeartService heartService;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
     public GameExitService(DebateSessionRepository sessionRepository, DebateParticipantRepository participantRepository,
                            GameRegistry gameRegistry, GameTimers gameTimers, GameMessageService gameMessageService,
-                           PlatformTransactionManager transactionManager, Clock clock) {
+                           HeartService heartService, PlatformTransactionManager transactionManager, Clock clock) {
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
         this.gameRegistry = gameRegistry;
         this.gameTimers = gameTimers;
         this.gameMessageService = gameMessageService;
+        this.heartService = heartService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -101,13 +106,18 @@ public class GameExitService {
 
     /**
      * 게임을 무효로 끝냅니다 — 양쪽 모두 끊김 · 봇전에서 봇이 글을 끝내 못 씀 ({@link BotService}).
-     * 승패는 NULL 입니다. 이미 끝난 세션이면 false 입니다.
+     * 승패는 NULL 이고, 쓴 하트는 돌려줍니다. 이미 끝난 세션이면 false 입니다.
      */
     boolean abort(Long sessionId) {
         LocalDateTime now = LocalDateTime.now(clock);
-        Integer finished = transactionTemplate.execute(
-                status -> sessionRepository.finishIfInProgress(sessionId, FinishReason.ABORTED, now));
-        if (finished == null || finished == 0) {
+        Boolean finished = transactionTemplate.execute(status -> {
+            if (sessionRepository.finishIfInProgress(sessionId, FinishReason.ABORTED, now) == 0) {
+                return false;
+            }
+            heartService.refund(sessionId);
+            return true;
+        });
+        if (!Boolean.TRUE.equals(finished)) {
             return false;
         }
         endGame(sessionId, FinishReason.ABORTED);

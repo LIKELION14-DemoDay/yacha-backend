@@ -18,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import likelion.yacha_backend.domain.heart.service.HeartService;
 import likelion.yacha_backend.domain.session.SessionFixture;
 import likelion.yacha_backend.domain.session.SessionFixture.Room;
 import likelion.yacha_backend.domain.session.dto.FinalNoticeEvent;
@@ -37,6 +38,7 @@ import likelion.yacha_backend.domain.session.game.GameRegistry;
 import likelion.yacha_backend.domain.session.game.JudgeStatus;
 import likelion.yacha_backend.domain.session.game.MessageType;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
+import likelion.yacha_backend.domain.topic.entity.Category;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -65,6 +67,9 @@ class PhaseSchedulerTest extends TimerTestSupport {
 
     @Autowired
     private SessionMatchFacade sessionMatchFacade;
+
+    @Autowired
+    private HeartService heartService;
 
     @Autowired
     private Clock clock;
@@ -248,18 +253,50 @@ class PhaseSchedulerTest extends TimerTestSupport {
     }
 
     @Test
-    @DisplayName("입장 뒤 시간표 등록이 실패해도 입장은 성공하고, 방장은 MATCHED 를 받는다")
+    @DisplayName("입장 뒤 시간표 등록이 실패해도 입장은 성공하고, 게임은 바로 무효로 끝나 하트를 돌려받으며 방장은 MATCHED 대신 WAIT_EXPIRED 를 받는다")
     void joinSucceedsWhenRegisterFails() {
         Long hostId = fixture.newUser();
+        Long joinerId = fixture.newUser();
         Long sessionId = sessionMatchFacade.create(hostId,
                 new SessionCreateRequest(RoomType.RANDOM, fixture.topic().getId(), Stance.AGREE));
         sessionIds.add(sessionId);
         doThrow(new IllegalStateException("등록 실패")).when(phaseScheduler).register(sessionId);
 
-        assertThat(sessionMatchFacade.join(fixture.newUser(), sessionId)).isEqualTo(sessionId);
+        assertThat(sessionMatchFacade.join(joinerId, sessionId)).isEqualTo(sessionId);
 
-        verify(matchNotifier).matched(hostId, sessionId);
-        assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.IN_PROGRESS);
+        verify(matchNotifier, never()).matched(hostId, sessionId);
+        verify(matchNotifier).waitExpired(hostId, sessionId);
+        assertAbortedAndRefunded(sessionId, hostId, joinerId);
+    }
+
+    @Test
+    @DisplayName("친구 방 입장 뒤 시간표 등록이 실패하면 게임은 바로 무효로 끝나고, 방장은 MATCHED 대신 INVITE_EXPIRED 를 받는다")
+    void joinFriendWhenRegisterFails() {
+        Long hostId = fixture.newMember();
+        Long friendId = fixture.newUser();
+        fixture.topic();
+        var created = sessionMatchFacade.createFriend(hostId, Category.ETHICS);
+        Long sessionId = created.sessionId();
+        sessionIds.add(sessionId);
+        doThrow(new IllegalStateException("등록 실패")).when(phaseScheduler).register(sessionId);
+
+        assertThat(sessionMatchFacade.joinFriend(friendId, created.inviteCode())).isEqualTo(sessionId);
+
+        verify(matchNotifier, never()).matched(hostId, sessionId);
+        verify(matchNotifier).inviteExpired(hostId, sessionId);
+        assertAbortedAndRefunded(sessionId, hostId, friendId);
+    }
+
+    /** 게임을 시작하지 못해 무효로 끝났고, 게임을 지운 뒤 SESSION_FINISHED 를 보냈으며, 두 사람 모두 하트를 돌려받았는지. */
+    private void assertAbortedAndRefunded(Long sessionId, Long... userIds) {
+        assertThat(session(sessionId).getStatus()).isEqualTo(SessionStatus.FINISHED);
+        assertThat(session(sessionId).getFinishReason()).isEqualTo(FinishReason.ABORTED);
+        assertThat(gameRegistry.find(sessionId)).isEmpty();
+        verify(gameMessageService).broadcastEvent(eq(sessionId), argThat(event ->
+                event instanceof SessionFinishedEvent finished && finished.reason() == FinishReason.ABORTED));
+        for (Long userId : userIds) {
+            assertThat(heartService.getMyHearts(userId).hearts()).isEqualTo(3);
+        }
     }
 
     /** 조건이 맞을 때까지 잠깐씩 기다립니다. 시간 안에 맞지 않으면 실패합니다. */
