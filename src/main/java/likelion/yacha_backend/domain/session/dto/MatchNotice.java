@@ -17,8 +17,12 @@ public record MatchNotice(Type type, Long sessionId, Long waitedSeconds) {
         MATCHED,
         /** 30초마다 — 첫 알림에 프론트가 "봇전으로 시작하기" 버튼을 띄우고 대기가 끝날 때까지 유지 */
         WAIT_PROMPT,
-        /** 대기 상한(5분) 도달 — 방은 이미 취소됨 */
+        /**
+         * 대기 상한(5분) 도달 — 방은 이미 취소됨.
+         * 상대가 들어왔지만 서버가 게임을 만들지 못해 무효로 끝났을 때도 보냅니다 (대기 화면을 닫음)
+         */
         WAIT_EXPIRED,
+        /** 친구 초대 코드 만료 — 방은 이미 취소됨. 친구가 들어왔지만 게임을 만들지 못해 무효로 끝났을 때도 보냅니다 */
         INVITE_EXPIRED
     }
 
