@@ -62,6 +62,7 @@ public class SessionController {
                     상대가 들어오면 `/user/queue/match` 로 `MATCHED` 가 옴 (방장은 승낙 없이 자동 수락)
                     로그인 필요 (게스트 가능)
                     이미 대기 · 진행 중인 토론이 있으면 `ALREADY_IN_SESSION`, 없거나 내린 주제면 `TOPIC_NOT_FOUND`
+                    하트가 0개면 `HEART_EXHAUSTED`. 방을 만들 때는 확인만 하고, 게임이 시작될 때 1개 깎임
                     """)
 
     @PostMapping
@@ -109,6 +110,7 @@ public class SessionController {
                     입장 성공 시 토론이 시작되고
                     방장에게 MATCHED 알림이 전송됩니다.
                     회원과 게스트 모두 입장할 수 있습니다.
+                    시작할 때 두 사람 모두 하트가 1개씩 깎이고, 입장하는 사람의 하트가 0개면 `HEART_EXHAUSTED` 입니다.
                     """)
     @PostMapping("/invite/{code}/join")
     public ApiResponse<SessionIdResponse> joinFriend(
@@ -192,6 +194,7 @@ public class SessionController {
                     동시에 들어오면 먼저 들어온 사람만 성공하고, 늦은 사람은 `SESSION_NOT_WAITING` (다시 제안을 요청)
                     로그인 필요 (게스트 가능)
                     내 방이면 `CANNOT_JOIN_OWN_ROOM`, 이미 대기 · 진행 중인 토론이 있으면 `ALREADY_IN_SESSION`
+                    시작할 때 두 사람 모두 하트가 1개씩 깎임. 입장하는 사람의 하트가 0개면 `HEART_EXHAUSTED` (방은 계속 기다림)
                     """)
     @PostMapping("/{sessionId}/join")
     public ApiResponse<SessionIdResponse> join(
@@ -212,6 +215,7 @@ public class SessionController {
 
                     방장만 (`NOT_ROOM_OWNER`), 그 사이 상대가 들어왔거나 취소된 방이면 `SESSION_NOT_WAITING`
                     방을 만든 지 30초가 안 됐으면 `BOT_NOT_AVAILABLE_YET`
+                    시작할 때 방장 하트가 1개 깎임 (봇은 하트 없음)
                     """)
     @PostMapping("/{sessionId}/ai")
     public ApiResponse<SessionIdResponse> convertToAi(

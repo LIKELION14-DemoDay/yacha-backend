@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import likelion.yacha_backend.domain.heart.service.HeartService;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
@@ -36,7 +37,8 @@ class InProgressSessionCleanerFailureTest {
     private final DebateSessionRepository sessionRepository = mock(DebateSessionRepository.class);
     private final InProgressSessionCleaner cleaner =
             new InProgressSessionCleaner(sessionRepository, mock(GameRegistry.class), mock(PhaseScheduler.class),
-                    new InProgressSweepProperties(Duration.ofMinutes(1)), new NoOpTransactionManager(), CLOCK);
+                    new InProgressSweepProperties(Duration.ofMinutes(1)), mock(HeartService.class),
+                    new NoOpTransactionManager(), CLOCK);
 
     private static DebateSession session(Long id) {
         DebateSession session = mock(DebateSession.class);

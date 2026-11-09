@@ -3,6 +3,7 @@ package likelion.yacha_backend.domain.session.service;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
+import likelion.yacha_backend.domain.heart.service.HeartService;
 import likelion.yacha_backend.domain.session.entity.DebatePhase;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.FinishReason;
@@ -43,6 +44,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 게임 생성 · 시간표 등록이 실패하면 세션이 {@code IN_PROGRESS} 로 남아 두 사람 모두 {@code ALREADY_IN_SESSION} 으로
  * 막힙니다. 시간표보다 정리 간격만큼 더 지났는데도 진행 중인 세션을, 게임이 메모리에 있으면 260초 종료와 같은 처리로
  * ({@link PhaseScheduler#finish}) 끝내고, 없으면 이어갈 수 없으므로 {@code ABORTED} 로 끝냅니다.
+ *
+ * <p>{@code ABORTED} 로 끝낸 세션은 같은 트랜잭션에서 쓴 하트를 돌려줍니다. 배포(재시작)로 끊긴 게임도 돌려받습니다.
  */
 @Slf4j
 @Service
@@ -53,6 +56,7 @@ public class InProgressSessionCleaner {
     private final GameRegistry gameRegistry;
     private final PhaseScheduler phaseScheduler;
     private final InProgressSweepProperties properties;
+    private final HeartService heartService;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
     /** 이 서버가 뜬 시각. 이보다 먼저 시작된 게임만 이전 서버의 게임입니다. */
@@ -60,11 +64,13 @@ public class InProgressSessionCleaner {
 
     public InProgressSessionCleaner(DebateSessionRepository sessionRepository, GameRegistry gameRegistry,
                                     PhaseScheduler phaseScheduler, InProgressSweepProperties properties,
-                                    PlatformTransactionManager transactionManager, Clock clock) {
+                                    HeartService heartService, PlatformTransactionManager transactionManager,
+                                    Clock clock) {
         this.sessionRepository = sessionRepository;
         this.gameRegistry = gameRegistry;
         this.phaseScheduler = phaseScheduler;
         this.properties = properties;
+        this.heartService = heartService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
         this.bootTime = LocalDateTime.now(clock);
@@ -117,8 +123,7 @@ public class InProgressSessionCleaner {
                 if (gameRegistry.find(sessionId).isPresent()) {
                     phaseScheduler.finish(sessionId);
                 } else {
-                    transactionTemplate.execute(
-                            status -> sessionRepository.finishIfInProgress(sessionId, FinishReason.ABORTED, now));
+                    abort(sessionId, now);
                 }
                 swept++;
             } catch (RuntimeException e) {
@@ -141,9 +146,7 @@ public class InProgressSessionCleaner {
         int aborted = 0;
         for (Long sessionId : sessionIds) {
             try {
-                Integer updated = transactionTemplate.execute(
-                        status -> sessionRepository.finishIfInProgress(sessionId, FinishReason.ABORTED, now));
-                if (updated != null && updated == 1) {
+                if (abort(sessionId, now)) {
                     aborted++;
                 }
             } catch (RuntimeException e) {
@@ -151,5 +154,16 @@ public class InProgressSessionCleaner {
             }
         }
         return aborted;
+    }
+
+    /** 진행 중이면 ABORTED 로 끝내고 쓴 하트를 돌려줍니다. 다른 쪽이 먼저 끝냈으면 false 입니다. */
+    private boolean abort(Long sessionId, LocalDateTime now) {
+        return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            if (sessionRepository.finishIfInProgress(sessionId, FinishReason.ABORTED, now) == 0) {
+                return false;
+            }
+            heartService.refund(sessionId);
+            return true;
+        }));
     }
 }
