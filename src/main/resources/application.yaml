@@ -263,3 +263,21 @@ adsense:
   site-domain: ${ADSENSE_SITE_DOMAIN:yachapan.cloud}
   token-encryption-key: ${ADSENSE_TOKEN_ENCRYPTION_KEY:}
   cookie-secure: ${ADSENSE_COOKIE_SECURE:true}
+
+paddle:
+  # 샌드박스 https://sandbox-api.paddle.com · 라이브 https://api.paddle.com
+  # 샌드박스와 라이브는 계정이 따로라 키 · 시크릿 · 가격 ID 를 모두 같이 바꿔야 함
+  base-url: ${PADDLE_BASE_URL:https://sandbox-api.paddle.com}
+  # 비밀 값이라 저장소에 적지 마세요. 없으면 결제 요청이 PAYMENT_NOT_CONFIGURED
+  api-key: ${PADDLE_API_KEY:}
+  # 알림 대상(notification destination)마다 따로 나오는 시크릿 (pdl_ntfset_...)
+  webhook-secret: ${PADDLE_WEBHOOK_SECRET:}
+  # 웹훅 서명 시각과 서버 시각 차이 허용 범위. Paddle SDK 기본값과 같음
+  webhook-tolerance: 5s
+  # 금액은 Paddle 대시보드의 가격에서 정함
+  premium-pass:
+    # 게임 무제한 (영구)
+    price-id: ${PADDLE_PREMIUM_PASS_PRICE_ID:}
+  attack-ticket:
+    # 채팅 공격권 1개
+    price-id: ${PADDLE_ATTACK_TICKET_PRICE_ID:}
