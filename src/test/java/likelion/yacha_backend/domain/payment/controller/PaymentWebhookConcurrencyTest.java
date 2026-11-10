@@ -21,6 +21,7 @@ import likelion.yacha_backend.domain.payment.client.PaddleClient;
 import likelion.yacha_backend.domain.payment.entity.Payment;
 import likelion.yacha_backend.domain.payment.entity.PaymentProduct;
 import likelion.yacha_backend.domain.payment.entity.PaymentStatus;
+import likelion.yacha_backend.domain.payment.repository.PaymentEventRepository;
 import likelion.yacha_backend.domain.payment.repository.PaymentRepository;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
@@ -63,11 +64,15 @@ class PaymentWebhookConcurrencyTest {
     @Autowired
     private PaymentRepository paymentRepository;
 
+    @Autowired
+    private PaymentEventRepository paymentEventRepository;
+
     @MockitoBean
     private PaddleClient paddleClient;
 
     private User buyer;
     private final List<Long> paymentIds = new ArrayList<>();
+    private final List<String> transactionIds = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -77,6 +82,10 @@ class PaymentWebhookConcurrencyTest {
 
     @AfterEach
     void cleanUp() {
+        // 결제 로그는 지우지 않는 테이블이지만 테스트가 남긴 행은 정리
+        for (String transactionId : transactionIds) {
+            paymentEventRepository.deleteAll(paymentEventRepository.findByTransactionIdOrderByIdAsc(transactionId));
+        }
         paymentRepository.deleteAllById(paymentIds);
         userRepository.deleteById(buyer.getId());
     }
@@ -85,6 +94,7 @@ class PaymentWebhookConcurrencyTest {
         String transactionId = "txn_" + UUID.randomUUID().toString().replace("-", "");
         Payment payment = paymentRepository.save(Payment.pending(buyer, product, transactionId));
         paymentIds.add(payment.getId());
+        transactionIds.add(transactionId);
         return transactionId;
     }
 
