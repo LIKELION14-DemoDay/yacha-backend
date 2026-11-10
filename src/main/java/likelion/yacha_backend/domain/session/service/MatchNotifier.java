@@ -32,6 +32,11 @@ public class MatchNotifier {
         send(hostUserId, MatchNotice.waitExpired(sessionId));
     }
 
+    /** 친구 초대 코드 만료 알림 */
+    public void inviteExpired(Long hostUserId, Long sessionId) {
+        send(hostUserId, MatchNotice.inviteExpired(sessionId));
+    }
+
     private void send(Long userId, MatchNotice notice) {
         messagingTemplate.convertAndSendToUser(String.valueOf(userId), MATCH_QUEUE, notice);
     }

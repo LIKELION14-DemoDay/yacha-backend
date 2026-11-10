@@ -12,6 +12,7 @@ import likelion.yacha_backend.domain.session.entity.RoomType;
 import likelion.yacha_backend.domain.session.entity.SessionMode;
 import likelion.yacha_backend.domain.session.entity.SessionStatus;
 import likelion.yacha_backend.domain.topic.entity.Topic;
+import likelion.yacha_backend.domain.session.service.WaitTimerProperties;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -54,18 +55,38 @@ public interface DebateSessionRepository extends JpaRepository<DebateSession, Lo
         return startIfWaiting(id, now, SessionStatus.WAITING, SessionStatus.IN_PROGRESS);
     }
 
-    /** 친구가 들어와 시작합니다. 주제도 이때 정해집니다. */
+    /**
+     * 친구 방 입장: 방 종류·대기 여부·초대 만료를 원자적 UPDATE 조건에서 재검증합니다.
+     * createdAfter는 호출 시각에서 공통 친구 방 유효 시간을 뺀 시각입니다.
+     */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update DebateSession s
-               set s.status = :inProgress, s.topic = :topic, s.startedAt = :now, s.updatedAt = :now
-             where s.id = :id and s.status = :waiting
+               set s.status = :inProgress,
+                   s.topic = :topic,
+                   s.startedAt = :now,
+                   s.updatedAt = :now
+             where s.id = :id
+               and s.roomType = :friend
+               and s.status = :waiting
+               and s.createdAt > :createdAfter
             """)
-    int startFriendIfWaiting(@Param("id") Long id, @Param("topic") Topic topic, @Param("now") LocalDateTime now,
-                             @Param("waiting") SessionStatus waiting, @Param("inProgress") SessionStatus inProgress);
+    int startFriendIfWaiting(
+            @Param("id") Long id,
+            @Param("topic") Topic topic,
+            @Param("now") LocalDateTime now,
+            @Param("createdAfter") LocalDateTime createdAfter,
+            @Param("friend") RoomType friend,
+            @Param("waiting") SessionStatus waiting,
+            @Param("inProgress") SessionStatus inProgress
+    );
 
+    /** 기존 테스트와 서비스 호출을 위한 3인자 오버로드. 만료는 동일한 상수를 사용합니다. */
     default int startFriendIfWaiting(Long id, Topic topic, LocalDateTime now) {
-        return startFriendIfWaiting(id, topic, now, SessionStatus.WAITING, SessionStatus.IN_PROGRESS);
+        return startFriendIfWaiting(
+                id, topic, now, now.minus(WaitTimerProperties.FRIEND_LIMIT),
+                RoomType.FRIEND, SessionStatus.WAITING, SessionStatus.IN_PROGRESS
+        );
     }
 
     /** 방장이 대기 중에 "AI와 대결" 을 골랐습니다. 대기열에서 바로 빠지고 봇전으로 시작합니다. */
@@ -156,4 +177,39 @@ public interface DebateSessionRepository extends JpaRepository<DebateSession, Lo
         return findWaitingRandomRoomsCreatedBefore(before, SessionStatus.WAITING, RoomType.RANDOM,
                 ParticipantRole.INITIATOR);
     }
+
+    /**
+     * 서버 재시작 복구 및 만료 정리를 위해
+     * 대기 중인 친구 방과 방장을 조회한다.
+     */
+    @Query("""
+            select new likelion.yacha_backend.domain.session.repository.WaitingRoom(
+                s.id, u.id, s.createdAt
+            )
+              from DebateParticipant p
+              join p.session s
+              left join p.user u
+             where s.status = :waiting
+               and s.roomType = :friend
+               and p.role = :initiator
+               and s.createdAt < :before
+            """)
+    List<WaitingRoom> findWaitingFriendRoomsCreatedBefore(
+            @Param("before") LocalDateTime before,
+            @Param("waiting") SessionStatus waiting,
+            @Param("friend") RoomType friend,
+            @Param("initiator") ParticipantRole initiator
+    );
+
+    default List<WaitingRoom> findWaitingFriendRoomsCreatedBefore(
+            LocalDateTime before
+    ) {
+        return findWaitingFriendRoomsCreatedBefore(
+                before,
+                SessionStatus.WAITING,
+                RoomType.FRIEND,
+                ParticipantRole.INITIATOR
+        );
+    }
+
 }

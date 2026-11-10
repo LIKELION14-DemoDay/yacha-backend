@@ -29,6 +29,17 @@ public enum SessionErrorCode implements BaseErrorCode {
     BOT_NOT_AVAILABLE_YET(HttpStatus.CONFLICT, "아직 봇전을 시작할 수 없습니다. 잠시 후 다시 시도해 주세요."),
     /** 아직 끝나지 않은(대기 · 진행 중 · 취소된) 토론의 결과를 조회함. */
     SESSION_NOT_FINISHED(HttpStatus.CONFLICT, "아직 끝나지 않은 토론입니다."),
+
+    INVALID_INVITE_CODE(
+            HttpStatus.NOT_FOUND,
+            "유효하지 않은 초대 코드입니다."
+    ),
+
+    INVITE_EXPIRED(
+            HttpStatus.GONE,
+            "만료된 초대 코드입니다."
+    ),
+
     ;
 
     private final HttpStatus status;

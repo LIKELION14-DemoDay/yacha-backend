@@ -199,19 +199,35 @@ class SessionMatchApiTest {
                     .andExpect(jsonPath("$.error.code").value("TOPIC_NOT_FOUND"));
         }
 
+
         @Test
-        @DisplayName("친구 방은 보류라 400, 빠진 값은 VALIDATION_FAILED")
+        @DisplayName("방 종류에 맞지 않는 요청은 VALIDATION_FAILED")
         void invalidRequest() throws Exception {
             Long userId = fixture.newUser();
 
-            createAs(userId, Role.USER, "{\"roomType\":\"FRIEND\",\"topicId\":1,\"stance\":\"AGREE\"}")
+            // FRIEND는 category가 필수이며
+            // topicId와 stance를 직접 지정할 수 없다.
+            createAs(
+                    userId,
+                    Role.USER,
+                    "{\"roomType\":\"FRIEND\",\"topicId\":1,\"stance\":\"AGREE\"}"
+            )
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
-            createAs(userId, Role.USER, "{\"roomType\":\"RANDOM\",\"stance\":\"AGREE\"}")
+                    .andExpect(jsonPath("$.error.code")
+                            .value("VALIDATION_FAILED"));
+
+            // RANDOM은 topicId와 stance가 필수이다.
+            createAs(
+                    userId,
+                    Role.USER,
+                    "{\"roomType\":\"RANDOM\",\"stance\":\"AGREE\"}"
+            )
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
-                    .andExpect(jsonPath("$.data.topicId").exists());
+                    .andExpect(jsonPath("$.error.code")
+                            .value("VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.data.validCombination").exists());
         }
+
     }
 
     @Nested
