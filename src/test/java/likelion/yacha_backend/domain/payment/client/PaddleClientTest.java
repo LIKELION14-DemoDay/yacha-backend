@@ -45,6 +45,7 @@ class PaddleClientTest {
         server.expect(requestTo(BASE_URL + "/transactions"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("Authorization", "Bearer pdl_sdbx_apikey_test"))
+                .andExpect(header("Paddle-Version", "1"))
                 .andExpect(content().json("""
                         {"items": [{"price_id": "pri_premium", "quantity": 1}],
                          "custom_data": {"user_id": "7"}}
@@ -86,6 +87,42 @@ class PaddleClientTest {
         server.expect(requestTo(BASE_URL + "/transactions")).andRespond(withServerError());
 
         assertThatThrownBy(() -> again.createTransaction("pri_premium", Map.of()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(PaymentErrorCode.PAYMENT_PROVIDER_ERROR);
+    }
+
+    @Test
+    @DisplayName("전체 환불을 요청하고 환불 ID · 상태를 돌려줌")
+    void createFullRefund() {
+        PaddleClient client = clientWith("pdl_sdbx_apikey_test");
+        server.expect(requestTo(BASE_URL + "/adjustments"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("Authorization", "Bearer pdl_sdbx_apikey_test"))
+                .andExpect(header("Paddle-Version", "1"))
+                .andExpect(content().json("""
+                        {"action": "refund", "type": "full", "transaction_id": "txn_01abc", "reason": "고객 요청"}
+                        """, org.springframework.test.json.JsonCompareMode.STRICT))
+                .andRespond(withSuccess("""
+                        {"data": {"id": "adj_01xyz", "action": "refund", "type": "full",
+                                  "transaction_id": "txn_01abc", "status": "pending_approval"}}
+                        """, MediaType.APPLICATION_JSON));
+
+        PaddleClient.RefundResult result = client.createFullRefund("txn_01abc", "고객 요청");
+
+        assertThat(result.adjustmentId()).isEqualTo("adj_01xyz");
+        assertThat(result.status()).isEqualTo("pending_approval");
+        assertThat(result.isApproved()).isFalse();
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("Paddle 이 환불을 거부하면 (승인 대기 중 환불 등) PAYMENT_PROVIDER_ERROR")
+    void refundRejectedByProvider() {
+        PaddleClient client = clientWith("key");
+        server.expect(requestTo(BASE_URL + "/adjustments")).andRespond(withStatus(HttpStatus.BAD_REQUEST));
+
+        assertThatThrownBy(() -> client.createFullRefund("txn_01abc", "고객 요청"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(PaymentErrorCode.PAYMENT_PROVIDER_ERROR);

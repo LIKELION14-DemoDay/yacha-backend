@@ -1,6 +1,7 @@
 package likelion.yacha_backend.domain.payment.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -16,7 +17,11 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.util.HexFormat;
 import likelion.yacha_backend.domain.payment.client.PaddleClient;
+import likelion.yacha_backend.domain.payment.entity.Payment;
+import likelion.yacha_backend.domain.payment.entity.PaymentEvent;
+import likelion.yacha_backend.domain.payment.entity.PaymentEventResult;
 import likelion.yacha_backend.domain.payment.entity.PaymentStatus;
+import likelion.yacha_backend.domain.payment.repository.PaymentEventRepository;
 import likelion.yacha_backend.domain.payment.repository.PaymentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +60,9 @@ class PaymentApiTest {
     @Autowired
     private PaymentRepository paymentRepository;
 
+    @Autowired
+    private PaymentEventRepository paymentEventRepository;
+
     @MockitoBean
     private PaddleClient paddleClient;
 
@@ -86,12 +94,19 @@ class PaymentApiTest {
         return JsonPath.read(result.getResponse().getContentAsString(), "$.data.transactionId");
     }
 
-    private static String completedEvent(String transactionId) {
+    static String completedEvent(String transactionId) {
+        return completedEvent("evt_" + transactionId, transactionId);
+    }
+
+    static String completedEvent(String eventId, String transactionId) {
         return """
-                {"event_id": "evt_%s", "event_type": "transaction.completed",
-                 "occurred_at": "2026-11-10T03:00:00.000000Z",
-                 "data": {"id": "%s", "status": "completed", "custom_data": {"user_id": "1"}}}
-                """.formatted(transactionId, transactionId);
+                {"event_id": "%s", "event_type": "transaction.completed",
+                 "occurred_at": "2026-11-10T03:00:00.000000Z", "notification_id": "ntf_1",
+                 "data": {"id": "%s", "status": "completed", "customer_id": "ctm_buyer",
+                          "currency_code": "USD", "invoice_number": "325-10001",
+                          "custom_data": {"user_id": "1"},
+                          "details": {"totals": {"subtotal": "450", "tax": "50", "total": "500", "grand_total": "500"}}}}
+                """.formatted(eventId, transactionId);
     }
 
     private ResultActions sendWebhook(String body) throws Exception {
@@ -102,7 +117,7 @@ class PaymentApiTest {
                 .content(body));
     }
 
-    private static String sign(long ts, String body) throws Exception {
+    static String sign(long ts, String body) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
         return HexFormat.of().formatHex(mac.doFinal((ts + ":" + body).getBytes(StandardCharsets.UTF_8)));
@@ -131,8 +146,14 @@ class PaymentApiTest {
 
         sendWebhook(completedEvent(transactionId)).andExpect(status().isOk());
 
-        assertThat(paymentRepository.findByPaddleTransactionId(transactionId))
-                .get().extracting("status").isEqualTo(PaymentStatus.COMPLETED);
+        Payment payment = paymentRepository.findByPaddleTransactionId(transactionId).orElseThrow();
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        // 환불 문의 대응용 결제 정보
+        assertThat(payment.getAmount()).isEqualTo("500");
+        assertThat(payment.getCurrencyCode()).isEqualTo("USD");
+        assertThat(payment.getPaddleCustomerId()).isEqualTo("ctm_buyer");
+        assertThat(payment.getInvoiceNumber()).isEqualTo("325-10001");
+        assertThat(payment.getCompletedAt()).isNotNull();
         myStatus().andExpect(jsonPath("$.data.premium").value(true));
     }
 
@@ -166,9 +187,17 @@ class PaymentApiTest {
 
         sendWebhook(body).andExpect(status().isOk());
         sendWebhook(body).andExpect(status().isOk());
+        // 다른 event_id 로 같은 거래 완료가 와도 (Paddle 이 새로 보낸 알림) 상태를 보고 넘어감
+        sendWebhook(completedEvent("evt_other", transactionId)).andExpect(status().isOk());
 
         myStatus().andExpect(jsonPath("$.data.attackTickets").value(1))
                 .andExpect(jsonPath("$.data.premium").value(false));
+        // 결제 로그: 같은 event_id 는 한 번만, 다른 event_id 는 IGNORED 로 남음
+        assertThat(paymentEventRepository.findByTransactionIdOrderByIdAsc(transactionId))
+                .extracting(PaymentEvent::getEventId, PaymentEvent::getResult)
+                .containsExactly(
+                        tuple("evt_" + transactionId, PaymentEventResult.APPLIED),
+                        tuple("evt_other", PaymentEventResult.IGNORED));
     }
 
     @Test
@@ -184,6 +213,8 @@ class PaymentApiTest {
                 .andExpect(jsonPath("$.error.code").value("INVALID_WEBHOOK_SIGNATURE"));
 
         myStatus().andExpect(jsonPath("$.data.attackTickets").value(0));
+        // 서명이 틀린 요청은 결제 로그에도 남기지 않음
+        assertThat(paymentEventRepository.findByTransactionIdOrderByIdAsc(transactionId)).isEmpty();
     }
 
     @Test
@@ -193,6 +224,17 @@ class PaymentApiTest {
                 {"event_id": "evt_x", "event_type": "transaction.created", "data": {"id": "txn_x"}}
                 """).andExpect(status().isOk());
         sendWebhook(completedEvent("txn_unknown")).andExpect(status().isOk());
+
+        // 처리하지 않아도 결제 로그에는 원본이 남음
+        assertThat(paymentEventRepository.findByTransactionIdOrderByIdAsc("txn_x"))
+                .singleElement()
+                .satisfies(event -> {
+                    assertThat(event.getEventType()).isEqualTo("transaction.created");
+                    assertThat(event.getResult()).isEqualTo(PaymentEventResult.IGNORED);
+                    assertThat(event.getPayload()).contains("\"event_id\": \"evt_x\"");
+                });
+        assertThat(paymentEventRepository.findByTransactionIdOrderByIdAsc("txn_unknown"))
+                .extracting(PaymentEvent::getResult).containsExactly(PaymentEventResult.IGNORED);
     }
 
     @Test

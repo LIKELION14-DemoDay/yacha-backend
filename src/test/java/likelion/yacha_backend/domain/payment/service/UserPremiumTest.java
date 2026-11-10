@@ -43,4 +43,19 @@ class UserPremiumTest {
 
         assertThat(user.getAttackTickets()).isEqualTo(2);
     }
+
+    @Test
+    @DisplayName("환불 회수: 프리미엄은 바로 해제, 공격권은 남은 게 없으면 회수하지 않음 (0 아래로 안 내려감)")
+    void revoke() {
+        User user = member();
+        user.grantPremium();
+        user.addAttackTicket();
+
+        user.revokePremium();
+
+        assertThat(user.isPremium()).isFalse();
+        assertThat(user.removeAttackTicket()).isTrue();
+        assertThat(user.removeAttackTicket()).isFalse();
+        assertThat(user.getAttackTickets()).isZero();
+    }
 }

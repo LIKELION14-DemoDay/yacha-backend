@@ -178,8 +178,25 @@ public class User extends BaseTimeEntity {
         this.premium = true;
     }
 
-    /** 채팅 공격권 결제 */
+    /** 채팅 공격권 결제 (환불이 거절돼 돌려줄 때도 씀) */
     public void addAttackTicket() {
         this.attackTickets += 1;
+    }
+
+    /** 프리미엄 패스 환불. 바로 해제 */
+    public void revokePremium() {
+        this.premium = false;
+    }
+
+    /**
+     * 공격권 환불로 1개 회수. 쓰기 전에만 환불되므로 남은 게 없으면 회수하지 않고 false
+     * (관리자 환불은 서비스에서 먼저 막음. 대시보드 환불 · 차지백처럼 막을 수 없는 경우에만 false 가 나옴)
+     */
+    public boolean removeAttackTicket() {
+        if (attackTickets <= 0) {
+            return false;
+        }
+        this.attackTickets -= 1;
+        return true;
     }
 }
