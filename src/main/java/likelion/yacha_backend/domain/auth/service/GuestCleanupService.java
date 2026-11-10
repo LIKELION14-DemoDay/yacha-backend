@@ -3,6 +3,7 @@ package likelion.yacha_backend.domain.auth.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import likelion.yacha_backend.domain.auth.repository.RefreshTokenStore;
+import likelion.yacha_backend.domain.heart.service.HeartService;
 import likelion.yacha_backend.domain.session.service.DebateParticipantService;
 import likelion.yacha_backend.domain.user.entity.User;
 import likelion.yacha_backend.domain.user.repository.UserRepository;
@@ -24,6 +25,7 @@ public class GuestCleanupService {
 
     private final UserRepository userRepository;
     private final DebateParticipantService participantService;
+    private final HeartService heartService;
     private final RefreshTokenStore refreshTokenStore;
     private final GuestCleanupProperties properties;
 
@@ -46,7 +48,8 @@ public class GuestCleanupService {
                 .toList();
         List<Long> deletable = stale.isEmpty() ? List.of() : lockStillGuests(stale);
         if (!deletable.isEmpty()) {
-            // 참가 기록이 users를 참조하므로 연결을 먼저 끊어야 지울 수 있음
+            // 참가 기록 · 하트가 users를 참조하므로 연결을 끊거나 먼저 지워야 계정을 지울 수 있음
+            heartService.deleteAllByUserIds(deletable);
             participantService.detachUsers(deletable);
             userRepository.deleteAllByIdInBatch(deletable);
         }

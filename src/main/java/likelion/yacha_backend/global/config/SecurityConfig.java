@@ -99,6 +99,8 @@ public class SecurityConfig {
             "/api/v1/users/me",
             // 랜덤 주제 등 로그인이 필요한 주제 조회
             "/api/v1/topics/**",
+            // 내 하트. 게스트도 게임을 하므로 하트가 있음
+            "/api/v1/hearts/me",
     };
 
     /** 서블릿 컨테이너 자동 등록을 끔 */

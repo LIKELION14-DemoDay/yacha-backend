@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.LocalDateTime;
 import java.util.List;
 import likelion.yacha_backend.domain.auth.repository.RefreshTokenStore;
+import likelion.yacha_backend.domain.heart.entity.HeartUse;
+import likelion.yacha_backend.domain.heart.entity.UserHeart;
+import likelion.yacha_backend.domain.heart.repository.HeartUseRepository;
+import likelion.yacha_backend.domain.heart.repository.UserHeartRepository;
 import likelion.yacha_backend.domain.session.entity.DebateParticipant;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.entity.Stance;
@@ -53,6 +57,12 @@ class GuestCleanupJobTest {
     private DebateParticipantRepository participantRepository;
 
     @Autowired
+    private UserHeartRepository userHeartRepository;
+
+    @Autowired
+    private HeartUseRepository heartUseRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     /** 15일 전에 만들어진 게스트 (기준은 14일) */
@@ -96,6 +106,23 @@ class GuestCleanupJobTest {
                 .extracting(DebateParticipant::getUser).isNull();
         // 상대(회원)의 참가 기록은 그대로
         assertThat(participantRepository.existsBySession_IdAndUser_Id(session.getId(), member.getId())).isTrue();
+    }
+
+    @Test
+    @DisplayName("하트 기록이 있어도 지워지고, 하트 행 · 사용 기록도 함께 지워진다 (FK)")
+    void deletesHeartsBeforeDelete() {
+        Long guestId = oldGuest();
+        User guest = userRepository.getReferenceById(guestId);
+        DebateSession session = sessionRepository.save(DebateSession.createRandom(newTopic()));
+        LocalDateTime now = LocalDateTime.now();
+        userHeartRepository.save(UserHeart.full(guest, 3, now));
+        heartUseRepository.save(HeartUse.of(session, guest, now));
+
+        guestCleanupJob.run();
+
+        assertThat(userRepository.existsById(guestId)).isFalse();
+        assertThat(userHeartRepository.existsById(guestId)).isFalse();
+        assertThat(heartUseRepository.findUnrefundedUserIds(session.getId())).isEmpty();
     }
 
     @Test
