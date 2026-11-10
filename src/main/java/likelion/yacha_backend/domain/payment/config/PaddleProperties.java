@@ -23,6 +23,10 @@ public record PaddleProperties(
         if (webhookTolerance == null) {
             webhookTolerance = Duration.ofSeconds(5);
         }
+        // 0 이하면 서버는 뜨지만 모든 웹훅이 서명 시각 검사에서 거부돼 결제가 조용히 반영되지 않음. 부팅에서 막음
+        if (webhookTolerance.isZero() || webhookTolerance.isNegative()) {
+            throw new IllegalArgumentException("paddle.webhook-tolerance 는 0보다 커야 합니다. value=" + webhookTolerance);
+        }
         if (premiumPass == null) {
             premiumPass = new Product(null);
         }
