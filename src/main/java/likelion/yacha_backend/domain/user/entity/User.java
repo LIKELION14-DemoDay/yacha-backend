@@ -84,6 +84,17 @@ public class User extends BaseTimeEntity {
             columnDefinition = "varchar(20) default 'NOT_STARTED' not null")
     private BalanceGameStatus balanceGameStatus = BalanceGameStatus.NOT_STARTED;
 
+    /**
+     * 프리미엄 패스를 샀는지. 사면 게임을 영구히 무제한으로 이용
+     * 기존 행은 ddl-auto 로 컬럼이 생길 때 기본값 false 가 채워짐
+     */
+    @Column(name = "premium", nullable = false, columnDefinition = "boolean default false not null")
+    private boolean premium = false;
+
+    /** 남은 채팅 공격권 수. 기존 행은 기본값 0 */
+    @Column(name = "attack_tickets", nullable = false, columnDefinition = "int default 0 not null")
+    private int attackTickets = 0;
+
     public static User createGuest(String nickname) {
         User user = new User();
         user.nickname = nickname;
@@ -160,5 +171,15 @@ public class User extends BaseTimeEntity {
     public void completeBalanceGame(PhilosopherType philosopherType) {
         this.philosopherType = Objects.requireNonNull(philosopherType, "philosopherType");
         this.balanceGameStatus = BalanceGameStatus.DONE;
+    }
+
+    /** 프리미엄 패스 결제. 이미 가졌으면 그대로 (중복 구매는 결제 요청에서 막음) */
+    public void grantPremium() {
+        this.premium = true;
+    }
+
+    /** 채팅 공격권 결제 */
+    public void addAttackTicket() {
+        this.attackTickets += 1;
     }
 }

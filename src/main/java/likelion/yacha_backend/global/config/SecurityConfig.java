@@ -56,6 +56,8 @@ public class SecurityConfig {
             "/actuator/health",
             // Google AdSense OAuth 콜백
             "/api/v1/adsense/oauth/callback",
+            // Paddle 결제 웹훅. Paddle 이 부르므로 로그인 대신 Paddle-Signature 서명으로 막음
+            "/api/v1/payments/paddle/webhook",
     };
 
     /**
