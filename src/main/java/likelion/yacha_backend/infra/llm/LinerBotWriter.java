@@ -218,8 +218,9 @@ public class LinerBotWriter implements BotWriter {
      * BotService에서 담당한다.
      *
      * 프롬프트로는 70~90자를 요청하고, 그래도 100자를 넘으면
-     * 자르지 않고 한 번 더 요청한다. 다시 받은 대답도 넘으면
-     * 다시 시도할 수 있는 예외를 던져 BotService 의 재시도 · 준비된 대답으로 넘긴다.
+     * 자르지 않고 한 번 더 요청한다 (요청은 최대 2번). 다시 받은 대답도 넘으면
+     * 다시 시도할 수 없는 예외를 던져 BotService 가 다시 부르지 않고 바로 준비된 대답을 보내게 한다.
+     * 다시 시도할 수 있게 던지면 BotService 가 1초 뒤 이 메서드를 다시 불러 요청이 4번까지 늘어난다.
      *
      * @return 100자 이내의 채팅 발언
      */
@@ -332,12 +333,12 @@ public class LinerBotWriter implements BotWriter {
             return retried;
         }
 
-        log.warn("[봇] 다시 요청한 채팅 대답도 {}자로 {}자를 넘었습니다. (처음 {}자)",
+        log.warn("[봇] 다시 요청한 채팅 대답도 {}자로 {}자를 넘어 준비된 문장으로 넘깁니다. (처음 {}자)",
                 retriedLength, CHAT_MAX_LENGTH, length);
 
         throw new AiException(
                 "BOT_CHAT_TOO_LONG: " + retriedLength + "자",
-                true
+                false
         );
     }
 

@@ -8,7 +8,8 @@ import likelion.yacha_backend.domain.session.entity.Stance;
  *
  * <p>실패하면 예외를 던지세요. 재시도와 실패 처리(임시 글 · 실패 글 · 준비된 대답)는 부르는 쪽이 합니다.
  * 글자 수 상한은 구현체가 지킵니다. 주장 · 반론은 AI 응답이 넘으면 구현체가 잘라서 돌려주고,
- * 채팅 대답은 자르면 말이 끊겨 보이므로 다시 요청하고, 그래도 넘으면 다시 시도할 수 있는 {@link AiException} 을 던지세요.
+ * 채팅 대답은 자르면 말이 끊겨 보이므로 한 번만 다시 요청하고(최대 2번), 그래도 넘으면 다시 시도할 수 없는
+ * {@link AiException} 을 던지세요. 부르는 쪽이 다시 부르지 않고 바로 준비된 대답을 보냅니다.
  */
 public interface BotWriter {
 

@@ -283,7 +283,7 @@ class LinerBotWriterTest {
     }
 
     @Test
-    @DisplayName("다시 요청해도 100자를 넘으면 다시 시도할 수 있는 예외를 던진다")
+    @DisplayName("다시 요청해도 100자를 넘으면 더 요청하지 않고 다시 시도할 수 없는 예외를 던진다 (요청 최대 2번)")
     void replyStillTooLongThrows() {
         List<String> labels = new ArrayList<>();
 
@@ -300,7 +300,7 @@ class LinerBotWriterTest {
         )
                 .isInstanceOf(AiException.class)
                 .satisfies(error ->
-                        assertThat(((AiException) error).isRetryable()).isTrue()
+                        assertThat(((AiException) error).isRetryable()).isFalse()
                 );
 
         assertThat(labels).containsExactly("bot-chat", "bot-chat-retry");
