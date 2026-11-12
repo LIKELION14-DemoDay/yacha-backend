@@ -7,12 +7,14 @@ import likelion.yacha_backend.domain.session.entity.Stance;
  * 봇전의 봇이 쓰는 글 (명세 2-4). 봇도 사람과 같은 시간표 · 글자 수로 주장 · 반론을 쓰고, 채팅에 대답합니다.
  *
  * <p>실패하면 예외를 던지세요. 재시도와 실패 처리(임시 글 · 실패 글 · 준비된 대답)는 부르는 쪽이 합니다.
- * 글자 수 상한은 구현체가 지킵니다. AI 응답이 넘으면 구현체가 잘라서 돌려주세요.
+ * 글자 수 상한은 구현체가 지킵니다. 주장 · 반론은 AI 응답이 넘으면 구현체가 잘라서 돌려주고,
+ * 채팅 대답은 자르면 말이 끊겨 보이므로 한 번만 다시 요청하고(최대 2번), 그래도 넘으면 다시 시도할 수 없는
+ * {@link AiException} 을 던지세요. 부르는 쪽이 다시 부르지 않고 바로 준비된 대답을 보냅니다.
  */
 public interface BotWriter {
 
-    /** 봇 채팅 한 건의 글자 수 상한. 사람(100자)보다 짧습니다. */
-    int CHAT_MAX_LENGTH = 50;
+    /** 봇 채팅 한 건의 글자 수 상한. 사람({@code game.chat-max-length}, 100자)과 같습니다. */
+    int CHAT_MAX_LENGTH = 100;
 
     /**
      * PREP 에 제출할 주장. 사람과 같은 상한({@code game.argument-max-length}, 200자)입니다.

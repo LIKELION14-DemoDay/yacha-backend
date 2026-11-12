@@ -77,7 +77,7 @@ class StubAiTest {
         }
 
         @Test
-        @DisplayName("채팅 대답은 50자 이내이고, 봇이 대답한 수에 따라 다음 문장으로 넘어간다")
+        @DisplayName("채팅 대답은 100자 이내이고, 봇이 대답한 수에 따라 다음 문장으로 넘어간다")
         void reply() {
             Long botId = 2L;
             List<AiMessage> conversation = new ArrayList<>();

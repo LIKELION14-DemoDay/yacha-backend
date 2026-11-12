@@ -5,11 +5,14 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 
+import likelion.yacha_backend.domain.ai.AiException;
 import likelion.yacha_backend.domain.ai.AiMessage;
 import likelion.yacha_backend.domain.ai.AiTopic;
 import likelion.yacha_backend.domain.ai.BotWriter;
 import likelion.yacha_backend.domain.session.entity.Stance;
 import likelion.yacha_backend.infra.liner.LinerProperties;
+
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -24,6 +27,7 @@ import org.springframework.stereotype.Component;
  * 게임 서비스에서 담당한다.
  *
  */
+@Slf4j
 @Component
 @ConditionalOnProperty(
         prefix = "ai",
@@ -35,6 +39,13 @@ public class LinerBotWriter implements BotWriter {
     private static final int ARGUMENT_MAX_LENGTH = 200;
     private static final int REBUTTAL_MAX_LENGTH = 250;
     private static final int MAX_HISTORY_MESSAGES = 40;
+
+    /** 채팅 대답이 상한을 넘었을 때 다시 요청하며 덧붙이는 지침 */
+    private static final String CHAT_TOO_LONG_RULE = """
+
+            방금 작성한 대답이 %d자로 %d자를 넘었습니다.
+            같은 내용을 더 짧게, 반드시 %d자 이내로 다시 작성하세요.
+            """;
 
     private static final String COMMON_RULES = """
             당신은 한국어로 철학적 주제를 토론하는 AI 참가자입니다.
@@ -206,7 +217,12 @@ public class LinerBotWriter implements BotWriter {
      * 호출 시점, 지연 시간 및 재시도 여부는
      * BotService에서 담당한다.
      *
-     * @return 50자 이내의 채팅 발언
+     * 프롬프트로는 70~90자를 요청하고, 그래도 100자를 넘으면
+     * 자르지 않고 한 번 더 요청한다 (요청은 최대 2번). 다시 받은 대답도 넘으면
+     * 다시 시도할 수 없는 예외를 던져 BotService 가 다시 부르지 않고 바로 준비된 대답을 보내게 한다.
+     * 다시 시도할 수 있게 던지면 BotService 가 1초 뒤 이 메서드를 다시 불러 요청이 4번까지 늘어난다.
+     *
+     * @return 100자 이내의 채팅 발언
      */
     @Override
     public String reply(
@@ -251,7 +267,8 @@ public class LinerBotWriter implements BotWriter {
                 지금은 실시간 채팅 토론 단계입니다.
                 상대방의 최근 채팅 발언에 직접 응답하세요.
                 같은 말을 반복하거나 불필요하게 길게 설명하지 마세요.
-                반드시 50자 이내로 작성하세요.
+                70~90자 정도의 한두 문장으로 작성하고,
+                100자를 넘기지 마세요.
                 """
                 : """
 
@@ -260,7 +277,8 @@ public class LinerBotWriter implements BotWriter {
                 공개된 주장과 반론을 참고하여 먼저 자연스럽게 말을 거세요.
                 상대방의 의견을 묻거나 논점을 제시하면서 대화를 시작하세요.
                 이미 상대방이 채팅한 것처럼 꾸미지 마세요.
-                반드시 50자 이내로 작성하세요.
+                70~90자 정도의 한두 문장으로 작성하고,
+                100자를 넘기지 마세요.
                 """);
 
         String userContent = """
@@ -281,13 +299,66 @@ public class LinerBotWriter implements BotWriter {
                 )
         );
 
-        String response = fastClient.request(
+        String response = requireNotBlank(fastClient.request(
                 systemPrompt,
                 userContent,
                 "bot-chat"
-        );
+        ));
 
-        return truncate(response, CHAT_MAX_LENGTH);
+        int length = codePointLength(response);
+
+        if (length <= CHAT_MAX_LENGTH) {
+            return response;
+        }
+
+        // 자르면 말이 끊겨 보이므로 더 짧게 다시 요청한다.
+        log.info("[봇] 채팅 대답이 {}자로 {}자를 넘어 다시 요청합니다.",
+                length, CHAT_MAX_LENGTH);
+
+        String retried = requireNotBlank(fastClient.request(
+                systemPrompt + CHAT_TOO_LONG_RULE.formatted(
+                        length,
+                        CHAT_MAX_LENGTH,
+                        CHAT_MAX_LENGTH
+                ),
+                userContent,
+                "bot-chat-retry"
+        ));
+
+        int retriedLength = codePointLength(retried);
+
+        if (retriedLength <= CHAT_MAX_LENGTH) {
+            log.info("[봇] 다시 요청한 채팅 대답은 {}자로 상한 안에 들어왔습니다.",
+                    retriedLength);
+            return retried;
+        }
+
+        log.warn("[봇] 다시 요청한 채팅 대답도 {}자로 {}자를 넘어 준비된 문장으로 넘깁니다. (처음 {}자)",
+                retriedLength, CHAT_MAX_LENGTH, length);
+
+        throw new AiException(
+                "BOT_CHAT_TOO_LONG: " + retriedLength + "자",
+                false
+        );
+    }
+
+    private String requireNotBlank(String text) {
+        String trimmed = Objects.requireNonNull(
+                text,
+                "AI 응답이 null입니다."
+        ).trim();
+
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "AI 응답이 비어 있습니다."
+            );
+        }
+
+        return trimmed;
+    }
+
+    private int codePointLength(String text) {
+        return text.codePointCount(0, text.length());
     }
 
     /**
