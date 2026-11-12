@@ -3,6 +3,8 @@ package likelion.yacha_backend.domain.session.service;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import likelion.yacha_backend.domain.session.entity.DebateSession;
 import likelion.yacha_backend.domain.session.game.GameTimers;
 import likelion.yacha_backend.domain.session.repository.DebateSessionRepository;
@@ -14,7 +16,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 랜덤 방의 대기 타이머 (명세 2-3-2). {@code created_at} 기준으로
  * <ul>
- *   <li>30초마다 방장에게 {@code WAIT_PROMPT} — 첫 알림부터 "봇전으로 시작하기" 버튼이 뜸 (그 전 AI 전환은 거부)</li>
+ *   <li>10초 · 30초 · 60초 … 에 방장에게 {@code WAIT_PROMPT} — 첫 알림(10초)부터 "봇전으로 시작하기" 버튼이 뜸
+ *       (그 전 AI 전환은 거부). 첫 알림 뒤로는 방을 만든 시각 기준 30초마다</li>
  *   <li>5분이 되면 방을 취소({@code CANCELLED})하고 {@code WAIT_EXPIRED}</li>
  * </ul>
  * 방장이 떠난 방도 5분 뒤에는 정리되므로, 대기열에 버려진 방이 남지 않습니다.
@@ -58,10 +61,9 @@ public class WaitTimerService {
      * @param hostUserId 방장. 게스트 정리로 계정이 지워졌으면 null — 알림 없이 취소만 합니다
      */
     public void register(Long sessionId, Long hostUserId, LocalDateTime createdAt) {
-        Duration interval = properties.promptInterval();
         LocalDateTime expiresAt = createdAt.plus(properties.limit());
         LocalDateTime now = LocalDateTime.now(clock);
-        for (LocalDateTime at = createdAt.plus(interval); at.isBefore(expiresAt); at = at.plus(interval)) {
+        for (LocalDateTime at : promptTimes(createdAt)) {
             if (at.isBefore(now)) {
                 continue;
             }
@@ -111,5 +113,25 @@ public class WaitTimerService {
             matchNotifier.waitExpired(hostUserId, sessionId);
         }
         return true;
+    }
+
+    /**
+     * 팝업 시각. 첫 알림(10초) 뒤 방을 만든 시각 기준 간격(30초)마다 — 10초 · 30초 · 60초 … 상한 전까지.
+     * 첫 알림이 간격과 같으면 한 번만 넣습니다.
+     */
+    List<LocalDateTime> promptTimes(LocalDateTime createdAt) {
+        Duration interval = properties.promptInterval();
+        LocalDateTime first = createdAt.plus(properties.firstPromptDelay());
+        LocalDateTime expiresAt = createdAt.plus(properties.limit());
+        List<LocalDateTime> times = new ArrayList<>();
+        if (first.isBefore(expiresAt)) {
+            times.add(first);
+        }
+        for (LocalDateTime at = createdAt.plus(interval); at.isBefore(expiresAt); at = at.plus(interval)) {
+            if (at.isAfter(first)) {
+                times.add(at);
+            }
+        }
+        return times;
     }
 }

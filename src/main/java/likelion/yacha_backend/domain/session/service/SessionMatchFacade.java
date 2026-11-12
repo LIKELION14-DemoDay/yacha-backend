@@ -35,7 +35,7 @@ public class SessionMatchFacade {
     private final SessionProposalService sessionProposalService;
 
     /**
-     * 방 생성 → (커밋) → 대기 타이머 등록 (30초마다 팝업, 5분이면 취소).
+     * 방 생성 → (커밋) → 대기 타이머 등록 (10초 · 30초 · 60초 … 팝업, 5분이면 취소).
      *
      * <p>방은 이미 커밋됐으므로 타이머 등록이 실패해도 생성은 성공으로 응답합니다. 실패로 응답하면 사용자는 방이
      * 생긴 줄 모르고, 다시 만들려다 {@code ALREADY_IN_SESSION} 을 받습니다. 타이머 없이 남은 방은 주기 정리

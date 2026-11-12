@@ -150,12 +150,12 @@ public class SessionController {
                     기다리던 내 방을 봇전으로 바꿔 바로 시작 (`IN_PROGRESS`). 봇전은 이 경로뿐 (방장이 대기 중일 때만)
                     내 입장은 그대로, 봇은 반대. 즉시 대기열에서 빠짐. 응답을 받으면 토론방을 구독하고 `/state` 로 구간을 맞춤
 
-                    언제 부르나: 방을 만들고 30초가 되면 첫 `WAIT_PROMPT` 가 옴 → "봇전으로 시작하기" 버튼을 띄우고 5분 대기가 끝날 때까지 유지, 누르면 부름
-                    - `WAIT_PROMPT` 는 30초마다 계속 옴. 새로고침 · 재접속 뒤 버튼을 다시 띄우는 데 씀
+                    언제 부르나: 방을 만들고 10초가 되면 첫 `WAIT_PROMPT` 가 옴 → "봇전으로 시작하기" 버튼을 띄우고 5분 대기가 끝날 때까지 유지, 누르면 부름
+                    - `WAIT_PROMPT` 는 그 뒤 30초 · 60초 · 90초 … 에 계속 옴 (`waitedSeconds` 10 → 30 → 60 …). 새로고침 · 재접속 뒤 버튼을 다시 띄우는 데 씀
                     - 상대가 봇이라 `MATCHED` 알림은 오지 않음
 
                     방장만 (`NOT_ROOM_OWNER`), 그 사이 상대가 들어왔거나 취소된 방이면 `SESSION_NOT_WAITING`
-                    방을 만든 지 30초가 안 됐으면 `BOT_NOT_AVAILABLE_YET`
+                    방을 만든 지 10초가 안 됐으면 `BOT_NOT_AVAILABLE_YET`
                     """)
     @PostMapping("/{sessionId}/ai")
     public ApiResponse<SessionIdResponse> convertToAi(

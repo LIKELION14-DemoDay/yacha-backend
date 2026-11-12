@@ -414,7 +414,7 @@ class SessionMatchApiTest {
     class ConvertToAi {
 
         /** 봇전 버튼이 뜨는 시각 (첫 {@code WAIT_PROMPT}). 이만큼 기다린 방만 전환됩니다. */
-        private static final long BOT_AVAILABLE_SECONDS = 30;
+        private static final long BOT_AVAILABLE_SECONDS = 10;
 
         @Test
         @DisplayName("방장이 전환하면 AI 모드로 바로 시작하고, 봇은 방장의 반대 입장이다")
@@ -453,7 +453,7 @@ class SessionMatchApiTest {
         }
 
         @Test
-        @DisplayName("방을 만든 지 30초가 안 됐으면 BOT_NOT_AVAILABLE_YET, 방은 그대로 대기 중")
+        @DisplayName("방을 만든 지 10초가 안 됐으면 BOT_NOT_AVAILABLE_YET, 방은 그대로 대기 중")
         void beforeBotAvailable() throws Exception {
             Room fresh = fixture.waitingRandom();
             Room almost = fixture.waitingRandom(BOT_AVAILABLE_SECONDS - 5);
@@ -481,7 +481,7 @@ class SessionMatchApiTest {
         }
 
         @Test
-        @DisplayName("이미 상대가 들어왔거나 취소된 방이면 30초 전이어도 SESSION_NOT_WAITING")
+        @DisplayName("이미 상대가 들어왔거나 취소된 방이면 10초 전이어도 SESSION_NOT_WAITING")
         void notWaiting() throws Exception {
             Room matched = fixture.waitingRandom();
             joinAs(fixture.newUser(), matched.sessionId()).andExpect(status().isOk());

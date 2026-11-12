@@ -172,7 +172,7 @@ public class SessionFixture {
     }
 
     /**
-     * {@code waitedSeconds} 초 전에 만든 대기 방. AI 전환은 방을 만들고 30초가 지나야 받으므로 그 테스트에서 씁니다.
+     * {@code waitedSeconds} 초 전에 만든 대기 방. AI 전환은 방을 만들고 10초가 지나야 받으므로 그 테스트에서 씁니다.
      * 생성 시각은 Auditing 이 넣어서 SQL 로 과거로 돌립니다.
      */
     public Room waitingRandom(long waitedSeconds) {

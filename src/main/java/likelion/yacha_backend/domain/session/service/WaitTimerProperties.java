@@ -11,13 +11,15 @@ import org.springframework.validation.annotation.Validated;
  *
  * <p>값이 빠지면 대기 방이 정리되지 않으므로 {@code @NotNull} 로 기동 단계에서 실패시킵니다.
  *
- * @param promptInterval {@code WAIT_PROMPT} 간격 (30초). 방을 만들고 이만큼 지나야 AI 전환을 받습니다
+ * @param firstPromptDelay 첫 {@code WAIT_PROMPT} 시각 (10초). 방을 만들고 이만큼 지나야 AI 전환을 받습니다
+ * @param promptInterval   그 뒤 {@code WAIT_PROMPT} 간격 (30초). 방을 만든 시각 기준 30초 · 60초 … 에 보냅니다
  * @param limit          대기 상한. 지나면 방을 취소하고 {@code WAIT_EXPIRED} (5분)
  * @param sweepInterval  주기 정리 간격 (1분). 상한보다 이만큼 더 지났는데도 대기 중인 방을 취소합니다
  */
 @Validated
 @ConfigurationProperties(prefix = "game.wait")
 public record WaitTimerProperties(
+        @NotNull Duration firstPromptDelay,
         @NotNull Duration promptInterval,
         @NotNull Duration limit,
         @NotNull Duration sweepInterval
@@ -30,6 +32,15 @@ public record WaitTimerProperties(
     @AssertTrue(message = "game.wait.prompt-interval 은 1초 이상이어야 합니다.")
     public boolean isPromptIntervalValid() {
         return promptInterval == null || promptInterval.compareTo(Duration.ofSeconds(1)) >= 0;
+    }
+
+    /** 첫 알림은 1초 이상, 간격 이하여야 합니다. 간격보다 늦으면 첫 알림이 두 번째 알림보다 늦게 나갑니다. */
+    @AssertTrue(message = "game.wait.first-prompt-delay 는 1초 이상, prompt-interval 이하여야 합니다.")
+    public boolean isFirstPromptDelayValid() {
+        if (firstPromptDelay == null || promptInterval == null) {
+            return true;
+        }
+        return firstPromptDelay.compareTo(Duration.ofSeconds(1)) >= 0 && firstPromptDelay.compareTo(promptInterval) <= 0;
     }
 
     /** 0 이하면 정리 작업이 쉬지 않고 돕니다. */

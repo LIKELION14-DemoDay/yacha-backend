@@ -122,7 +122,7 @@ public class SessionCommandService {
 
     /**
      * 방장이 기다리던 방을 봇전으로 바꿉니다. AI 는 방장의 반대 입장입니다.
-     * 방을 만들고 첫 대기 알림({@code WAIT_PROMPT}, 30초)이 나가기 전이면 {@code BOT_NOT_AVAILABLE_YET} 입니다.
+     * 방을 만들고 첫 대기 알림({@code WAIT_PROMPT}, 10초)이 나가기 전이면 {@code BOT_NOT_AVAILABLE_YET} 입니다.
      * 그 순간 사람이 들어와도 조건부 UPDATE 로 한쪽만 성공하고, 늦은 쪽은 {@code SESSION_NOT_WAITING} 입니다.
      */
     public Matched convertToAi(Long userId, Long sessionId) {
@@ -137,7 +137,7 @@ public class SessionCommandService {
             throw new BusinessException(SessionErrorCode.SESSION_NOT_WAITING);
         }
         // 봇전 버튼은 첫 대기 알림과 같이 뜹니다. 그 전에 부르면 버튼 없이 부른 것이라 막습니다.
-        if (LocalDateTime.now(clock).isBefore(session.getCreatedAt().plus(waitTimerProperties.promptInterval()))) {
+        if (LocalDateTime.now(clock).isBefore(session.getCreatedAt().plus(waitTimerProperties.firstPromptDelay()))) {
             throw new BusinessException(SessionErrorCode.BOT_NOT_AVAILABLE_YET);
         }
 
