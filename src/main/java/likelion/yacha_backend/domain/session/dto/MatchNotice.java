@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *
  * @param type          알림 종류
  * @param sessionId     방장의 방
- * @param waitedSeconds {@code WAIT_PROMPT} 만 — 방을 만든 뒤 기다린 초 (30, 60, …)
+ * @param waitedSeconds {@code WAIT_PROMPT} 만 — 방을 만든 뒤 기다린 초 (10, 30, 60, …)
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record MatchNotice(Type type, Long sessionId, Long waitedSeconds) {
@@ -15,7 +15,7 @@ public record MatchNotice(Type type, Long sessionId, Long waitedSeconds) {
     public enum Type {
         /** 상대가 들어와 게임이 시작됨. 방장은 승낙 없이 자동 수락됩니다 */
         MATCHED,
-        /** 30초마다 — 첫 알림에 프론트가 "봇전으로 시작하기" 버튼을 띄우고 대기가 끝날 때까지 유지 */
+        /** 10초 · 30초 · 60초 … — 첫 알림에 프론트가 "봇전으로 시작하기" 버튼을 띄우고 대기가 끝날 때까지 유지 */
         WAIT_PROMPT,
         /** 대기 상한(5분) 도달 — 방은 이미 취소됨 */
         WAIT_EXPIRED,

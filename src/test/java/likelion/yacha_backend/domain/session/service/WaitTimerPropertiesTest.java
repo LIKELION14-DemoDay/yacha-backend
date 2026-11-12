@@ -22,12 +22,13 @@ class WaitTimerPropertiesTest {
             .withUserConfiguration(Config.class);
 
     @Test
-    @DisplayName("간격 · 상한 · 정리 간격이 있으면 기동하고 Duration 으로 읽는다")
+    @DisplayName("첫 알림 · 간격 · 상한 · 정리 간격이 있으면 기동하고 Duration 으로 읽는다")
     void valid() {
-        runner.withPropertyValues("game.wait.prompt-interval=30s", "game.wait.limit=5m", "game.wait.sweep-interval=1m")
+        runner.withPropertyValues("game.wait.first-prompt-delay=10s", "game.wait.prompt-interval=30s", "game.wait.limit=5m", "game.wait.sweep-interval=1m")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     WaitTimerProperties properties = context.getBean(WaitTimerProperties.class);
+                    assertThat(properties.firstPromptDelay()).hasSeconds(10);
                     assertThat(properties.promptInterval()).hasSeconds(30);
                     assertThat(properties.limit()).hasMinutes(5);
                     assertThat(properties.sweepInterval()).hasMinutes(1);
@@ -37,7 +38,7 @@ class WaitTimerPropertiesTest {
     @Test
     @DisplayName("값이 빠지면 기동이 실패한다")
     void missing() {
-        runner.withPropertyValues("game.wait.prompt-interval=30s")
+        runner.withPropertyValues("game.wait.first-prompt-delay=10s", "game.wait.prompt-interval=30s")
                 .run(context -> assertThat(context).hasFailed());
     }
 
@@ -45,7 +46,7 @@ class WaitTimerPropertiesTest {
     @ValueSource(strings = {"0s", "-30s", "500ms"})
     @DisplayName("간격이 1초보다 짧으면 기동이 실패한다")
     void tooShortInterval(String interval) {
-        runner.withPropertyValues("game.wait.prompt-interval=" + interval, "game.wait.limit=5m",
+        runner.withPropertyValues("game.wait.first-prompt-delay=10s", "game.wait.prompt-interval=" + interval, "game.wait.limit=5m",
                         "game.wait.sweep-interval=1m")
                 .run(context -> assertThat(context).hasFailed());
     }
@@ -54,7 +55,7 @@ class WaitTimerPropertiesTest {
     @ValueSource(strings = {"0s", "-5m"})
     @DisplayName("상한이 0 이하면 기동이 실패한다")
     void nonPositiveLimit(String limit) {
-        runner.withPropertyValues("game.wait.prompt-interval=30s", "game.wait.limit=" + limit,
+        runner.withPropertyValues("game.wait.first-prompt-delay=10s", "game.wait.prompt-interval=30s", "game.wait.limit=" + limit,
                         "game.wait.sweep-interval=1m")
                 .run(context -> assertThat(context).hasFailed());
     }
@@ -62,7 +63,7 @@ class WaitTimerPropertiesTest {
     @Test
     @DisplayName("정리 간격이 빠지면 기동이 실패한다")
     void missingSweepInterval() {
-        runner.withPropertyValues("game.wait.prompt-interval=30s", "game.wait.limit=5m")
+        runner.withPropertyValues("game.wait.first-prompt-delay=10s", "game.wait.prompt-interval=30s", "game.wait.limit=5m")
                 .run(context -> assertThat(context).hasFailed());
     }
 
@@ -70,8 +71,24 @@ class WaitTimerPropertiesTest {
     @ValueSource(strings = {"0s", "-1m"})
     @DisplayName("정리 간격이 0 이하면 기동이 실패한다")
     void nonPositiveSweepInterval(String sweepInterval) {
-        runner.withPropertyValues("game.wait.prompt-interval=30s", "game.wait.limit=5m",
+        runner.withPropertyValues("game.wait.first-prompt-delay=10s", "game.wait.prompt-interval=30s", "game.wait.limit=5m",
                         "game.wait.sweep-interval=" + sweepInterval)
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0s", "500ms", "31s"})
+    @DisplayName("첫 알림이 1초보다 짧거나 간격보다 길면 기동이 실패한다")
+    void invalidFirstPromptDelay(String firstPromptDelay) {
+        runner.withPropertyValues("game.wait.first-prompt-delay=" + firstPromptDelay, "game.wait.prompt-interval=30s",
+                        "game.wait.limit=5m", "game.wait.sweep-interval=1m")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    @DisplayName("첫 알림이 빠지면 기동이 실패한다")
+    void missingFirstPromptDelay() {
+        runner.withPropertyValues("game.wait.prompt-interval=30s", "game.wait.limit=5m", "game.wait.sweep-interval=1m")
                 .run(context -> assertThat(context).hasFailed());
     }
 }
