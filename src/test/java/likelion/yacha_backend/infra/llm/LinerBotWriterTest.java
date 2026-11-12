@@ -4,9 +4,11 @@ package likelion.yacha_backend.infra.llm;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
+import likelion.yacha_backend.domain.ai.AiException;
 import likelion.yacha_backend.domain.ai.AiMessage;
 import likelion.yacha_backend.domain.ai.AiTopic;
 import likelion.yacha_backend.domain.session.entity.Stance;
@@ -102,7 +104,7 @@ class LinerBotWriterTest {
     }
 
     @Test
-    @DisplayName("AI 채팅은 기존 대화를 참고하고 50자로 제한한다")
+    @DisplayName("AI 채팅은 기존 대화를 참고하고 100자 이내 대답은 그대로 돌려준다")
     void reply() {
         AtomicReference<String> capturedInput = new AtomicReference<>();
         AtomicReference<String> capturedLabel = new AtomicReference<>();
@@ -112,7 +114,7 @@ class LinerBotWriterTest {
                 (system, input, label) -> {
                     capturedInput.set(input);
                     capturedLabel.set(label);
-                    return "대답".repeat(30);
+                    return "대답".repeat(50);
                 }
         );
 
@@ -141,7 +143,7 @@ class LinerBotWriterTest {
                 conversation
         );
 
-        assertThat(result).hasSize(50);
+        assertThat(result).isEqualTo("대답".repeat(50));
 
         assertThat(capturedInput.get())
                 .contains("상대방 [최초 주장]")
@@ -254,6 +256,67 @@ class LinerBotWriterTest {
         assertThat(
                 result.codePointCount(0, result.length())
         ).isLessThanOrEqualTo(200);
+    }
+
+    @Test
+    @DisplayName("AI 채팅이 100자를 넘으면 자르지 않고 더 짧게 다시 요청한다")
+    void replyTooLongRequestsAgain() {
+        List<String> systems = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        String shortReply = "그 말도 일리가 있지만, 일자리를 잃는 사람의 삶은 누가 책임지나요?";
+
+        LinerBotWriter writer = new LinerBotWriter(
+                (system, input, label) -> "사용하지 않음",
+                (system, input, label) -> {
+                    systems.add(system);
+                    labels.add(label);
+                    return labels.size() == 1 ? "가".repeat(120) : shortReply;
+                }
+        );
+
+        String result = writer.reply(TOPIC, Stance.DISAGREE, 2L, List.of());
+
+        assertThat(result).isEqualTo(shortReply);
+        assertThat(labels).containsExactly("bot-chat", "bot-chat-retry");
+        assertThat(systems.get(1))
+                .contains("방금 작성한 대답이 120자로 100자를 넘었습니다.");
+    }
+
+    @Test
+    @DisplayName("다시 요청해도 100자를 넘으면 다시 시도할 수 있는 예외를 던진다")
+    void replyStillTooLongThrows() {
+        List<String> labels = new ArrayList<>();
+
+        LinerBotWriter writer = new LinerBotWriter(
+                (system, input, label) -> "사용하지 않음",
+                (system, input, label) -> {
+                    labels.add(label);
+                    return "😀".repeat(101);
+                }
+        );
+
+        assertThatThrownBy(
+                () -> writer.reply(TOPIC, Stance.DISAGREE, 2L, List.of())
+        )
+                .isInstanceOf(AiException.class)
+                .satisfies(error ->
+                        assertThat(((AiException) error).isRetryable()).isTrue()
+                );
+
+        assertThat(labels).containsExactly("bot-chat", "bot-chat-retry");
+    }
+
+    @Test
+    @DisplayName("이모지도 한 글자로 세어 100자면 그대로 돌려준다")
+    void replyEmojiExactlyLimit() {
+        LinerBotWriter writer = new LinerBotWriter(
+                (system, input, label) -> "사용하지 않음",
+                (system, input, label) -> "😀".repeat(100)
+        );
+
+        String result = writer.reply(TOPIC, Stance.DISAGREE, 2L, List.of());
+
+        assertThat(result.codePointCount(0, result.length())).isEqualTo(100);
     }
 
 }
