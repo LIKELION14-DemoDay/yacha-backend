@@ -38,7 +38,7 @@ import java.util.List;
 import likelion.yacha_backend.domain.topic.service.TopicService;
 
 /**
- * 랜덤 방 생성 · 입장 · 대기 취소 · AI 전환의 DB 작업 (명세 2-3-4). 게임 생성 · 알림처럼 커밋 뒤에 할 일은
+ * 랜덤 방 생성 · 입장 · 대기 취소 · AI 전환 · 바로 봇전의 DB 작업 (명세 2-3-4). 게임 생성 · 알림처럼 커밋 뒤에 할 일은
  * {@link SessionMatchFacade} 가 맡습니다.
  *
  * <p><b>같은 사용자의 요청이 겹칠 때</b> — 생성 · 입장은 먼저 사용자 행을 잠급니다({@code SELECT ... FOR UPDATE}).
@@ -51,7 +51,7 @@ import likelion.yacha_backend.domain.topic.service.TopicService;
  * {@code status = WAITING} 조건부 UPDATE 가 한쪽만 성공시킵니다.
  *
  * <p><b>하트</b> — 방을 만들거나 들어갈 때 하트가 0개면 {@code HEART_EXHAUSTED} 입니다. 하트는 게임이 실제로 시작될 때
- * (입장 · 친구 방 입장 · AI 전환) 같은 트랜잭션에서 깎습니다. 조건부 UPDATE 가 성공한 뒤에 깎으므로, 늦어서 들어가지 못한
+ * (입장 · 친구 방 입장 · AI 전환 · 바로 봇전) 같은 트랜잭션에서 깎습니다. 조건부 UPDATE 가 성공한 뒤에 깎으므로, 늦어서 들어가지 못한
  * 사람은 깎이지 않습니다. 방장은 방을 만들 때 확인했고 기다리는 동안 다른 게임을 할 수 없어 하트가 줄지 않습니다.
  */
 @Service
@@ -388,6 +388,28 @@ public class SessionCommandService {
         // 봇전은 방장만 하트를 씁니다.
         heartService.consume(sessionId, userId);
         return new Matched(sessionId, now, userId, Map.of(userId, hostParticipantId), ai.getId());
+    }
+
+    /**
+     * 바로 봇전 (카테고리 선택 화면의 "봇전 찾기"). 대기 방 없이 사용자 참가자와 AI 참가자를 함께 만들고 바로 시작합니다.
+     * 주제는 카테고리 구분 없이 무작위, 사용자 입장도 무작위이고 AI 는 반대 입장입니다.
+     * 랜덤 방 생성과 같이 사용자 행을 잠그고 {@code ALREADY_IN_SESSION} 을 검사하므로 연타해도 게임은 하나만 생깁니다.
+     * 봇전은 사용자 한 명만 하트를 씁니다.
+     */
+    public Matched startBot(Long userId) {
+        User user = lockUser(userId);
+        checkNotInSession(userId);
+        heartService.checkAvailable(userId);
+        Topic topic = activeTopic(topicService.pickRandomAnyCategory().id());
+        Stance stance = SECURE_RANDOM.nextBoolean() ? Stance.AGREE : Stance.DISAGREE;
+
+        LocalDateTime now = startTime();
+        DebateSession session = sessionRepository.save(DebateSession.createAiMatch(topic, now));
+        DebateParticipant participant = participantRepository.save(
+                DebateParticipant.initiator(session, user, stance, now));
+        DebateParticipant ai = participantRepository.save(DebateParticipant.ai(session, stance.opposite(), now));
+        heartService.consume(session.getId(), userId);
+        return new Matched(session.getId(), now, userId, Map.of(userId, participant.getId()), ai.getId());
     }
 
     /** 방장이 대기를 취소합니다. 이미 누가 들어왔거나 취소된 방이면 {@code SESSION_NOT_WAITING} 입니다. */

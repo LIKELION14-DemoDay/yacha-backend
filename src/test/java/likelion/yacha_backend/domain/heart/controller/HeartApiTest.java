@@ -246,4 +246,31 @@ class HeartApiTest {
 
         assertThat(hearts(host)).isEqualTo(3);
     }
+
+    private ResultActions startBot(Long userId) throws Exception {
+        fixture.topic();
+        return mockMvc.perform(post("/api/v1/sessions/bot")
+                .header(HttpHeaders.AUTHORIZATION, bearer(userId, Role.USER)));
+    }
+
+    @Test
+    @DisplayName("바로 봇전은 내 하트만 1개 깎인다")
+    void startBotConsumesOne() throws Exception {
+        Long userId = fixture.newUser();
+        Long sessionId = createdId(startBot(userId).andExpect(status().isOk()));
+
+        assertThat(hearts(userId)).isEqualTo(2);
+        assertThat(heartUseRepository.findUnrefundedUserIds(sessionId)).containsExactly(userId);
+    }
+
+    @Test
+    @DisplayName("하트가 0개면 바로 봇전을 시작할 수 없다 (HEART_EXHAUSTED)")
+    void cannotStartBotWithoutHearts() throws Exception {
+        Long userId = fixture.newUser();
+        exhaust(userId);
+
+        startBot(userId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("HEART_EXHAUSTED"));
+    }
 }

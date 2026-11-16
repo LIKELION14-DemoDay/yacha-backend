@@ -204,9 +204,25 @@ public class SessionController {
     }
 
     @Operation(
+            summary = "바로 봇전 (봇전 찾기)",
+            description = """
+                    상위 카테고리 선택 화면의 "봇전 찾기". 대기 방 없이 봇전을 만들고 바로 시작 (`IN_PROGRESS`). 요청 본문 없음
+                    주제는 카테고리 구분 없이 무작위, 내 입장도 무작위 (봇은 반대)
+                    상대가 봇이라 `MATCHED` 알림은 오지 않음. 응답의 `sessionId` 로 토론방을 구독하고 `/state` 로 주제 · 내 입장 · 구간을 받음
+
+                    로그인 필요 (게스트 가능)
+                    이미 대기 · 진행 중인 토론이 있으면 `ALREADY_IN_SESSION`, 활성 주제가 하나도 없으면 `TOPIC_NOT_FOUND`
+                    하트가 0개면 `HEART_EXHAUSTED`. 시작할 때 내 하트가 1개 깎임 (봇은 하트 없음)
+                    """)
+    @PostMapping("/bot")
+    public ApiResponse<SessionIdResponse> startBot(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.success(new SessionIdResponse(sessionMatchFacade.startBot(authUser.getUserId())));
+    }
+
+    @Operation(
             summary = "AI 대결로 전환",
             description = """
-                    기다리던 내 방을 봇전으로 바꿔 바로 시작 (`IN_PROGRESS`). 봇전은 이 경로뿐 (방장이 대기 중일 때만)
+                    기다리던 내 방을 봇전으로 바꿔 바로 시작 (`IN_PROGRESS`). 방장이 대기 중일 때만 (카테고리 선택 화면에서 바로 시작하는 봇전은 `POST /bot`)
                     내 입장은 그대로, 봇은 반대. 즉시 대기열에서 빠짐. 응답을 받으면 토론방을 구독하고 `/state` 로 구간을 맞춤
 
                     언제 부르나: 방을 만들고 30초가 되면 첫 `WAIT_PROMPT` 가 옴 → "봇전으로 시작하기" 버튼을 띄우고 5분 대기가 끝날 때까지 유지, 누르면 부름

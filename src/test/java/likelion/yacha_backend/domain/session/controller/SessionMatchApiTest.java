@@ -36,6 +36,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -45,7 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 @Import(SessionFixture.class)
-@DisplayName("방 생성 · 입장 · 취소 · AI 전환 · 참여 중인 세션 API")
+@DisplayName("방 생성 · 입장 · 취소 · AI 전환 · 바로 봇전 · 참여 중인 세션 API")
 class SessionMatchApiTest {
 
     @Autowired
@@ -65,6 +66,9 @@ class SessionMatchApiTest {
 
     @Autowired
     private GameRegistry gameRegistry;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     /** 입장으로 만들어진 게임. 테스트가 끝나면 메모리에서 지웁니다. */
     private final List<Long> joinedSessionIds = new ArrayList<>();
@@ -105,6 +109,25 @@ class SessionMatchApiTest {
                 .header(HttpHeaders.AUTHORIZATION, bearer(userId, Role.USER)));
         joinedSessionIds.add(sessionId);
         return result;
+    }
+
+    /** 바로 봇전을 요청하고, 만들어진 게임은 테스트가 끝나면 지웁니다. */
+    private ResultActions startBotAs(Long userId, Role role) throws Exception {
+        ResultActions result = mockMvc.perform(post("/api/v1/sessions/bot")
+                .header(HttpHeaders.AUTHORIZATION, bearer(userId, role)));
+        String body = result.andReturn().getResponse().getContentAsString();
+        Object sessionId = JsonPath.read(body, "$.success").equals(Boolean.TRUE)
+                ? JsonPath.read(body, "$.data.sessionId") : null;
+        if (sessionId != null) {
+            joinedSessionIds.add(((Number) sessionId).longValue());
+        }
+        return result;
+    }
+
+    /** 다른 주제를 모두 내려, 바로 봇전이 고를 수 있는 주제를 이것 하나로 만듭니다. */
+    private Topic onlyActiveTopic() {
+        jdbcTemplate.update("update topic set is_active = false");
+        return fixture.topic();
     }
 
     private DebateParticipant aiOf(Long sessionId) {
@@ -519,6 +542,94 @@ class SessionMatchApiTest {
             convertAs(fixture.newUser(), 999_999L)
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.error.code").value("SESSION_NOT_FOUND"));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /sessions/bot — 바로 봇전 (봇전 찾기)")
+    class StartBot {
+
+        @Test
+        @DisplayName("대기 없이 AI 모드로 바로 시작하고, 내 입장과 봇 입장은 반대다")
+        void startsImmediately() throws Exception {
+            Long userId = fixture.newUser();
+            Topic topic = onlyActiveTopic();
+
+            String body = startBotAs(userId, Role.USER)
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            Long sessionId = ((Number) JsonPath.read(body, "$.data.sessionId")).longValue();
+
+            DebateSession session = session(sessionId);
+            assertThat(session.getStatus()).isEqualTo(SessionStatus.IN_PROGRESS);
+            assertThat(session.getMode()).isEqualTo(SessionMode.AI);
+            assertThat(session.getTopic().getId()).isEqualTo(topic.getId());
+            assertThat(session.getCategory()).isEqualTo(topic.getCategory());
+            DebateParticipant me = participantRepository.findBySession_IdAndRole(sessionId, ParticipantRole.INITIATOR)
+                    .orElseThrow();
+            DebateParticipant ai = aiOf(sessionId);
+            assertThat(me.isUser(userId)).isTrue();
+            assertThat(me.getStance()).isNotNull();
+            assertThat(ai.getStance()).isEqualTo(me.getStance().opposite());
+            Game game = gameRegistry.find(sessionId).orElseThrow();
+            assertThat(game.getStartedAt()).isEqualTo(session.getStartedAt());
+            assertThat(game.participantIdOf(userId)).isEqualTo(me.getId());
+            assertThat(game.getAiParticipantId()).isEqualTo(ai.getId());
+        }
+
+        @Test
+        @DisplayName("입장은 찬성 · 반대가 모두 나온다")
+        void randomStance() throws Exception {
+            onlyActiveTopic();
+            List<Stance> stances = new ArrayList<>();
+            for (int i = 0; i < 30 && stances.stream().distinct().count() < 2; i++) {
+                Long userId = fixture.newUser();
+                String body = startBotAs(userId, Role.USER).andExpect(status().isOk())
+                        .andReturn().getResponse().getContentAsString();
+                Long sessionId = ((Number) JsonPath.read(body, "$.data.sessionId")).longValue();
+                stances.add(participantRepository.findBySession_IdAndRole(sessionId, ParticipantRole.INITIATOR)
+                        .orElseThrow().getStance());
+            }
+            assertThat(stances).contains(Stance.AGREE, Stance.DISAGREE);
+        }
+
+        @Test
+        @DisplayName("이미 진행 중이면 ALREADY_IN_SESSION — 연타해도 게임은 하나만 생긴다")
+        void alreadyPlaying() throws Exception {
+            Long userId = fixture.newUser();
+            onlyActiveTopic();
+            startBotAs(userId, Role.USER).andExpect(status().isOk());
+
+            startBotAs(userId, Role.USER)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error.code").value("ALREADY_IN_SESSION"));
+        }
+
+        @Test
+        @DisplayName("방을 만들고 기다리는 중이면 ALREADY_IN_SESSION, 대기 방은 그대로")
+        void alreadyWaiting() throws Exception {
+            Room room = track(fixture.waitingRandom());
+
+            startBotAs(room.hostUserId(), Role.USER)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error.code").value("ALREADY_IN_SESSION"));
+            assertThat(session(room.sessionId()).getStatus()).isEqualTo(SessionStatus.WAITING);
+        }
+
+        @Test
+        @DisplayName("활성 주제가 하나도 없으면 TOPIC_NOT_FOUND")
+        void noTopic() throws Exception {
+            jdbcTemplate.update("update topic set is_active = false");
+
+            startBotAs(fixture.newUser(), Role.USER)
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.error.code").value("TOPIC_NOT_FOUND"));
+        }
+
+        @Test
+        @DisplayName("로그인하지 않으면 401")
+        void unauthorized() throws Exception {
+            mockMvc.perform(post("/api/v1/sessions/bot")).andExpect(status().isUnauthorized());
         }
     }
 }

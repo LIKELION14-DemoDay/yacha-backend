@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import likelion.yacha_backend.domain.session.service.SessionCommandService.FriendCreated;
 import likelion.yacha_backend.domain.topic.entity.Category;
 /**
- * 방 생성 · 입장 · 취소 · AI 전환의 진입점. DB 작업은 {@link SessionCommandService} 의 트랜잭션에서 하고,
+ * 방 생성 · 입장 · 취소 · AI 전환 · 바로 봇전의 진입점. DB 작업은 {@link SessionCommandService} 의 트랜잭션에서 하고,
  * <b>커밋이 끝난 뒤에</b> 대기 타이머 등록 · 정리, 게임 생성 · 구간 타이머 등록, 힌트 생성 시작, 봇 일정 등록, 방장 알림을 합니다.
  *
  * <p>트랜잭션 안에서 하면 두 가지 문제가 생깁니다.
@@ -154,6 +154,16 @@ public class SessionMatchFacade {
     public Long convertToAi(Long userId, Long sessionId) {
         Matched matched = sessionCommandService.convertToAi(userId, sessionId);
         waitTimerService.cancel(sessionId);
+        createGame(matched);
+        return matched.sessionId();
+    }
+
+    /**
+     * 바로 봇전 → (커밋) → 게임 생성. 대기 방이 없어 대기 타이머도 없습니다. 요청한 사용자가 응답으로 시작을 알고,
+     * 사람이 한 명뿐이라 {@code MATCHED} 는 보내지 않습니다.
+     */
+    public Long startBot(Long userId) {
+        Matched matched = sessionCommandService.startBot(userId);
         createGame(matched);
         return matched.sessionId();
     }
