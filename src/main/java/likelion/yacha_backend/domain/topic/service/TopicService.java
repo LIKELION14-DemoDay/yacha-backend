@@ -63,4 +63,21 @@ public class TopicService {
         List<Topic> inSubcategory = candidates.get(subcategories.get(random.nextInt(subcategories.size())));
         return TopicResponse.from(inSubcategory.get(random.nextInt(inSubcategory.size())));
     }
+
+    /**
+     * 카테고리 구분 없이 랜덤 주제 1개 (봇전 찾기). 활성 주제가 있는 카테고리 하나를 고른 뒤 {@link #pickRandom} 과
+     * 같은 방식으로 고릅니다. 카테고리마다 주제 수가 비슷해 전체 주제에서 바로 고르는 것과 거의 같습니다.
+     *
+     * @throws BusinessException 활성 주제가 하나도 없으면 {@code TOPIC_NOT_FOUND}
+     */
+    public TopicResponse pickRandomAnyCategory() {
+        // 이름순으로 정렬해, 같은 데이터면 같은 후보 순서가 나오게 합니다.
+        List<Category> categories = topicRepository.findCategoriesWithActiveTopics().stream()
+                .sorted(Comparator.comparing(Category::name))
+                .toList();
+        if (categories.isEmpty()) {
+            throw new BusinessException(TopicErrorCode.TOPIC_NOT_FOUND);
+        }
+        return pickRandom(categories.get(random.nextInt(categories.size())), List.of());
+    }
 }

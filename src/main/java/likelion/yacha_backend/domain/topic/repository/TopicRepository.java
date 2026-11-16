@@ -5,6 +5,7 @@ import java.util.Optional;
 import likelion.yacha_backend.domain.topic.entity.Category;
 import likelion.yacha_backend.domain.topic.entity.Topic;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 public interface TopicRepository extends JpaRepository<Topic, Long> {
 
@@ -13,6 +14,10 @@ public interface TopicRepository extends JpaRepository<Topic, Long> {
 
     /** 친구 방 생성 시 카테고리에 활성 주제가 있는지 확인합니다. */
     boolean existsByCategoryAndActiveTrue(Category category);
+
+    /** 활성 주제가 하나라도 있는 카테고리. 카테고리 구분 없는 랜덤 주제(봇전 찾기)는 이 중 하나를 먼저 고릅니다. */
+    @Query("select distinct t.category from Topic t where t.active = true")
+    List<Category> findCategoriesWithActiveTopics();
 
     /** 주제 파일에서 넣은 주제 (주제 키가 있는 것). */
     List<Topic> findAllByCodeIsNotNull();

@@ -170,4 +170,30 @@ class TopicServiceTest {
         assertError(() -> service.pickRandom(Category.TECH_AND_FUTURE, List.of(only.getId())),
                 TopicErrorCode.ALL_TOPICS_SEEN);
     }
+
+    @Test
+    @DisplayName("카테고리 구분 없는 랜덤 — 활성 주제가 있는 카테고리 중 하나를 고른 뒤 그 안에서 고른다")
+    void picksAcrossCategories() {
+        save(Subcategory.AI, "기술 주제");
+        Topic ethics = save(Subcategory.GOOD_AND_EVIL, "윤리 주제");
+        Topic hidden = save(Subcategory.ROBOT, "내린 주제");
+        hidden.deactivate();
+        // 카테고리 후보는 [ETHICS, TECH_AND_FUTURE] (이름순). 0번 → ETHICS, 하위 카테고리 0번, 주제 0번
+        FixedRandom random = new FixedRandom(0, 0, 0);
+
+        TopicResponse picked = new TopicService(topicRepository, random).pickRandomAnyCategory();
+
+        assertThat(random.bounds).containsExactly(2, 1, 1);
+        assertThat(picked.id()).isEqualTo(ethics.getId());
+        assertThat(picked.category()).isEqualTo(Category.ETHICS);
+    }
+
+    @Test
+    @DisplayName("카테고리 구분 없는 랜덤 — 활성 주제가 하나도 없으면 TOPIC_NOT_FOUND")
+    void noActiveTopicAnywhere() {
+        save(Subcategory.AI, "내린 주제").deactivate();
+
+        assertError(() -> new TopicService(topicRepository, RandomGenerator.getDefault()).pickRandomAnyCategory(),
+                TopicErrorCode.TOPIC_NOT_FOUND);
+    }
 }
